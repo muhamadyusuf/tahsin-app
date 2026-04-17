@@ -8,7 +8,7 @@ import {
   Alert,
   Platform,
 } from "react-native";
-import { useSSO, useAuth } from "@clerk/expo";
+import { useClerk, useAuth } from "@clerk/expo";
 import { useRouter } from "expo-router";
 import { Colors } from "@/lib/constants";
 
@@ -20,7 +20,7 @@ if (Platform.OS !== "web") {
 
 export default function LoginScreen() {
   const nativeGoogle = Platform.OS !== "web" ? useSignInWithGoogle() : null;
-  const { startSSOFlow } = useSSO();
+  const clerk = useClerk();
   const { isSignedIn } = useAuth();
   const router = useRouter();
   const [loading, setLoading] = useState(false);
@@ -34,14 +34,18 @@ export default function LoginScreen() {
       setLoading(true);
 
       if (Platform.OS === "web") {
-        // Web: use Clerk SSO OAuth redirect flow
-        const { createdSessionId, setActive } = await startSSOFlow({
+        // Web: use Clerk OAuth redirect via clerk client
+        if (!clerk.client?.signIn) return;
+        await clerk.client.signIn.create({
           strategy: "oauth_google",
+          redirectUrl: window.location.origin + "/sso-callback",
+          actionCompleteRedirectUrl: window.location.origin + "/",
         });
-
-        if (createdSessionId && setActive) {
-          await setActive({ session: createdSessionId });
-          router.replace("/");
+        const { externalVerificationRedirectURL } =
+          clerk.client.signIn.firstFactorVerification;
+        if (externalVerificationRedirectURL) {
+          window.location.href =
+            externalVerificationRedirectURL.toString();
         }
       } else {
         // Native: use native Google Sign-In
