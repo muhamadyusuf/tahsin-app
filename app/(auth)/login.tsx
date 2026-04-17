@@ -6,14 +6,21 @@ import {
   StyleSheet,
   ActivityIndicator,
   Alert,
+  Platform,
 } from "react-native";
-import { useSignInWithGoogle } from "@clerk/expo/google";
-import { useAuth } from "@clerk/expo";
+import { useSSO, useAuth } from "@clerk/expo";
 import { useRouter } from "expo-router";
 import { Colors } from "@/lib/constants";
 
+let useSignInWithGoogle: any;
+if (Platform.OS !== "web") {
+  useSignInWithGoogle =
+    require("@clerk/expo/google").useSignInWithGoogle;
+}
+
 export default function LoginScreen() {
-  const { startGoogleAuthenticationFlow } = useSignInWithGoogle();
+  const nativeGoogle = Platform.OS !== "web" ? useSignInWithGoogle() : null;
+  const { startSSOFlow } = useSSO();
   const { isSignedIn } = useAuth();
   const router = useRouter();
   const [loading, setLoading] = useState(false);
@@ -25,12 +32,26 @@ export default function LoginScreen() {
   const handleGoogleSignIn = async () => {
     try {
       setLoading(true);
-      const { createdSessionId, setActive } =
-        await startGoogleAuthenticationFlow();
 
-      if (createdSessionId && setActive) {
-        await setActive({ session: createdSessionId });
-        router.replace("/");
+      if (Platform.OS === "web") {
+        // Web: use Clerk SSO OAuth redirect flow
+        const { createdSessionId, setActive } = await startSSOFlow({
+          strategy: "oauth_google",
+        });
+
+        if (createdSessionId && setActive) {
+          await setActive({ session: createdSessionId });
+          router.replace("/");
+        }
+      } else {
+        // Native: use native Google Sign-In
+        const { createdSessionId, setActive } =
+          await nativeGoogle.startGoogleAuthenticationFlow();
+
+        if (createdSessionId && setActive) {
+          await setActive({ session: createdSessionId });
+          router.replace("/");
+        }
       }
     } catch (err: any) {
       if (err.code === "SIGN_IN_CANCELLED" || err.code === "-5") {
