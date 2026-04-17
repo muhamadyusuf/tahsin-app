@@ -2,6 +2,11 @@
   "buildCommand": "npx convex deploy --cmd='npx expo export --platform web'",
   "outputDirectory": "dist",
   "framework": null,
+  "build": {
+    "env": {
+      "NODE_OPTIONS": "--max-old-space-size=4096"
+    }
+  },
   "rewrites": [
     { "source": "/(.*)", "destination": "/" }
   ]
