@@ -100,6 +100,7 @@ export default defineSchema({
     suratName: v.string(),
     juz: v.float64(),
     jumlahHalaman: v.float64(),
+    isKhatam: v.optional(v.boolean()), // user-declared khatam marker
   })
     .index("by_userId", ["userId"])
     .index("by_userId_tanggal", ["userId", "tanggal"]),
@@ -163,4 +164,11 @@ export default defineSchema({
   })
     .index("by_userId", ["userId"])
     .index("by_userId_quizId", ["userId", "quizId"]),
+
+  // Khatam (completed reading all 114 surahs) log
+  khatam: defineTable({
+    userId: v.id("users"),
+    khatamKe: v.float64(), // ordinal: 1st, 2nd, 3rd, ...
+    completedAt: v.string(), // ISO date
+  }).index("by_userId", ["userId"]),
 });

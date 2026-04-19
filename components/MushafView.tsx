@@ -11,6 +11,7 @@ import {
   Platform,
   StatusBar,
   TextInput,
+  Pressable,
 } from "react-native";
 import { useRouter } from "expo-router";
 import FontAwesome from "@expo/vector-icons/FontAwesome";
@@ -72,6 +73,7 @@ function getHizbInfo(hizbQuarter: number): {
   hizb: number;
   quarter: number;
   label: string;
+  arabicLabel: string;
 } {
   const hizb = Math.ceil(hizbQuarter / 4);
   const quarter = ((hizbQuarter - 1) % 4) + 1;
@@ -80,7 +82,48 @@ function getHizbInfo(hizbQuarter: number): {
     quarter === 1
       ? `Hizb ${hizb}`
       : `Hizb ${hizb} ${qLabels[quarter - 1]}`;
-  return { hizb, quarter, label };
+  const arabicLabel =
+    quarter === 1
+      ? `الحزب ${toArabicNumeral(hizb)}`
+      : `الحزب ${toArabicNumeral(hizb)} ${qLabels[quarter - 1]}`;
+  return { hizb, quarter, label, arabicLabel };
+}
+
+/** Convert juz number to Arabic ordinal label */
+function getJuzArabicLabel(juzNum: number): string {
+  const ordinals: Record<number, string> = {
+    1: "الجُزْءُ الْأَوَّلُ",
+    2: "الجُزْءُ الثَّانِي",
+    3: "الجُزْءُ الثَّالِثُ",
+    4: "الجُزْءُ الرَّابِعُ",
+    5: "الجُزْءُ الْخَامِسُ",
+    6: "الجُزْءُ السَّادِسُ",
+    7: "الجُزْءُ السَّابِعُ",
+    8: "الجُزْءُ الثَّامِنُ",
+    9: "الجُزْءُ التَّاسِعُ",
+    10: "الجُزْءُ الْعَاشِرُ",
+    11: "الجُزْءُ الْحَادِي عَشَرَ",
+    12: "الجُزْءُ الثَّانِي عَشَرَ",
+    13: "الجُزْءُ الثَّالِثَ عَشَرَ",
+    14: "الجُزْءُ الرَّابِعَ عَشَرَ",
+    15: "الجُزْءُ الْخَامِسَ عَشَرَ",
+    16: "الجُزْءُ السَّادِسَ عَشَرَ",
+    17: "الجُزْءُ السَّابِعَ عَشَرَ",
+    18: "الجُزْءُ الثَّامِنَ عَشَرَ",
+    19: "الجُزْءُ التَّاسِعَ عَشَرَ",
+    20: "الجُزْءُ الْعِشْرُونَ",
+    21: "الجُزْءُ الْحَادِي وَالْعِشْرُونَ",
+    22: "الجُزْءُ الثَّانِي وَالْعِشْرُونَ",
+    23: "الجُزْءُ الثَّالِثُ وَالْعِشْرُونَ",
+    24: "الجُزْءُ الرَّابِعُ وَالْعِشْرُونَ",
+    25: "الجُزْءُ الْخَامِسُ وَالْعِشْرُونَ",
+    26: "الجُزْءُ السَّادِسُ وَالْعِشْرُونَ",
+    27: "الجُزْءُ السَّابِعُ وَالْعِشْرُونَ",
+    28: "الجُزْءُ الثَّامِنُ وَالْعِشْرُونَ",
+    29: "الجُزْءُ التَّاسِعُ وَالْعِشْرُونَ",
+    30: "الجُزْءُ الثَّلَاثُونَ",
+  };
+  return ordinals[juzNum] ?? `الجُزْءُ ${toArabicNumeral(juzNum)}`;
 }
 
 interface SurahGroup {
@@ -274,6 +317,7 @@ export default function MushafView({ initialPage = 0 }: Props) {
   const [loading, setLoading] = useState(true);
   const [showTajwid, setShowTajwid] = useState(true);
   const [legendVisible, setLegendVisible] = useState(false);
+  const [showBars, setShowBars] = useState(false);
 
   // Slider
   const [sliderVisible, setSliderVisible] = useState(false);
@@ -637,7 +681,28 @@ export default function MushafView({ initialPage = 0 }: Props) {
       prevHQ = a.hizbQuarter;
     }
 
-    return groups.map((g, gi) => (
+    // Page header — mimics standard Mushaf layout
+    const firstAyah = data.ayahs[0];
+    const pageJuz = firstAyah?.juz ?? 0;
+    // Left side: juz label in Arabic, Right side: surah name
+    const juzLabel = pageJuz > 0 ? getJuzArabicLabel(pageJuz) : "";
+    const pageNum = toArabicNumeral(page);
+
+    return (
+      <>
+        {/* Mushaf page header */}
+        <View style={s.mushafPageHeader}>
+          <Text style={s.mushafPageHeaderJuz} numberOfLines={1}>
+            {juzLabel}
+          </Text>
+          <Text style={s.mushafPageHeaderPage}>{pageNum}</Text>
+          <Text style={s.mushafPageHeaderSurah} numberOfLines={1}>
+            {surahNames[0]}
+          </Text>
+        </View>
+        <View style={s.mushafPageHeaderLine} />
+
+        {groups.map((g, gi) => (
       <View key={`g-${gi}`}>
         {g.startsNewSurah && (
           <View style={s.surahBlock}>
@@ -671,11 +736,9 @@ export default function MushafView({ initialPage = 0 }: Props) {
             const showHizbMark = hizbBoundaries.has(a.number);
             return (
               <React.Fragment key={a.number}>
-                {showHizbMark && (
-                  <Text style={s.hizbInline}>
-                    {" ۞ " + getHizbInfo(a.hizbQuarter).label + " "}
-                  </Text>
-                )}
+                {/* {showHizbMark && (
+                  <Text style={s.hizbInline}>{" ۞ "}</Text>
+                )} */}
                 {segs.map((seg, si) => (
                   <Text
                     key={si}
@@ -699,7 +762,9 @@ export default function MushafView({ initialPage = 0 }: Props) {
           })}
         </Text>
       </View>
-    ));
+    ))}
+      </>
+    );
   };
 
   return (
@@ -772,7 +837,8 @@ export default function MushafView({ initialPage = 0 }: Props) {
         </>
       ) : (
         <>
-          {/* Top bar with back button */}
+          {/* Top bar — shown on tap */}
+          {showBars && (
           <View style={s.topBar}>
             <TouchableOpacity
               style={s.backBtn}
@@ -797,6 +863,7 @@ export default function MushafView({ initialPage = 0 }: Props) {
               />
             </TouchableOpacity>
           </View>
+          )}
 
           {/* Bookmark ribbon indicator */}
           {isBookmarked && (
@@ -806,14 +873,17 @@ export default function MushafView({ initialPage = 0 }: Props) {
             </View>
           )}
 
-          {/* Page content area */}
+          {/* Page content area — tap to show/hide bars */}
           {loading ? (
             <View style={s.loading}>
               <ActivityIndicator size="large" color={M.border} />
               <Text style={s.loadingText}>Memuat halaman {page}...</Text>
             </View>
           ) : (
-            <View style={s.pageOuter}>
+            <Pressable
+              style={s.pageOuter}
+              onPress={() => setShowBars((v) => !v)}
+            >
               <View style={s.pageBorder}>
                 <ScrollView
                   contentContainerStyle={s.pageContent}
@@ -822,7 +892,7 @@ export default function MushafView({ initialPage = 0 }: Props) {
                   {renderContent()}
                 </ScrollView>
               </View>
-            </View>
+            </Pressable>
           )}
 
       {/* Audio floating bar */}
@@ -843,6 +913,7 @@ export default function MushafView({ initialPage = 0 }: Props) {
       )}
 
       {/* Bottom navigation bar — RTL: left=next, right=prev */}
+      {showBars && (
       <View style={s.toolbar}>
         <TouchableOpacity
           style={s.navBtn}
@@ -928,6 +999,7 @@ export default function MushafView({ initialPage = 0 }: Props) {
           />
         </TouchableOpacity>
       </View>
+      )}
         </>
       )}
 
@@ -1510,6 +1582,7 @@ const s = StyleSheet.create({
     alignItems: "center",
   },
   topBarSurah: {
+    fontFamily: "Amiri",
     fontSize: 15,
     fontWeight: "700",
     color: M.toolbarText,
@@ -1566,7 +1639,44 @@ const s = StyleSheet.create({
   },
   pageContent: {
     padding: 16,
+    paddingTop: 8,
     paddingBottom: 24,
+  },
+
+  // Mushaf page header (juz · page · surah — like standard printed Mushaf)
+  mushafPageHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    paddingBottom: 6,
+  },
+  mushafPageHeaderJuz: {
+    fontFamily: "Amiri",
+    fontSize: 11,
+    color: M.surahDecor,
+    flex: 1,
+    textAlign: "left",
+  },
+  mushafPageHeaderPage: {
+    fontFamily: "Amiri",
+    fontSize: 12,
+    color: M.text,
+    fontWeight: "600",
+    textAlign: "center",
+    minWidth: 40,
+  },
+  mushafPageHeaderSurah: {
+    fontFamily: "Amiri",
+    fontSize: 11,
+    color: M.surahDecor,
+    flex: 1,
+    textAlign: "right",
+  },
+  mushafPageHeaderLine: {
+    height: 1,
+    backgroundColor: M.surahDecor,
+    marginBottom: 10,
+    opacity: 0.4,
   },
 
   // Surah header within page
@@ -1591,12 +1701,13 @@ const s = StyleSheet.create({
     paddingVertical: 6,
   },
   surahNameText: {
+    fontFamily: "Amiri",
     fontSize: 16,
-    fontWeight: "700",
     color: M.surahDecor,
     textAlign: "center",
   },
   bismillah: {
+    fontFamily: "AmiriQuran",
     fontSize: 20,
     color: M.text,
     textAlign: "center",
@@ -1606,6 +1717,7 @@ const s = StyleSheet.create({
 
   // Continuous ayah text
   ayahText: {
+    fontFamily: "AmiriQuran",
     fontSize: 22,
     lineHeight: 46,
     color: M.text,
@@ -1625,13 +1737,12 @@ const s = StyleSheet.create({
     fontWeight: "bold",
   },
 
-  // Hizb inline marker
+  // Hizb inline marker (۞ rub el hizb — standard Mushaf style)
   hizbInline: {
-    fontSize: 13,
-    color: M.hizb,
-    fontWeight: "bold",
-    backgroundColor: M.hizb + "15",
-    borderRadius: 4,
+    fontFamily: "AmiriQuran",
+    fontSize: 22,
+    lineHeight: 46,
+    color: M.text,
   },
 
   // Audio floating bar
@@ -2041,8 +2152,8 @@ const s = StyleSheet.create({
     alignItems: "center",
   },
   coverArabicTitle: {
+    fontFamily: "AmiriQuran",
     fontSize: 36,
-    fontWeight: "700",
     color: "#C5A645",
     textAlign: "center",
     lineHeight: 52,

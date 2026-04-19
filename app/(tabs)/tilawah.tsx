@@ -9,6 +9,7 @@ import {
   TextInput,
   ScrollView,
   Dimensions,
+  Image
 } from "react-native";
 import { useRouter } from "expo-router";
 import FontAwesome from "@expo/vector-icons/FontAwesome";
@@ -159,7 +160,14 @@ export default function TilawahScreen() {
             style={styles.avatarCircle}
             onPress={() => router.push("/(tabs)/profil")}
           >
-            <FontAwesome name="user" size={20} color={Colors.primary} />
+            {userData?.avatarUrl ? (
+            <Image
+              source={{ uri: userData.avatarUrl }}
+              style={styles.avatarImage}
+            />
+          ) : (
+            <FontAwesome name="user" size={40} color={Colors.primary} />
+          )}
           </TouchableOpacity>
         </View>
 
@@ -197,6 +205,23 @@ export default function TilawahScreen() {
             <FontAwesome name="book" size={56} color="rgba(255,255,255,0.9)" />
           </View>
         </View>
+
+        {/* Tilawah Harian Card */}
+        <TouchableOpacity
+          style={styles.tilawahBanner}
+          onPress={() => router.push("/tilawah-harian")}
+        >
+          <View style={styles.tilawahBannerIcon}>
+            <FontAwesome name="pencil-square-o" size={24} color={Colors.primary} />
+          </View>
+          <View style={{ flex: 1 }}>
+            <Text style={styles.tilawahBannerTitle}>Tilawah Harian</Text>
+            <Text style={styles.tilawahBannerSub}>
+              Catat & lihat riwayat bacaan harianmu
+            </Text>
+          </View>
+          <FontAwesome name="chevron-right" size={14} color={Colors.primary} />
+        </TouchableOpacity>
 
         {/* Menu Categories */}
         <View style={styles.sectionHeader}>
@@ -359,6 +384,11 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     alignItems: "center",
   },
+  avatarImage: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+  },
   searchBar: {
     flexDirection: "row",
     alignItems: "center",
@@ -420,6 +450,43 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     alignItems: "center",
     marginLeft: 12,
+  },
+
+  // ===== Tilawah Harian Banner =====
+  tilawahBanner: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "#fff",
+    marginHorizontal: 20,
+    marginTop: 20,
+    borderRadius: 14,
+    padding: 16,
+    gap: 12,
+    borderWidth: 1,
+    borderColor: Colors.primaryLight,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.06,
+    shadowRadius: 4,
+    elevation: 2,
+  },
+  tilawahBannerIcon: {
+    width: 48,
+    height: 48,
+    borderRadius: 12,
+    backgroundColor: "#E8F5E9",
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  tilawahBannerTitle: {
+    fontSize: 15,
+    fontWeight: "bold",
+    color: Colors.text,
+  },
+  tilawahBannerSub: {
+    fontSize: 12,
+    color: Colors.textSecondary,
+    marginTop: 2,
   },
 
   // ===== Section =====
@@ -512,9 +579,9 @@ const styles = StyleSheet.create({
     color: Colors.primaryDark,
   },
   popularArabic: {
+    fontFamily: "Amiri",
     fontSize: 20,
     color: Colors.text,
-    fontWeight: "500",
     marginBottom: 4,
   },
   popularName: {
@@ -604,8 +671,8 @@ const styles = StyleSheet.create({
     marginTop: 2,
   },
   surahArabic: {
+    fontFamily: "Amiri",
     fontSize: 20,
     color: Colors.text,
-    fontWeight: "500",
   },
 });

@@ -848,9 +848,9 @@ const styles = StyleSheet.create({
     marginBottom: 8,
   },
   surahArabicName: {
+    fontFamily: "Amiri",
     fontSize: 32,
     color: Colors.textLight,
-    fontWeight: "600",
     marginBottom: 8,
   },
   surahEnglishName: {
@@ -872,6 +872,7 @@ const styles = StyleSheet.create({
     borderRadius: 12,
   },
   bismillahText: {
+    fontFamily: "AmiriQuran",
     fontSize: 22,
     color: Colors.textLight,
     textAlign: "center",
@@ -1001,11 +1002,11 @@ const styles = StyleSheet.create({
 
   // Arabic
   arabicText: {
+    fontFamily: "AmiriQuran",
     fontSize: 26,
     lineHeight: 52,
     color: Colors.text,
     textAlign: "right",
-    fontWeight: "400",
     writingDirection: "rtl",
     marginBottom: 12,
   },

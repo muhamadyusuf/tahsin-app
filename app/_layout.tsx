@@ -16,6 +16,8 @@ SplashScreen.preventAutoHideAsync();
 export default function RootLayout() {
   const [loaded, error] = useFonts({
     SpaceMono: require("../assets/fonts/SpaceMono-Regular.ttf"),
+    AmiriQuran: require("../assets/fonts/AmiriQuran-Regular.ttf"),
+    Amiri: require("../assets/fonts/Amiri-Regular.ttf"),
     ...FontAwesome.font,
   });
 
@@ -48,6 +50,9 @@ export default function RootLayout() {
           <Stack.Screen name="statistik" options={{ title: "Statistik", headerTintColor: Colors.primary }} />
           <Stack.Screen name="pengaturan" options={{ title: "Pengaturan", headerTintColor: Colors.primary }} />
           <Stack.Screen name="bantuan" options={{ title: "Bantuan", headerTintColor: Colors.primary }} />
+          <Stack.Screen name="materi/[materiId]" options={{ title: "Detail Materi", headerTintColor: Colors.primary }} />
+          <Stack.Screen name="quiz/[materiId]" options={{ title: "Kuis", headerTintColor: Colors.primary }} />
+          <Stack.Screen name="tilawah-harian" options={{ title: "Tilawah Harian", headerTintColor: Colors.primary }} />
         </Stack>
       </AuthProvider>
     </Providers>
