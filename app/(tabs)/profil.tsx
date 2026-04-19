@@ -6,6 +6,8 @@ import {
   ScrollView,
   TouchableOpacity,
   Alert,
+  Image,
+  Platform,
 } from "react-native";
 import FontAwesome from "@expo/vector-icons/FontAwesome";
 import { useClerk } from "@clerk/expo";
@@ -25,18 +27,26 @@ export default function ProfilScreen() {
   const { signOut } = useClerk();
   const router = useRouter();
 
+  const doLogout = async () => {
+    try {
+      await signOut();
+      router.replace("/");
+    } catch (err) {
+      console.error("Logout error:", err);
+    }
+  };
+
   const handleLogout = () => {
-    Alert.alert("Keluar", "Apakah Anda yakin ingin keluar?", [
-      { text: "Batal", style: "cancel" },
-      {
-        text: "Keluar",
-        style: "destructive",
-        onPress: async () => {
-          await signOut();
-          router.replace("/");
-        },
-      },
-    ]);
+    if (Platform.OS === "web") {
+      if (window.confirm("Apakah Anda yakin ingin keluar?")) {
+        doLogout();
+      }
+    } else {
+      Alert.alert("Keluar", "Apakah Anda yakin ingin keluar?", [
+        { text: "Batal", style: "cancel" },
+        { text: "Keluar", style: "destructive", onPress: doLogout },
+      ]);
+    }
   };
 
   return (
@@ -44,7 +54,14 @@ export default function ProfilScreen() {
       {/* Profile Card */}
       <View style={styles.profileCard}>
         <View style={styles.avatar}>
-          <FontAwesome name="user" size={40} color={Colors.primary} />
+          {userData?.avatarUrl ? (
+            <Image
+              source={{ uri: userData.avatarUrl }}
+              style={styles.avatarImage}
+            />
+          ) : (
+            <FontAwesome name="user" size={40} color={Colors.primary} />
+          )}
         </View>
         <Text style={styles.name}>{userData?.name ?? "User"}</Text>
         <Text style={styles.email}>{userData?.email ?? ""}</Text>
@@ -73,7 +90,7 @@ export default function ProfilScreen() {
 
       {/* Menu Items */}
       <View style={styles.menuSection}>
-        <TouchableOpacity style={styles.menuItem}>
+        <TouchableOpacity style={styles.menuItem} onPress={() => router.push("/edit-profil")}>
           <FontAwesome name="edit" size={18} color={Colors.primary} />
           <Text style={styles.menuText}>Edit Profil</Text>
           <FontAwesome
@@ -84,7 +101,7 @@ export default function ProfilScreen() {
         </TouchableOpacity>
 
         {role === "santri" && (
-          <TouchableOpacity style={styles.menuItem}>
+          <TouchableOpacity style={styles.menuItem} onPress={() => router.push("/lembaga-pengajian")}>
             <FontAwesome name="building" size={18} color={Colors.primary} />
             <Text style={styles.menuText}>Lembaga Pengajian</Text>
             <FontAwesome
@@ -95,7 +112,7 @@ export default function ProfilScreen() {
           </TouchableOpacity>
         )}
 
-        <TouchableOpacity style={styles.menuItem}>
+        <TouchableOpacity style={styles.menuItem} onPress={() => router.push("/statistik")}>
           <FontAwesome name="bar-chart" size={18} color={Colors.primary} />
           <Text style={styles.menuText}>Statistik</Text>
           <FontAwesome
@@ -105,7 +122,7 @@ export default function ProfilScreen() {
           />
         </TouchableOpacity>
 
-        <TouchableOpacity style={styles.menuItem}>
+        <TouchableOpacity style={styles.menuItem} onPress={() => router.push("/pengaturan")}>
           <FontAwesome name="cog" size={18} color={Colors.primary} />
           <Text style={styles.menuText}>Pengaturan</Text>
           <FontAwesome
@@ -115,7 +132,7 @@ export default function ProfilScreen() {
           />
         </TouchableOpacity>
 
-        <TouchableOpacity style={styles.menuItem}>
+        <TouchableOpacity style={styles.menuItem} onPress={() => router.push("/bantuan")}>
           <FontAwesome
             name="question-circle"
             size={18}
@@ -171,6 +188,12 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     alignItems: "center",
     marginBottom: 12,
+    overflow: "hidden",
+  },
+  avatarImage: {
+    width: 80,
+    height: 80,
+    borderRadius: 40,
   },
   name: {
     fontSize: 20,

@@ -7,6 +7,7 @@ import "react-native-reanimated";
 
 import { Providers } from "@/lib/providers";
 import { AuthProvider } from "@/lib/auth-context";
+import { Colors } from "@/lib/constants";
 
 export { ErrorBoundary } from "expo-router";
 
@@ -42,6 +43,11 @@ export default function RootLayout() {
           <Stack.Screen name="sso-callback" options={{ headerShown: false }} />
           <Stack.Screen name="surah/[surahNumber]" options={{ headerShown: true }} />
           <Stack.Screen name="mushaf" options={{ headerShown: false }} />
+          <Stack.Screen name="edit-profil" options={{ title: "Edit Profil", headerTintColor: Colors.primary }} />
+          <Stack.Screen name="lembaga-pengajian" options={{ title: "Lembaga Pengajian", headerTintColor: Colors.primary }} />
+          <Stack.Screen name="statistik" options={{ title: "Statistik", headerTintColor: Colors.primary }} />
+          <Stack.Screen name="pengaturan" options={{ title: "Pengaturan", headerTintColor: Colors.primary }} />
+          <Stack.Screen name="bantuan" options={{ title: "Bantuan", headerTintColor: Colors.primary }} />
         </Stack>
       </AuthProvider>
     </Providers>

@@ -7,20 +7,30 @@ import {
   StyleSheet,
   ActivityIndicator,
   TextInput,
+  ScrollView,
+  Dimensions,
 } from "react-native";
 import { useRouter } from "expo-router";
 import FontAwesome from "@expo/vector-icons/FontAwesome";
 import { Colors } from "@/lib/constants";
 import { getAllSurahs, Surah } from "@/lib/alquran-api";
-type ViewMode = "surah" | "mushaf";
+import { useAuthContext } from "@/lib/auth-context";
+
+const { width } = Dimensions.get("window");
+
+// Quick access surahs
+const POPULAR_SURAHS = [36, 67, 56, 18, 55, 1]; // Yasin, Al-Mulk, Al-Waqi'ah, Al-Kahf, Ar-Rahman, Al-Fatihah
+
+type ScreenMode = "home" | "surah-list";
 
 export default function TilawahScreen() {
   const router = useRouter();
-  const [mode, setMode] = useState<ViewMode>("surah");
+  const { userData } = useAuthContext();
   const [surahs, setSurahs] = useState<Surah[]>([]);
   const [filtered, setFiltered] = useState<Surah[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
+  const [mode, setMode] = useState<ScreenMode>("home");
 
   useEffect(() => {
     loadSurahs();
@@ -45,7 +55,6 @@ export default function TilawahScreen() {
   const loadSurahs = async () => {
     try {
       const data = await getAllSurahs();
-      console.log("Loaded surahs:", data);
       setSurahs(data);
       setFiltered(data);
     } catch (error) {
@@ -55,31 +64,12 @@ export default function TilawahScreen() {
     }
   };
 
-  const renderSurah = ({ item }: { item: Surah }) => (
-    <TouchableOpacity
-      style={styles.surahCard}
-      onPress={() =>
-        router.push({
-          pathname: "/surah/[surahNumber]",
-          params: {
-            surahNumber: item.number.toString(),
-            surahName: item.englishName,
-          },
-        })
-      }
-    >
-      <View style={styles.surahNumber}>
-        <Text style={styles.surahNumberText}>{item.number}</Text>
-      </View>
-      <View style={styles.surahInfo}>
-        <Text style={styles.surahEnglish}>{item.englishName}</Text>
-        <Text style={styles.surahTranslation}>
-          {item.englishNameTranslation} • {item.numberOfAyahs} ayat
-        </Text>
-      </View>
-      <Text style={styles.surahArabic}>{item.name}</Text>
-    </TouchableOpacity>
-  );
+  const getPopularSurahs = () =>
+    POPULAR_SURAHS.map((num) => surahs.find((s) => s.number === num)).filter(
+      Boolean
+    ) as Surah[];
+
+  const firstName = userData?.name?.split(" ")[0] || "Pengguna";
 
   if (loading) {
     return (
@@ -90,84 +80,231 @@ export default function TilawahScreen() {
     );
   }
 
+  if (mode === "surah-list") {
+    return (
+      <View style={styles.container}>
+        {/* Header bar */}
+        <View style={styles.listHeader}>
+          <TouchableOpacity onPress={() => setMode("home")}>
+            <FontAwesome name="arrow-left" size={20} color={Colors.textLight} />
+          </TouchableOpacity>
+          <Text style={styles.listHeaderTitle}>Daftar Surah</Text>
+          <View style={{ width: 20 }} />
+        </View>
+
+        {/* Search */}
+        <View style={styles.searchContainerList}>
+          <FontAwesome
+            name="search"
+            size={16}
+            color={Colors.textSecondary}
+            style={{ marginRight: 10 }}
+          />
+          <TextInput
+            style={styles.searchInputList}
+            placeholder="Cari surah..."
+            value={search}
+            onChangeText={setSearch}
+            placeholderTextColor={Colors.textSecondary}
+          />
+        </View>
+
+        {/* Surah list */}
+        <FlatList
+          data={filtered}
+          renderItem={({ item }) => (
+            <TouchableOpacity
+              style={styles.surahCard}
+              onPress={() =>
+                router.push({
+                  pathname: "/surah/[surahNumber]",
+                  params: {
+                    surahNumber: item.number.toString(),
+                    surahName: item.englishName,
+                  },
+                })
+              }
+            >
+              <View style={styles.surahNumber}>
+                <Text style={styles.surahNumberText}>{item.number}</Text>
+              </View>
+              <View style={styles.surahInfo}>
+                <Text style={styles.surahEnglish}>{item.englishName}</Text>
+                <Text style={styles.surahTranslation}>
+                  {item.englishNameTranslation} • {item.numberOfAyahs} ayat
+                </Text>
+              </View>
+              <Text style={styles.surahArabic}>{item.name}</Text>
+            </TouchableOpacity>
+          )}
+          keyExtractor={(item) => item.number.toString()}
+          contentContainerStyle={styles.list}
+          showsVerticalScrollIndicator={false}
+        />
+      </View>
+    );
+  }
+
+  // HOME mode
   return (
     <View style={styles.container}>
-      {/* Mode Switcher */}
-      <View style={styles.modeContainer}>
-        <TouchableOpacity
-          style={[styles.modeBtn, mode === "surah" && styles.modeBtnActive]}
-          onPress={() => setMode("surah")}
-        >
-          <FontAwesome
-            name="list"
-            size={14}
-            color={mode === "surah" ? Colors.textLight : Colors.primary}
-          />
-          <Text
-            style={[
-              styles.modeText,
-              mode === "surah" && styles.modeTextActive,
-            ]}
+      {/* Header */}
+      <View style={styles.header}>
+        <View style={styles.headerContent}>
+          <View>
+            <Text style={styles.greeting}>Assalamu'alaikum 👋</Text>
+            <Text style={styles.userName}>{firstName}</Text>
+          </View>
+          <TouchableOpacity
+            style={styles.avatarCircle}
+            onPress={() => router.push("/(tabs)/profil")}
           >
-            Daftar Surah
-          </Text>
-        </TouchableOpacity>
+            <FontAwesome name="user" size={20} color={Colors.primary} />
+          </TouchableOpacity>
+        </View>
+
+        {/* Search bar */}
         <TouchableOpacity
-          style={[styles.modeBtn, mode === "mushaf" && styles.modeBtnActive]}
-          onPress={() => setMode("mushaf")}
+          style={styles.searchBar}
+          onPress={() => setMode("surah-list")}
         >
-          <FontAwesome
-            name="book"
-            size={14}
-            color={mode === "mushaf" ? Colors.textLight : Colors.primary}
-          />
-          <Text
-            style={[
-              styles.modeText,
-              mode === "mushaf" && styles.modeTextActive,
-            ]}
-          >
-            Mushaf
-          </Text>
+          <FontAwesome name="search" size={16} color={Colors.textSecondary} />
+          <Text style={styles.searchPlaceholder}>Cari surah...</Text>
         </TouchableOpacity>
       </View>
 
-      {mode === "surah" ? (
-        <>
-          {/* Search */}
-          <View style={styles.searchContainer}>
-            <TextInput
-              style={styles.searchInput}
-              placeholder="Cari surah..."
-              value={search}
-              onChangeText={setSearch}
-              placeholderTextColor={Colors.textSecondary}
-            />
+      <ScrollView
+        showsVerticalScrollIndicator={false}
+        contentContainerStyle={{ paddingBottom: 32 }}
+      >
+        {/* Hero Banner */}
+        <View style={styles.heroBanner}>
+          <View style={styles.heroContent}>
+            <Text style={styles.heroTitle}>
+              Belajar Al-Qur'an{"\n"}Lebih Mudah!
+            </Text>
+            <Text style={styles.heroSubtitle}>
+              Tilawah, Tahsin, dan Talaqi{"\n"}dalam satu aplikasi
+            </Text>
+            <TouchableOpacity
+              style={styles.heroButton}
+              onPress={() => router.push("/mushaf")}
+            >
+              <Text style={styles.heroButtonText}>Buka Mushaf</Text>
+            </TouchableOpacity>
           </View>
+          <View style={styles.heroIconWrap}>
+            <FontAwesome name="book" size={56} color="rgba(255,255,255,0.9)" />
+          </View>
+        </View>
 
-          {/* Surah List */}
-          <FlatList
-            data={filtered}
-            renderItem={renderSurah}
-            keyExtractor={(item) => item.number.toString()}
-            contentContainerStyle={styles.list}
-            showsVerticalScrollIndicator={false}
-          />
-        </>
-      ) : (
-        <View style={styles.mushafLaunch}>
-          <FontAwesome name="book" size={60} color={Colors.primary} />
-          <Text style={styles.mushafTitle}>Mushaf Al-Quran</Text>
-          <Text style={styles.mushafDesc}>Baca Al-Quran dalam tampilan mushaf lengkap</Text>
+        {/* Menu Categories */}
+        <View style={styles.sectionHeader}>
+          <Text style={styles.sectionTitle}>Menu Utama</Text>
+        </View>
+        <View style={styles.categoryGrid}>
           <TouchableOpacity
-            style={styles.mushafBtn}
+            style={styles.categoryCard}
+            onPress={() => setMode("surah-list")}
+          >
+            <View style={[styles.categoryIcon, { backgroundColor: "#E8F5E9" }]}>
+              <FontAwesome name="list" size={22} color={Colors.primary} />
+            </View>
+            <Text style={styles.categoryLabel}>Daftar{"\n"}Surah</Text>
+            <FontAwesome
+              name="chevron-right"
+              size={12}
+              color={Colors.textSecondary}
+            />
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={styles.categoryCard}
             onPress={() => router.push("/mushaf")}
           >
-            <FontAwesome name="book" size={18} color={Colors.textLight} />
-            <Text style={styles.mushafBtnText}>Buka Mushaf</Text>
+            <View style={[styles.categoryIcon, { backgroundColor: "#FFF3E0" }]}>
+              <FontAwesome name="book" size={22} color="#E65100" />
+            </View>
+            <Text style={styles.categoryLabel}>Mushaf{"\n"}Al-Qur'an</Text>
+            <FontAwesome
+              name="chevron-right"
+              size={12}
+              color={Colors.textSecondary}
+            />
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={styles.categoryCard}
+            onPress={() => router.push("/(tabs)/tahsin")}
+          >
+            <View style={[styles.categoryIcon, { backgroundColor: "#E3F2FD" }]}>
+              <FontAwesome name="graduation-cap" size={20} color="#1565C0" />
+            </View>
+            <Text style={styles.categoryLabel}>Tahsin{"\n"}Tilawah</Text>
+            <FontAwesome
+              name="chevron-right"
+              size={12}
+              color={Colors.textSecondary}
+            />
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={styles.categoryCard}
+            onPress={() => router.push("/(tabs)/talaqi")}
+          >
+            <View style={[styles.categoryIcon, { backgroundColor: "#FCE4EC" }]}>
+              <FontAwesome name="users" size={20} color="#C62828" />
+            </View>
+            <Text style={styles.categoryLabel}>Talaqi{"\n"}Online</Text>
+            <FontAwesome
+              name="chevron-right"
+              size={12}
+              color={Colors.textSecondary}
+            />
           </TouchableOpacity>
         </View>
-      )}
+
+        {/* Popular Surahs */}
+        <View style={styles.sectionHeader}>
+          <Text style={styles.sectionTitle}>Surah Populer</Text>
+          <TouchableOpacity onPress={() => setMode("surah-list")}>
+            <Text style={styles.viewAll}>Lihat semua →</Text>
+          </TouchableOpacity>
+        </View>
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={styles.popularScroll}
+        >
+          {getPopularSurahs().map((surah) => (
+            <TouchableOpacity
+              key={surah.number}
+              style={styles.popularCard}
+              onPress={() =>
+                router.push({
+                  pathname: "/surah/[surahNumber]",
+                  params: {
+                    surahNumber: surah.number.toString(),
+                    surahName: surah.englishName,
+                  },
+                })
+              }
+            >
+              <View style={styles.popularTop}>
+                <View style={styles.popularBadge}>
+                  <Text style={styles.popularBadgeText}>{surah.number}</Text>
+                </View>
+                <FontAwesome name="play-circle" size={20} color={Colors.primary} />
+              </View>
+              <Text style={styles.popularArabic}>{surah.name}</Text>
+              <Text style={styles.popularName}>{surah.englishName}</Text>
+              <Text style={styles.popularMeta}>
+                {surah.numberOfAyahs} ayat
+              </Text>
+            </TouchableOpacity>
+          ))}
+        </ScrollView>
+      </ScrollView>
     </View>
   );
 }
@@ -176,37 +313,6 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: Colors.background,
-  },
-  modeContainer: {
-    flexDirection: "row",
-    padding: 12,
-    paddingBottom: 0,
-    backgroundColor: Colors.surface,
-    gap: 8,
-  },
-  modeBtn: {
-    flex: 1,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 6,
-    paddingVertical: 10,
-    borderRadius: 10,
-    borderWidth: 1,
-    borderColor: Colors.primary,
-    backgroundColor: Colors.surface,
-  },
-  modeBtnActive: {
-    backgroundColor: Colors.primary,
-    borderColor: Colors.primary,
-  },
-  modeText: {
-    fontSize: 14,
-    fontWeight: "600",
-    color: Colors.primary,
-  },
-  modeTextActive: {
-    color: Colors.textLight,
   },
   center: {
     flex: 1,
@@ -219,26 +325,246 @@ const styles = StyleSheet.create({
     color: Colors.textSecondary,
     fontSize: 14,
   },
-  searchContainer: {
-    padding: 16,
-    backgroundColor: Colors.surface,
-    borderBottomWidth: 1,
-    borderBottomColor: Colors.border,
+
+  // ===== Header =====
+  header: {
+    backgroundColor: Colors.primary,
+    paddingTop: 56,
+    paddingHorizontal: 20,
+    paddingBottom: 20,
+    borderBottomLeftRadius: 24,
+    borderBottomRightRadius: 24,
   },
-  searchInput: {
-    backgroundColor: Colors.background,
-    borderRadius: 10,
-    padding: 12,
-    fontSize: 16,
+  headerContent: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginBottom: 16,
+  },
+  greeting: {
+    fontSize: 14,
+    color: "rgba(255,255,255,0.8)",
+  },
+  userName: {
+    fontSize: 22,
+    fontWeight: "bold",
+    color: "#fff",
+    marginTop: 2,
+  },
+  avatarCircle: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: "#fff",
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  searchBar: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "#fff",
+    borderRadius: 12,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    gap: 10,
+  },
+  searchPlaceholder: {
+    color: Colors.textSecondary,
+    fontSize: 15,
+  },
+
+  // ===== Hero Banner =====
+  heroBanner: {
+    marginHorizontal: 20,
+    marginTop: 20,
+    backgroundColor: Colors.primaryDark,
+    borderRadius: 20,
+    padding: 24,
+    flexDirection: "row",
+    alignItems: "center",
+    overflow: "hidden",
+  },
+  heroContent: {
+    flex: 1,
+  },
+  heroTitle: {
+    fontSize: 18,
+    fontWeight: "bold",
+    color: "#fff",
+    lineHeight: 24,
+  },
+  heroSubtitle: {
+    fontSize: 12,
+    color: "rgba(255,255,255,0.75)",
+    marginTop: 6,
+    lineHeight: 18,
+  },
+  heroButton: {
+    backgroundColor: "#fff",
+    borderRadius: 8,
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    alignSelf: "flex-start",
+    marginTop: 14,
+  },
+  heroButtonText: {
+    color: Colors.primaryDark,
+    fontSize: 13,
+    fontWeight: "700",
+  },
+  heroIconWrap: {
+    width: 90,
+    height: 90,
+    borderRadius: 45,
+    backgroundColor: "rgba(255,255,255,0.12)",
+    justifyContent: "center",
+    alignItems: "center",
+    marginLeft: 12,
+  },
+
+  // ===== Section =====
+  sectionHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginHorizontal: 20,
+    marginTop: 24,
+    marginBottom: 12,
+  },
+  sectionTitle: {
+    fontSize: 18,
+    fontWeight: "bold",
+    color: Colors.text,
+  },
+  viewAll: {
+    fontSize: 13,
+    color: Colors.primary,
+    fontWeight: "600",
+  },
+
+  // ===== Category Grid =====
+  categoryGrid: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    paddingHorizontal: 14,
+    gap: 10,
+  },
+  categoryCard: {
+    width: (width - 48) / 2,
+    backgroundColor: "#fff",
+    borderRadius: 14,
+    padding: 16,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.06,
+    shadowRadius: 4,
+    elevation: 2,
+  },
+  categoryIcon: {
+    width: 44,
+    height: 44,
+    borderRadius: 12,
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  categoryLabel: {
+    flex: 1,
+    fontSize: 13,
+    fontWeight: "600",
+    color: Colors.text,
+    lineHeight: 18,
+  },
+
+  // ===== Popular Surahs =====
+  popularScroll: {
+    paddingHorizontal: 20,
+    gap: 12,
+  },
+  popularCard: {
+    width: 140,
+    backgroundColor: "#fff",
+    borderRadius: 16,
+    padding: 14,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.06,
+    shadowRadius: 4,
+    elevation: 2,
+  },
+  popularTop: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginBottom: 10,
+  },
+  popularBadge: {
+    backgroundColor: Colors.primaryLight,
+    borderRadius: 6,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+  },
+  popularBadgeText: {
+    fontSize: 12,
+    fontWeight: "bold",
+    color: Colors.primaryDark,
+  },
+  popularArabic: {
+    fontSize: 20,
+    color: Colors.text,
+    fontWeight: "500",
+    marginBottom: 4,
+  },
+  popularName: {
+    fontSize: 13,
+    fontWeight: "600",
+    color: Colors.text,
+  },
+  popularMeta: {
+    fontSize: 11,
+    color: Colors.textSecondary,
+    marginTop: 2,
+  },
+
+  // ===== Surah List Mode =====
+  listHeader: {
+    backgroundColor: Colors.primary,
+    paddingTop: 56,
+    paddingBottom: 16,
+    paddingHorizontal: 20,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+  },
+  listHeaderTitle: {
+    fontSize: 18,
+    fontWeight: "bold",
+    color: "#fff",
+  },
+  searchContainerList: {
+    flexDirection: "row",
+    alignItems: "center",
+    margin: 16,
+    backgroundColor: "#fff",
+    borderRadius: 12,
+    paddingHorizontal: 14,
     borderWidth: 1,
     borderColor: Colors.border,
+  },
+  searchInputList: {
+    flex: 1,
+    paddingVertical: 12,
+    fontSize: 15,
+    color: Colors.text,
   },
   list: {
     padding: 16,
     paddingBottom: 100,
   },
   surahCard: {
-    backgroundColor: Colors.surface,
+    backgroundColor: "#fff",
     borderRadius: 12,
     padding: 16,
     marginBottom: 8,
@@ -281,38 +607,5 @@ const styles = StyleSheet.create({
     fontSize: 20,
     color: Colors.text,
     fontWeight: "500",
-  },
-  mushafLaunch: {
-    flex: 1,
-    justifyContent: "center",
-    alignItems: "center",
-    padding: 32,
-    gap: 12,
-  },
-  mushafTitle: {
-    fontSize: 22,
-    fontWeight: "bold",
-    color: Colors.text,
-    marginTop: 8,
-  },
-  mushafDesc: {
-    fontSize: 14,
-    color: Colors.textSecondary,
-    textAlign: "center",
-    marginBottom: 8,
-  },
-  mushafBtn: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 8,
-    backgroundColor: Colors.primary,
-    paddingHorizontal: 28,
-    paddingVertical: 14,
-    borderRadius: 12,
-  },
-  mushafBtnText: {
-    color: Colors.textLight,
-    fontSize: 16,
-    fontWeight: "bold",
   },
 });
