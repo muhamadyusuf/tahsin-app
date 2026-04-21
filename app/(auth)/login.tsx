@@ -12,7 +12,7 @@ import {
   Image,
 } from "react-native";
 import { useClerk, useAuth } from "@clerk/expo";
-import { useRouter } from "expo-router";
+import { Redirect, useRouter } from "expo-router";
 import FontAwesome from "@expo/vector-icons/FontAwesome";
 import { Colors } from "@/lib/constants";
 import GoogleIcon from "@/components/GoogleIcon";
@@ -33,8 +33,7 @@ export default function LoginScreen() {
   const [loading, setLoading] = useState(false);
 
   if (isSignedIn) {
-    router.replace("/(tabs)/tilawah");
-    return null;
+    return <Redirect href="/" />;
   }
 
   const handleGoogleSignIn = async () => {
@@ -60,7 +59,7 @@ export default function LoginScreen() {
 
         if (createdSessionId && setActive) {
           await setActive({ session: createdSessionId });
-          router.replace("/(tabs)/tilawah");
+          router.replace("/");
         }
       }
     } catch (err: any) {

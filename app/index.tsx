@@ -4,7 +4,7 @@ import { useAuthContext } from "@/lib/auth-context";
 import { Colors } from "@/lib/constants";
 
 export default function Index() {
-  const { isLoading, isAuthenticated } = useAuthContext();
+  const { isLoading, isAuthenticated, role } = useAuthContext();
 
   if (isLoading) {
     return (
@@ -18,6 +18,14 @@ export default function Index() {
 
   if (!isAuthenticated) {
     return <Redirect href="/(auth)/login" />;
+  }
+
+  if (!role) {
+    return <Redirect href="/pilih-role" />;
+  }
+
+  if (role === "administrator" || role === "admin_pengajian") {
+    return <Redirect href="/(admin-tabs)/dashboard" />;
   }
 
   return <Redirect href="/(tabs)/tilawah" />;

@@ -34,7 +34,13 @@
     "plugins": [
       "expo-router",
       "expo-secure-store",
-      "@clerk/expo"
+      "@clerk/expo",
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "Aplikasi membutuhkan akses galeri untuk memilih gambar header Tilawah."
+        }
+      ]
     ],
     "experiments": {
       "typedRoutes": true

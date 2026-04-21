@@ -9,11 +9,13 @@
  */
 
 import type * as adminPengajian from "../adminPengajian.js";
+import type * as appConfig from "../appConfig.js";
 import type * as materi from "../materi.js";
 import type * as quiz from "../quiz.js";
 import type * as talaqi from "../talaqi.js";
 import type * as tilawah from "../tilawah.js";
 import type * as users from "../users.js";
+import type * as ustadz from "../ustadz.js";
 
 import type {
   ApiFromModules,
@@ -23,11 +25,13 @@ import type {
 
 declare const fullApi: ApiFromModules<{
   adminPengajian: typeof adminPengajian;
+  appConfig: typeof appConfig;
   materi: typeof materi;
   quiz: typeof quiz;
   talaqi: typeof talaqi;
   tilawah: typeof tilawah;
   users: typeof users;
+  ustadz: typeof ustadz;
 }>;
 
 /**

@@ -171,4 +171,11 @@ export default defineSchema({
     khatamKe: v.float64(), // ordinal: 1st, 2nd, 3rd, ...
     completedAt: v.string(), // ISO date
   }).index("by_userId", ["userId"]),
+
+  // Global app configuration managed by admin
+  app_config: defineTable({
+    key: v.string(),
+    tilawahHeaderImageUrl: v.optional(v.string()),
+    updatedAt: v.string(),
+  }).index("by_key", ["key"]),
 });

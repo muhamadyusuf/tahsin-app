@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useRef, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   View,
   Text,
@@ -12,6 +12,9 @@ import {
   StatusBar,
   TextInput,
   Pressable,
+  Animated,
+  PanResponder,
+  Dimensions,
 } from "react-native";
 import { useRouter } from "expo-router";
 import FontAwesome from "@expo/vector-icons/FontAwesome";
@@ -34,6 +37,9 @@ const TOTAL_PAGES = 604;
 const BOOKMARKS_KEY = "mushaf_bookmarks";
 const TAFSIR_EDITION = "id.jalalayn";
 const REPEAT_OPTIONS = [1, 2, 3, 5, 10];
+const SWIPE_THRESHOLD = 70;
+const SWIPE_ANIM_MS = 180;
+const SCREEN_WIDTH = Dimensions.get("window").width;
 
 // Regex to match bismillah prefix with any diacritics ordering (quran-uthmani)
 // Matches: بسم الله الرحمن الرحيم — base consonants with any combining marks
@@ -318,6 +324,7 @@ export default function MushafView({ initialPage = 0 }: Props) {
   const [showTajwid, setShowTajwid] = useState(true);
   const [legendVisible, setLegendVisible] = useState(false);
   const [showBars, setShowBars] = useState(false);
+  const swipeX = useRef(new Animated.Value(0)).current;
 
   // Slider
   const [sliderVisible, setSliderVisible] = useState(false);
@@ -360,6 +367,63 @@ export default function MushafView({ initialPage = 0 }: Props) {
   const [infoAyahLabel, setInfoAyahLabel] = useState("");
 
   const cache = useRef<Record<number, PageData>>({});
+
+  const animateToPage = useCallback(
+    (targetPage: number, direction: 1 | -1) => {
+      Animated.timing(swipeX, {
+        toValue: direction === 1 ? -SCREEN_WIDTH : SCREEN_WIDTH,
+        duration: SWIPE_ANIM_MS,
+        useNativeDriver: true,
+      }).start(() => {
+        setPage(targetPage);
+        swipeX.setValue(direction === 1 ? SCREEN_WIDTH * 0.18 : -SCREEN_WIDTH * 0.18);
+        Animated.timing(swipeX, {
+          toValue: 0,
+          duration: SWIPE_ANIM_MS,
+          useNativeDriver: true,
+        }).start();
+      });
+    },
+    [swipeX]
+  );
+
+  const panResponder = useMemo(
+    () =>
+      PanResponder.create({
+        onMoveShouldSetPanResponder: (_, gestureState) => {
+          const { dx, dy } = gestureState;
+          return Math.abs(dx) > 8 && Math.abs(dx) > Math.abs(dy);
+        },
+        onPanResponderMove: (_, gestureState) => {
+          const { dx } = gestureState;
+          const canMovePrev = page > COVER_PAGE && dx > 0;
+          const canMoveNext = page < TOTAL_PAGES && dx < 0;
+          if (canMovePrev || canMoveNext) {
+            swipeX.setValue(dx);
+          }
+        },
+        onPanResponderRelease: (_, gestureState) => {
+          const { dx } = gestureState;
+
+          if (dx < -SWIPE_THRESHOLD && page < TOTAL_PAGES) {
+            animateToPage(page + 1, 1);
+            return;
+          }
+
+          if (dx > SWIPE_THRESHOLD && page > COVER_PAGE) {
+            animateToPage(page - 1, -1);
+            return;
+          }
+
+          Animated.spring(swipeX, {
+            toValue: 0,
+            useNativeDriver: true,
+            bounciness: 6,
+          }).start();
+        },
+      }),
+    [animateToPage, page, swipeX]
+  );
 
   // ===== Bookmarks persistence =====
   useEffect(() => {
@@ -883,15 +947,47 @@ export default function MushafView({ initialPage = 0 }: Props) {
             <Pressable
               style={s.pageOuter}
               onPress={() => setShowBars((v) => !v)}
+              {...panResponder.panHandlers}
             >
-              <View style={s.pageBorder}>
-                <ScrollView
-                  contentContainerStyle={s.pageContent}
-                  showsVerticalScrollIndicator={false}
+              <View style={s.pageTurnStage}>
+                <Animated.View
+                  pointerEvents="none"
+                  style={[
+                    s.pageTurnShadow,
+                    {
+                      opacity: swipeX.interpolate({
+                        inputRange: [-SCREEN_WIDTH, 0, SCREEN_WIDTH],
+                        outputRange: [0.25, 0, 0.25],
+                      }),
+                    },
+                  ]}
+                />
+                <Animated.View
+                  style={[
+                    s.pageBorder,
+                    {
+                      transform: [
+                        { perspective: 1200 },
+                        { translateX: swipeX },
+                        {
+                          rotateY: swipeX.interpolate({
+                            inputRange: [-SCREEN_WIDTH, 0, SCREEN_WIDTH],
+                            outputRange: ["-14deg", "0deg", "14deg"],
+                          }),
+                        },
+                      ],
+                    },
+                  ]}
                 >
-                  {renderContent()}
-                </ScrollView>
+                  <ScrollView
+                    contentContainerStyle={s.pageContent}
+                    showsVerticalScrollIndicator={false}
+                  >
+                    {renderContent()}
+                  </ScrollView>
+                </Animated.View>
               </View>
+              <Text style={s.swipeHint}>Geser kiri/kanan untuk pindah halaman</Text>
             </Pressable>
           )}
 
@@ -1627,6 +1723,15 @@ const s = StyleSheet.create({
     flex: 1,
     padding: 8,
   },
+  pageTurnStage: {
+    flex: 1,
+    justifyContent: "center",
+  },
+  pageTurnShadow: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: "#000",
+    borderRadius: 4,
+  },
   pageBorder: {
     flex: 1,
     borderWidth: 2,
@@ -1636,6 +1741,12 @@ const s = StyleSheet.create({
     overflow: "hidden",
     // minWidth: 450,
     // margin: "auto",
+  },
+  swipeHint: {
+    marginTop: 6,
+    textAlign: "center",
+    fontSize: 11,
+    color: Colors.textSecondary,
   },
   pageContent: {
     padding: 16,

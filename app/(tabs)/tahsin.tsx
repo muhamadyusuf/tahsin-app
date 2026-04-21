@@ -4,9 +4,8 @@ import {
   Text,
   StyleSheet,
   ScrollView,
-  TouchableOpacity,
+  Pressable,
   ActivityIndicator,
-  Image,
 } from "react-native";
 import FontAwesome from "@expo/vector-icons/FontAwesome";
 import { useRouter } from "expo-router";
@@ -100,58 +99,66 @@ export default function TahsinScreen() {
           </Text>
         </View>
       ) : (
-        sorted.map((materi, index) => {
-          const isCompleted = completedIds.has(materi._id);
-          const icon = BAB_ICONS[index] ?? "file-text";
+        <View style={styles.pathWrap}>
+          {sorted.map((materi, index) => {
+            const isCompleted = completedIds.has(materi._id);
+            const isUnlocked = index === 0 || completedIds.has(sorted[index - 1]._id);
+            const icon = BAB_ICONS[index] ?? "file-text";
+            const alignLeft = index % 2 === 0;
 
-          return (
-            <TouchableOpacity
-              key={materi._id}
-              style={styles.babCard}
-              onPress={() =>
-                router.push({
-                  pathname: "/materi/[materiId]",
-                  params: { materiId: materi._id, materiTitle: materi.judul },
-                })
-              }
-            >
-              <View
-                style={[
-                  styles.babIconContainer,
-                  isCompleted && styles.babIconCompleted,
-                ]}
-              >
-                {isCompleted ? (
-                  <FontAwesome name="check" size={20} color="#fff" />
-                ) : (
-                  <FontAwesome name={icon} size={20} color={Colors.primary} />
-                )}
+            return (
+              <View key={materi._id} style={styles.pathNodeWrap}>
+                {index > 0 && <View style={styles.pathConnector} />}
+                <Pressable
+                  style={({ pressed }) => [
+                    styles.pathNode,
+                    alignLeft ? styles.pathNodeLeft : styles.pathNodeRight,
+                    !isUnlocked && styles.pathNodeLocked,
+                    isCompleted && styles.pathNodeDone,
+                    pressed && isUnlocked && { opacity: 0.85 },
+                  ]}
+                  disabled={!isUnlocked}
+                  onPress={() =>
+                    router.push({
+                      pathname: "/materi/[materiId]",
+                      params: { materiId: materi._id, materiTitle: materi.judul },
+                    })
+                  }
+                >
+                  <View
+                    style={[
+                      styles.pathIcon,
+                      isCompleted && styles.pathIconDone,
+                      !isUnlocked && styles.pathIconLocked,
+                    ]}
+                  >
+                    {isCompleted ? (
+                      <FontAwesome name="check" size={18} color="#fff" />
+                    ) : !isUnlocked ? (
+                      <FontAwesome name="lock" size={16} color={Colors.textSecondary} />
+                    ) : (
+                      <FontAwesome name={icon} size={18} color={Colors.primary} />
+                    )}
+                  </View>
+
+                  <View style={styles.pathTextWrap}>
+                    <Text style={styles.pathBab}>BAB {index + 1}</Text>
+                    <Text style={styles.pathTitle} numberOfLines={2}>
+                      {materi.judul}
+                    </Text>
+                    <Text style={styles.pathHint} numberOfLines={2}>
+                      Materi BAB + Quiz BAB + Sub-bab berurutan
+                    </Text>
+                    {isCompleted && <Text style={styles.pathStatusDone}>Selesai</Text>}
+                    {!isCompleted && !isUnlocked && (
+                      <Text style={styles.pathStatusLocked}>Selesaikan BAB sebelumnya</Text>
+                    )}
+                  </View>
+                </Pressable>
               </View>
-              <View style={styles.babInfo}>
-                <Text style={styles.babNumber}>BAB {index + 1}</Text>
-                <Text style={styles.babTitle} numberOfLines={2}>
-                  {materi.judul}
-                </Text>
-                {materi.deskripsi && (
-                  <Text style={styles.babDesc} numberOfLines={1}>
-                    {materi.deskripsi}
-                  </Text>
-                )}
-              </View>
-              {isCompleted ? (
-                <View style={styles.completedBadge}>
-                  <Text style={styles.completedBadgeText}>Selesai</Text>
-                </View>
-              ) : (
-                <FontAwesome
-                  name="chevron-right"
-                  size={14}
-                  color={Colors.textSecondary}
-                />
-              )}
-            </TouchableOpacity>
-          );
-        })
+            );
+          })}
+        </View>
       )}
     </ScrollView>
   );
@@ -250,12 +257,26 @@ const styles = StyleSheet.create({
     color: Colors.textSecondary,
   },
 
-  // BAB cards
-  babCard: {
+  pathWrap: {
+    gap: 8,
+  },
+  pathNodeWrap: {
+    position: "relative",
+  },
+  pathConnector: {
+    position: "absolute",
+    left: "50%",
+    top: -8,
+    width: 2,
+    height: 16,
+    marginLeft: -1,
+    backgroundColor: Colors.border,
+  },
+  pathNode: {
     backgroundColor: "#fff",
     borderRadius: 12,
     padding: 16,
-    marginBottom: 8,
+    width: "88%",
     flexDirection: "row",
     alignItems: "center",
     shadowColor: "#000",
@@ -264,7 +285,20 @@ const styles = StyleSheet.create({
     shadowRadius: 2,
     elevation: 1,
   },
-  babIconContainer: {
+  pathNodeLeft: {
+    alignSelf: "flex-start",
+  },
+  pathNodeRight: {
+    alignSelf: "flex-end",
+  },
+  pathNodeLocked: {
+    backgroundColor: "#F3F3F3",
+  },
+  pathNodeDone: {
+    borderWidth: 1,
+    borderColor: Colors.success,
+  },
+  pathIcon: {
     width: 44,
     height: 44,
     borderRadius: 22,
@@ -273,39 +307,42 @@ const styles = StyleSheet.create({
     alignItems: "center",
     marginRight: 12,
   },
-  babIconCompleted: {
+  pathIconDone: {
     backgroundColor: Colors.success,
   },
-  babInfo: {
+  pathIconLocked: {
+    backgroundColor: "#E6E6E6",
+  },
+  pathTextWrap: {
     flex: 1,
   },
-  babNumber: {
+  pathBab: {
     fontSize: 11,
     fontWeight: "bold",
     color: Colors.primary,
     textTransform: "uppercase",
     letterSpacing: 0.5,
   },
-  babTitle: {
+  pathTitle: {
     fontSize: 15,
     fontWeight: "600",
     color: Colors.text,
     marginTop: 2,
   },
-  babDesc: {
+  pathHint: {
     fontSize: 12,
     color: Colors.textSecondary,
-    marginTop: 2,
+    marginTop: 4,
   },
-  completedBadge: {
-    backgroundColor: "#E8F5E9",
-    borderRadius: 8,
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-  },
-  completedBadgeText: {
+  pathStatusDone: {
+    marginTop: 6,
     fontSize: 11,
-    fontWeight: "bold",
+    fontWeight: "700",
     color: Colors.success,
+  },
+  pathStatusLocked: {
+    marginTop: 6,
+    fontSize: 11,
+    color: Colors.textSecondary,
   },
 });

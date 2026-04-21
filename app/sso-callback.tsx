@@ -42,9 +42,10 @@ export default function SSOCallbackScreen() {
     const handle = async () => {
       try {
         await clerk.handleRedirectCallback({
-          afterSignInUrl: "/",
-          afterSignUpUrl: "/",
-          redirectUrl: "/",
+          signInForceRedirectUrl: "/",
+          signInFallbackRedirectUrl: "/",
+          signUpForceRedirectUrl: "/",
+          signUpFallbackRedirectUrl: "/",
         });
         // Give Clerk a moment to update auth state
         setTimeout(() => {

@@ -11,8 +11,11 @@ import {
   Dimensions,
   Image
 } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { useQuery } from "convex/react";
 import { useRouter } from "expo-router";
 import FontAwesome from "@expo/vector-icons/FontAwesome";
+import { api } from "@/convex/_generated/api";
 import { Colors } from "@/lib/constants";
 import { getAllSurahs, Surah } from "@/lib/alquran-api";
 import { useAuthContext } from "@/lib/auth-context";
@@ -27,6 +30,8 @@ type ScreenMode = "home" | "surah-list";
 export default function TilawahScreen() {
   const router = useRouter();
   const { userData } = useAuthContext();
+  const insets = useSafeAreaInsets();
+  const appConfig = useQuery(api.appConfig.getPublicConfig, {});
   const [surahs, setSurahs] = useState<Surah[]>([]);
   const [filtered, setFiltered] = useState<Surah[]>([]);
   const [loading, setLoading] = useState(true);
@@ -71,6 +76,7 @@ export default function TilawahScreen() {
     ) as Surah[];
 
   const firstName = userData?.name?.split(" ")[0] || "Pengguna";
+  const headerImageUrl = appConfig?.tilawahHeaderImageUrl;
 
   if (loading) {
     return (
@@ -85,7 +91,7 @@ export default function TilawahScreen() {
     return (
       <View style={styles.container}>
         {/* Header bar */}
-        <View style={styles.listHeader}>
+        <View style={[styles.listHeader, { paddingTop: insets.top + 12 }]}>
           <TouchableOpacity onPress={() => setMode("home")}>
             <FontAwesome name="arrow-left" size={20} color={Colors.textLight} />
           </TouchableOpacity>
@@ -113,6 +119,7 @@ export default function TilawahScreen() {
         {/* Surah list */}
         <FlatList
           data={filtered}
+          style={{ backgroundColor: Colors.background }}
           renderItem={({ item }) => (
             <TouchableOpacity
               style={styles.surahCard}
@@ -149,29 +156,43 @@ export default function TilawahScreen() {
   // HOME mode
   return (
     <View style={styles.container}>
-      {/* Header */}
-      <View style={styles.header}>
-        <View style={styles.headerContent}>
-          <View>
-            <Text style={styles.greeting}>Assalamu'alaikum 👋</Text>
-            <Text style={styles.userName}>{firstName}</Text>
-          </View>
-          <TouchableOpacity
-            style={styles.avatarCircle}
-            onPress={() => router.push("/(tabs)/profil")}
-          >
-            {userData?.avatarUrl ? (
+      <View style={styles.headerShell}>
+        {/* Header */}
+        <View style={[styles.header, { paddingTop: insets.top + 16 }]}> 
+          {headerImageUrl ? (
             <Image
-              source={{ uri: userData.avatarUrl }}
-              style={styles.avatarImage}
+              source={{ uri: headerImageUrl }}
+              style={styles.headerImageBg}
+              resizeMode="cover"
             />
-          ) : (
-            <FontAwesome name="user" size={40} color={Colors.primary} />
-          )}
-          </TouchableOpacity>
+          ) : null}
+          <View
+            style={[
+              styles.headerOverlay,
+              { backgroundColor: headerImageUrl ? "rgba(0,0,0,0.28)" : "transparent" },
+            ]}
+          />
+          <View style={styles.headerContent}>
+            <View>
+              <Text style={styles.greeting}>Assalamu'alaikum 👋</Text>
+              <Text style={styles.userName}>{firstName}</Text>
+            </View>
+            <TouchableOpacity
+              style={styles.avatarCircle}
+              onPress={() => router.push("/(tabs)/profil")}
+            >
+              {userData?.avatarUrl ? (
+              <Image
+                source={{ uri: userData.avatarUrl }}
+                style={styles.avatarImage}
+              />
+            ) : (
+              <FontAwesome name="user" size={40} color={Colors.primary} />
+            )}
+            </TouchableOpacity>
+          </View>
         </View>
 
-        {/* Search bar */}
         <TouchableOpacity
           style={styles.searchBar}
           onPress={() => setMode("surah-list")}
@@ -183,6 +204,7 @@ export default function TilawahScreen() {
 
       <ScrollView
         showsVerticalScrollIndicator={false}
+        style={{ backgroundColor: Colors.background }}
         contentContainerStyle={{ paddingBottom: 32 }}
       >
         {/* Hero Banner */}
@@ -337,7 +359,7 @@ export default function TilawahScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: Colors.background,
+    // backgroundColor: Colors.primary,
   },
   center: {
     flex: 1,
@@ -352,19 +374,32 @@ const styles = StyleSheet.create({
   },
 
   // ===== Header =====
+  headerShell: {
+    position: "relative",
+    marginBottom: 40,
+  },
   header: {
     backgroundColor: Colors.primary,
-    paddingTop: 56,
+    paddingTop: 16,
     paddingHorizontal: 20,
-    paddingBottom: 20,
-    borderBottomLeftRadius: 24,
-    borderBottomRightRadius: 24,
+    paddingBottom: 34,
+    borderBottomLeftRadius: 0,
+    borderBottomRightRadius: 0,
+    overflow: "hidden",
+    position: "relative",
+  },
+  headerImageBg: {
+    ...StyleSheet.absoluteFillObject,
+  },
+  headerOverlay: {
+    ...StyleSheet.absoluteFillObject,
   },
   headerContent: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
-    marginBottom: 16,
+    marginBottom: 100,
+    zIndex: 2,
   },
   greeting: {
     fontSize: 14,
@@ -390,13 +425,23 @@ const styles = StyleSheet.create({
     borderRadius: 22,
   },
   searchBar: {
+    position: "absolute",
+    left: 20,
+    right: 20,
+    bottom: -26,
     flexDirection: "row",
     alignItems: "center",
     backgroundColor: "#fff",
-    borderRadius: 12,
+    borderRadius: 18,
     paddingHorizontal: 16,
-    paddingVertical: 12,
+    paddingVertical: 14,
     gap: 10,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.12,
+    shadowRadius: 10,
+    elevation: 6,
+    zIndex: 10,
   },
   searchPlaceholder: {
     color: Colors.textSecondary,
@@ -406,7 +451,7 @@ const styles = StyleSheet.create({
   // ===== Hero Banner =====
   heroBanner: {
     marginHorizontal: 20,
-    marginTop: 20,
+    marginTop: 0,
     backgroundColor: Colors.primaryDark,
     borderRadius: 20,
     padding: 24,
@@ -598,7 +643,7 @@ const styles = StyleSheet.create({
   // ===== Surah List Mode =====
   listHeader: {
     backgroundColor: Colors.primary,
-    paddingTop: 56,
+    paddingTop: 12,
     paddingBottom: 16,
     paddingHorizontal: 20,
     flexDirection: "row",

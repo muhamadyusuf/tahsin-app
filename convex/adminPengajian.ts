@@ -13,6 +13,14 @@ export const create = mutation({
     longitude: v.optional(v.float64()),
   },
   handler: async (ctx, args) => {
+    const existing = await ctx.db
+      .query("admin_pengajian")
+      .withIndex("by_userId", (q) => q.eq("userId", args.userId))
+      .first();
+    if (existing) {
+      throw new Error("Admin pengajian profile already exists for this user");
+    }
+
     return await ctx.db.insert("admin_pengajian", {
       ...args,
       isActive: true,

@@ -23,6 +23,10 @@ interface AuthContextType {
   isAuthenticated: boolean;
   userData: UserData | null;
   role: UserRole | null;
+  availableRoles: UserRole[];
+  hasMultipleRoles: boolean;
+  switchRole: (nextRole: UserRole) => Promise<void>;
+  isAdmin: boolean;
 }
 
 const AuthContext = createContext<AuthContextType>({
@@ -30,6 +34,10 @@ const AuthContext = createContext<AuthContextType>({
   isAuthenticated: false,
   userData: null,
   role: null,
+  availableRoles: [],
+  hasMultipleRoles: false,
+  switchRole: async () => {},
+  isAdmin: false,
 });
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
@@ -42,6 +50,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   );
 
   const upsertUser = useMutation(api.users.upsertUser);
+  const setActiveRole = useMutation(api.users.setActiveRole);
+
+  const availableRoles = useQuery(
+    api.users.getAvailableRoles,
+    userData?._id ? { userId: userData._id } : "skip"
+  );
 
   useEffect(() => {
     if (isLoaded && isSignedIn && user && userData === null) {
@@ -67,10 +81,25 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, [isLoaded]);
 
   const value: AuthContextType = {
-    isLoading: !isReady || (isSignedIn && userData === undefined),
+    isLoading:
+      !isReady ||
+      (isSignedIn && userData === undefined) ||
+      (!!userData && availableRoles === undefined),
     isAuthenticated: !!isSignedIn && !!userData,
     userData: (userData as UserData) ?? null,
     role: (userData as UserData)?.role ?? null,
+    availableRoles: (availableRoles as UserRole[] | undefined) ?? [],
+    hasMultipleRoles: ((availableRoles as UserRole[] | undefined)?.length ?? 0) > 1,
+    switchRole: async (nextRole: UserRole) => {
+      const currentUser = userData as UserData | null | undefined;
+      if (!currentUser || currentUser.role === nextRole) {
+        return;
+      }
+      await setActiveRole({ userId: currentUser._id, role: nextRole });
+    },
+    isAdmin:
+      (userData as UserData | null)?.role === "administrator" ||
+      (userData as UserData | null)?.role === "admin_pengajian",
   };
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

@@ -14,7 +14,7 @@ function TabBarIcon(props: {
 }
 
 export default function TabLayout() {
-  const { isLoading, isAuthenticated } = useAuthContext();
+  const { isLoading, isAuthenticated, isAdmin } = useAuthContext();
 
   if (isLoading) {
     return (
@@ -28,6 +28,10 @@ export default function TabLayout() {
     return <Redirect href="/(auth)/login" />;
   }
 
+  if (isAdmin) {
+    return <Redirect href="/(admin-tabs)/dashboard" />;
+  }
+
   return (
     <Tabs
       screenOptions={{
@@ -36,9 +40,9 @@ export default function TabLayout() {
         tabBarStyle: {
           backgroundColor: Colors.surface,
           borderTopColor: Colors.border,
-          height: 60,
-          paddingBottom: 8,
-          paddingTop: 4,
+          height:50,
+          paddingBottom: 0,
+          paddingTop: 0,
         },
         headerStyle: {
           backgroundColor: Colors.primary,
@@ -53,6 +57,7 @@ export default function TabLayout() {
         name="tilawah"
         options={{
           title: "Tilawah",
+          headerShown: false,
           tabBarIcon: ({ color }) => <TabBarIcon name="book" color={color} />,
         }}
       />

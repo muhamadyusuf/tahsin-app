@@ -23,7 +23,7 @@ const ROLE_LABELS: Record<string, string> = {
 };
 
 export default function ProfilScreen() {
-  const { userData, role } = useAuthContext();
+  const { userData, role, hasMultipleRoles, isAdmin } = useAuthContext();
   const { signOut } = useClerk();
   const router = useRouter();
 
@@ -131,6 +131,30 @@ export default function ProfilScreen() {
             color={Colors.textSecondary}
           />
         </TouchableOpacity>
+
+        {hasMultipleRoles && (
+          <TouchableOpacity style={styles.menuItem} onPress={() => router.push("/pilih-role")}>
+            <FontAwesome name="exchange" size={18} color={Colors.primary} />
+            <Text style={styles.menuText}>Pilih Role Aktif</Text>
+            <FontAwesome
+              name="chevron-right"
+              size={14}
+              color={Colors.textSecondary}
+            />
+          </TouchableOpacity>
+        )}
+
+        {isAdmin && (
+          <TouchableOpacity style={styles.menuItem} onPress={() => router.push("/(admin-tabs)/dashboard")}>
+            <FontAwesome name="dashboard" size={18} color={Colors.primary} />
+            <Text style={styles.menuText}>Panel Admin</Text>
+            <FontAwesome
+              name="chevron-right"
+              size={14}
+              color={Colors.textSecondary}
+            />
+          </TouchableOpacity>
+        )}
 
         <TouchableOpacity style={styles.menuItem} onPress={() => router.push("/bantuan")}>
           <FontAwesome
