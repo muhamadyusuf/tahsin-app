@@ -43,6 +43,7 @@ const AuthContext = createContext<AuthContextType>({
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const { isLoaded, isSignedIn, user } = useUser();
   const [isReady, setIsReady] = useState(false);
+  const [isProvisioningUser, setIsProvisioningUser] = useState(false);
 
   const userData = useQuery(
     api.users.getByClerkId,
@@ -58,21 +59,40 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   );
 
   useEffect(() => {
-    if (isLoaded && isSignedIn && user && userData === null) {
-      // User is signed in but not yet in Convex — create them
-      upsertUser({
-        clerkId: user.id,
-        name:
-          user.fullName ??
-          user.firstName ??
-          user.emailAddresses[0]?.emailAddress ??
-          "User",
-        email: user.emailAddresses[0]?.emailAddress ?? "",
-        phone: user.phoneNumbers[0]?.phoneNumber,
-        avatarUrl: user.imageUrl,
-      });
+    let isCancelled = false;
+
+    if (!(isLoaded && isSignedIn && user && userData === null) || isProvisioningUser) {
+      return;
     }
-  }, [isLoaded, isSignedIn, user, userData]);
+
+    // First login can race with route guards; keep app in loading state
+    // until the Convex user record is provisioned.
+    setIsProvisioningUser(true);
+
+    upsertUser({
+      clerkId: user.id,
+      name:
+        user.fullName ??
+        user.firstName ??
+        user.emailAddresses[0]?.emailAddress ??
+        "User",
+      email: user.emailAddresses[0]?.emailAddress ?? "",
+      phone: user.phoneNumbers[0]?.phoneNumber,
+      avatarUrl: user.imageUrl,
+    })
+      .catch((error) => {
+        console.error("Failed to provision user in Convex:", error);
+      })
+      .finally(() => {
+        if (!isCancelled) {
+          setIsProvisioningUser(false);
+        }
+      });
+
+    return () => {
+      isCancelled = true;
+    };
+  }, [isLoaded, isSignedIn, user, userData, isProvisioningUser, upsertUser]);
 
   useEffect(() => {
     if (isLoaded) {
@@ -84,6 +104,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     isLoading:
       !isReady ||
       (isSignedIn && userData === undefined) ||
+      (isSignedIn && userData === null) ||
+      isProvisioningUser ||
       (!!userData && availableRoles === undefined),
     isAuthenticated: !!isSignedIn && !!userData,
     userData: (userData as UserData) ?? null,

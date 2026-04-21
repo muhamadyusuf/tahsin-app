@@ -15,6 +15,7 @@ import { useClerk, useAuth } from "@clerk/expo";
 import { Redirect, useRouter } from "expo-router";
 import FontAwesome from "@expo/vector-icons/FontAwesome";
 import { Colors } from "@/lib/constants";
+import { useAuthContext } from "@/lib/auth-context";
 import GoogleIcon from "@/components/GoogleIcon";
 
 let useSignInWithGoogle: any;
@@ -29,10 +30,19 @@ export default function LoginScreen() {
   const nativeGoogle = Platform.OS !== "web" ? useSignInWithGoogle() : null;
   const clerk = useClerk();
   const { isSignedIn } = useAuth();
+  const { isLoading: authLoading, isAuthenticated } = useAuthContext();
   const router = useRouter();
   const [loading, setLoading] = useState(false);
 
-  if (isSignedIn) {
+  if (authLoading && isSignedIn) {
+    return (
+      <View style={styles.centeredLoader}>
+        <ActivityIndicator size="large" color={Colors.primary} />
+      </View>
+    );
+  }
+
+  if (isAuthenticated) {
     return <Redirect href="/" />;
   }
 
@@ -145,6 +155,12 @@ export default function LoginScreen() {
 }
 
 const styles = StyleSheet.create({
+  centeredLoader: {
+    flex: 1,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "#FAFAFA",
+  },
   container: {
     flex: 1,
     backgroundColor: "#FAFAFA",
