@@ -173,12 +173,12 @@ export default function TilawahScreen() {
             ]}
           />
           <View style={styles.headerContent}>
-            <View>
+            <View style={styles.headerTextWrap}>
               <Text style={styles.greeting}>Assalamu'alaikum 👋</Text>
               <Text style={styles.userName}>{firstName}</Text>
             </View>
             <TouchableOpacity
-              style={styles.avatarCircle}
+              style={[styles.avatarCircle, styles.avatarInHeader]}
               onPress={() => router.push("/(tabs)/profil")}
             >
               {userData?.avatarUrl ? (
@@ -224,7 +224,12 @@ export default function TilawahScreen() {
             </TouchableOpacity>
           </View>
           <View style={styles.heroIconWrap}>
-            <FontAwesome name="book" size={56} color="rgba(255,255,255,0.9)" />
+            {/* <FontAwesome name="book" size={56} color="rgba(255,255,255,0.9)" /> */}
+              <Image
+                  source={require("@/assets/images/alquran-illustration.png")}
+                  style={styles.alquranImage}
+                  resizeMode="contain"
+                />
           </View>
         </View>
 
@@ -395,21 +400,28 @@ const styles = StyleSheet.create({
     ...StyleSheet.absoluteFillObject,
   },
   headerContent: {
-    flexDirection: "row",
-    justifyContent: "space-between",
+    justifyContent: "center",
     alignItems: "center",
-    marginBottom: 100,
+    marginBottom: 35,
     zIndex: 2,
+    position: "relative",
+    minHeight: 44,
+  },
+  headerTextWrap: {
+    alignItems: "center",
+    marginTop: 50,
   },
   greeting: {
     fontSize: 14,
     color: "rgba(255,255,255,0.8)",
+    textAlign: "center",
   },
   userName: {
     fontSize: 22,
     fontWeight: "bold",
     color: "#fff",
     marginTop: 2,
+    textAlign: "center",
   },
   avatarCircle: {
     width: 44,
@@ -423,6 +435,11 @@ const styles = StyleSheet.create({
     width: 44,
     height: 44,
     borderRadius: 22,
+  },
+  avatarInHeader: {
+    position: "absolute",
+    right: 0,
+    top: 0,
   },
   searchBar: {
     position: "absolute",
@@ -473,6 +490,10 @@ const styles = StyleSheet.create({
     color: "rgba(255,255,255,0.75)",
     marginTop: 6,
     lineHeight: 18,
+  },
+  alquranImage: {
+    width: 120,
+    height: 120,
   },
   heroButton: {
     backgroundColor: "#fff",
