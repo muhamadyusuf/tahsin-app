@@ -7,6 +7,7 @@ import {
   Pressable,
   Alert,
   ActivityIndicator,
+  Platform,
 } from "react-native";
 import { useQuery, useMutation } from "convex/react";
 import { api } from "@/convex/_generated/api";
@@ -31,21 +32,27 @@ export default function MateriScreen() {
   const quizCountMap = new Map((quizCounts ?? []).map((item) => [item.materiId, item.count]));
 
   const handleDelete = (id: string, judul: string) => {
-    Alert.alert("Hapus Materi", `Yakin ingin menghapus "${judul}"?`, [
-      { text: "Batal", style: "cancel" },
-      {
-        text: "Hapus",
-        style: "destructive",
-        onPress: async () => {
-          try {
-            await removeMateri({ id: id as any });
-            Alert.alert("Berhasil", "Materi telah dihapus.");
-          } catch {
-            Alert.alert("Error", "Gagal menghapus materi.");
-          }
+    if (Platform.OS === "web") {
+      if (window.confirm(`Yakin ingin menghapus "${judul}"?`)) {
+          removeMateri({ id: id as any });
+      }
+    } else {
+      Alert.alert("Hapus Materi", `Yakin ingin menghapus "${judul}"?`, [
+        { text: "Batal", style: "cancel" },
+        {
+          text: "Hapus",
+          style: "destructive",
+          onPress: async () => {
+            try {
+              await removeMateri({ id: id as any });
+              Alert.alert("Berhasil", "Materi telah dihapus.");
+            } catch {
+              Alert.alert("Error", "Gagal menghapus materi.");
+            }
+          },
         },
-      },
-    ]);
+      ]);
+    }
   };
 
   return (
@@ -178,7 +185,7 @@ export default function MateriScreen() {
                     <Text style={st.actionBtnText}>Edit</Text>
                   </Pressable>
 
-                  <Pressable
+                  {/* <Pressable
                     style={({ pressed }) => [
                       st.actionBtn,
                       st.actionBtnQuiz,
@@ -193,7 +200,7 @@ export default function MateriScreen() {
                   >
                     <FontAwesome name="question-circle" size={13} color={Colors.primaryDark} />
                     <Text style={[st.actionBtnText, { color: Colors.primaryDark }]}>Quiz</Text>
-                  </Pressable>
+                  </Pressable> */}
 
                   <Pressable
                     style={({ pressed }) => [

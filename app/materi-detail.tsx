@@ -7,6 +7,7 @@ import {
   Pressable,
   Alert,
   ActivityIndicator,
+  Platform,
 } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useQuery, useMutation } from "convex/react";
@@ -35,21 +36,27 @@ export default function MateriDetailScreen() {
   const removeMateri = useMutation(api.materi.remove);
 
   const handleDelete = (subBabId: string, subBabJudul: string) => {
-    Alert.alert("Hapus Sub-bab", `Yakin ingin menghapus "${subBabJudul}"?`, [
-      { text: "Batal", style: "cancel" },
-      {
-        text: "Hapus",
-        style: "destructive",
-        onPress: async () => {
-          try {
-            await removeMateri({ id: subBabId as any });
-            Alert.alert("Berhasil", "Sub-bab telah dihapus.");
-          } catch {
-            Alert.alert("Error", "Gagal menghapus sub-bab.");
-          }
+    if (Platform.OS === "web") {
+        if (window.confirm(`Yakin ingin menghapus "${subBabJudul}"?`)) {
+            removeMateri({ id: subBabId as any });
+        }
+    } else {
+        Alert.alert("Hapus Sub-bab", `Yakin ingin menghapus "${subBabJudul}"?`, [
+        { text: "Batal", style: "cancel" },
+        {
+            text: "Hapus",
+            style: "destructive",
+            onPress: async () => {
+                try {
+                    await removeMateri({ id: subBabId as any });
+                    Alert.alert("Berhasil", "Sub-bab telah dihapus.");
+                } catch {
+                    Alert.alert("Error", "Gagal menghapus sub-bab.");
+                }
+            },
         },
-      },
-    ]);
+        ]);
+    }
   };
 
   if (!materi) {
@@ -66,20 +73,6 @@ export default function MateriDetailScreen() {
 
   return (
     <View style={st.container}>
-      {/* Header */}
-      <View style={st.header}>
-        <Pressable
-          style={({ pressed }) => {
-            return { opacity: pressed ? 0.6 : 1 };
-          }}
-          onPress={() => router.back()}
-        >
-          <View style={st.headerTop}>
-            <FontAwesome name="arrow-left" size={20} color={Colors.primary} />
-            <Text style={st.headerBackText}>Kembali</Text>
-          </View>
-        </Pressable>
-      </View>
 
       {/* Materi Info Card */}
       <View style={st.materiCard}>

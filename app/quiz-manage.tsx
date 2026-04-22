@@ -10,6 +10,7 @@ import {
   Modal,
   TextInput,
   ScrollView,
+  Platform,
 } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useMutation, useQuery } from "convex/react";
@@ -115,66 +116,59 @@ export default function QuizManageScreen() {
 
   const usageMap = new Map((usageStats ?? []).map((item) => [item.quizId, item]));
 
-  const performDelete = async (quizId: Id<"quiz">, force?: boolean) => {
-    await removeQuiz({ quizId, force });
-    Alert.alert("Berhasil", "Quiz telah dihapus.");
+  const performDelete = async (quizId: Id<"quiz">, force: boolean) => {
+    try {
+      await removeQuiz({ quizId, force });
+      Alert.alert("Berhasil", "Quiz telah dihapus.");
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Gagal menghapus quiz.";
+      Alert.alert("Gagal", message);
+    }
   };
 
   const handleDelete = (
     quizId: Id<"quiz">,
     usage?: { answerCount: number; progressCount: number; isUsed: boolean }
   ) => {
-    if (usage?.isUsed) {
-      Alert.alert(
-        "Quiz Sudah Dipakai",
-        `Quiz ini sudah dipakai santri. Terdapat ${usage.answerCount} jawaban dan ${usage.progressCount} progres terkait. Hapus hanya jika Anda benar-benar yakin.`,
-        [
-          { text: "Batal", style: "cancel" },
-          {
-            text: "Lanjut",
-            style: "destructive",
-            onPress: () => {
-              Alert.alert(
-                "Konfirmasi Akhir",
-                "Menghapus quiz ini juga akan menghapus jawaban santri yang terkait dan melepas referensi progres quiz. Lanjut hapus?",
-                [
-                  { text: "Batal", style: "cancel" },
-                  {
-                    text: "Ya, Hapus",
-                    style: "destructive",
-                    onPress: async () => {
-                      try {
-                        await performDelete(quizId, true);
-                      } catch (error) {
-                        const message = error instanceof Error ? error.message : "Gagal menghapus quiz.";
-                        Alert.alert("Error", message);
-                      }
-                    },
-                  },
-                ]
-              );
-            },
-          },
-        ]
-      );
-      return;
+    const isUsed = usage?.isUsed === true;
+
+    if (isUsed) {
+      if (Platform.OS === "web") {
+        if (window.confirm(`Quiz ini sudah dipakai santri (${usage!.answerCount} jawaban, ${usage!.progressCount} progres). Hapus quiz ini juga akan menghapus data terkait. Lanjut?`)) {
+          performDelete(quizId, true);
+          return;
+        } else {
+          Alert.alert(
+            "Quiz Sudah Dipakai",
+            `Quiz ini sudah dipakai santri (${usage!.answerCount} jawaban, ${usage!.progressCount} progres). Hapus quiz ini juga akan menghapus data terkait. Lanjut?`,
+            [
+              { text: "Batal", style: "cancel" },
+              {
+                text: "Ya, Hapus",
+                style: "destructive",
+                onPress: () => performDelete(quizId, true),
+              },
+            ]
+          );
+          return;
+        }
+      }
     }
 
-    Alert.alert("Hapus Quiz", "Quiz ini akan dihapus permanen.", [
-      { text: "Batal", style: "cancel" },
-      {
-        text: "Hapus",
-        style: "destructive",
-        onPress: async () => {
-          try {
-            await performDelete(quizId, false);
-          } catch (error) {
-            const message = error instanceof Error ? error.message : "Gagal menghapus quiz.";
-            Alert.alert("Error", message);
-          }
+    if (Platform.OS === "web") {
+        if (window.confirm("Yakin ingin menghapus data ini?")) {
+            performDelete(quizId, true);
+        }
+    } else {
+      Alert.alert("Hapus Quiz", "Quiz ini akan dihapus permanen.", [
+        { text: "Batal", style: "cancel" },
+        {
+          text: "Hapus",
+          style: "destructive",
+          onPress: () => performDelete(quizId, true),
         },
-      },
-    ]);
+      ]);
+    }
   };
 
   const handleBulkImport = async () => {
