@@ -8,12 +8,39 @@ type MistakeItem = {
   type: "missing" | "different" | "extra";
 };
 
+type WordStatus = "correct" | "partial" | "wrong" | "missing";
+
+type ExpectedWordStatus = {
+  displayIndex: number;
+  word: string;
+  status: WordStatus;
+  recognized: string;
+  similarity: number;
+  note: string;
+};
+
+type ExtraWordItem = {
+  recognized: string;
+  atRecognizedIndex: number;
+  note: string;
+};
+
+type AlignmentOp =
+  | { type: "sub"; expectedIndex: number; recognizedIndex: number; similarity: number }
+  | { type: "missing"; expectedIndex: number }
+  | { type: "extra"; recognizedIndex: number };
+
 function normalizeArabic(text: string): string {
   return text
+    .replace(/[\u0640]/g, "")
     .replace(/[\u064B-\u065F\u0670\u06D6-\u06ED]/g, "")
     .replace(/[^\u0600-\u06FF\s]/g, " ")
     .replace(/\s+/g, " ")
     .trim();
+}
+
+function normalizeArabicWord(word: string): string {
+  return normalizeArabic(word).replace(/\s+/g, "");
 }
 
 function normalizeLatin(text: string): string {
@@ -49,6 +76,111 @@ function levenshtein(a: string, b: string): number {
   }
 
   return dp[m][n];
+}
+
+function similarityRatio(a: string, b: string): number {
+  if (!a && !b) return 1;
+  if (!a || !b) return 0;
+  const dist = levenshtein(a, b);
+  const maxLen = Math.max(a.length, b.length, 1);
+  return Math.max(0, 1 - dist / maxLen);
+}
+
+function tokenizeExpectedWords(expectedText: string) {
+  const displayWords = expectedText.split(/\s+/).filter(Boolean);
+  const normalizedWords: string[] = [];
+  const normalizedToDisplayIndex: number[] = [];
+
+  for (let i = 0; i < displayWords.length; i += 1) {
+    const normalized = normalizeArabicWord(displayWords[i]);
+    if (!normalized) continue;
+    normalizedWords.push(normalized);
+    normalizedToDisplayIndex.push(i);
+  }
+
+  return { displayWords, normalizedWords, normalizedToDisplayIndex };
+}
+
+function tokenizeRecognizedWords(recognizedText: string): string[] {
+  return recognizedText
+    .split(/\s+/)
+    .map((w) => normalizeArabicWord(w))
+    .filter(Boolean);
+}
+
+function alignWords(expected: string[], recognized: string[]): AlignmentOp[] {
+  const m = expected.length;
+  const n = recognized.length;
+
+  const dp: number[][] = Array.from({ length: m + 1 }, () =>
+    Array.from({ length: n + 1 }, () => 0)
+  );
+  const parent: ("sub" | "missing" | "extra")[][] = Array.from(
+    { length: m + 1 },
+    () => Array.from({ length: n + 1 }, () => "sub")
+  );
+
+  for (let i = 1; i <= m; i += 1) {
+    dp[i][0] = i;
+    parent[i][0] = "missing";
+  }
+  for (let j = 1; j <= n; j += 1) {
+    dp[0][j] = j;
+    parent[0][j] = "extra";
+  }
+
+  for (let i = 1; i <= m; i += 1) {
+    for (let j = 1; j <= n; j += 1) {
+      const sim = similarityRatio(expected[i - 1], recognized[j - 1]);
+      const subCost = 1 - sim;
+
+      const subVal = dp[i - 1][j - 1] + subCost;
+      const missVal = dp[i - 1][j] + 1;
+      const extraVal = dp[i][j - 1] + 1;
+
+      let best = subVal;
+      let op: "sub" | "missing" | "extra" = "sub";
+
+      if (missVal < best) {
+        best = missVal;
+        op = "missing";
+      }
+      if (extraVal < best) {
+        best = extraVal;
+        op = "extra";
+      }
+
+      dp[i][j] = best;
+      parent[i][j] = op;
+    }
+  }
+
+  const ops: AlignmentOp[] = [];
+  let i = m;
+  let j = n;
+
+  while (i > 0 || j > 0) {
+    const op = parent[i][j];
+    if (i > 0 && j > 0 && op === "sub") {
+      ops.push({
+        type: "sub",
+        expectedIndex: i - 1,
+        recognizedIndex: j - 1,
+        similarity: similarityRatio(expected[i - 1], recognized[j - 1]),
+      });
+      i -= 1;
+      j -= 1;
+    } else if (i > 0 && (j === 0 || op === "missing")) {
+      ops.push({ type: "missing", expectedIndex: i - 1 });
+      i -= 1;
+    } else {
+      ops.push({ type: "extra", recognizedIndex: j - 1 });
+      j -= 1;
+    }
+  }
+
+  ops.reverse();
+  return ops;
 }
 
 function buildMistakes(expectedText: string, recognizedText: string): MistakeItem[] {
@@ -136,13 +268,28 @@ export const analyzeRecitation = action({
     const transcriptionJson = (await transcriptionResponse.json()) as { text?: string };
     const transcriptRaw = (transcriptionJson.text ?? "").trim();
 
+    const expectedTokenized = tokenizeExpectedWords(args.expectedText);
+
     if (!transcriptRaw) {
+      const expectedWordStatuses: ExpectedWordStatus[] = expectedTokenized.normalizedWords.map(
+        (word, idx) => ({
+          displayIndex: expectedTokenized.normalizedToDisplayIndex[idx],
+          word,
+          status: "missing",
+          recognized: "",
+          similarity: 0,
+          note: "Kata ini belum terbaca.",
+        })
+      );
+
       return {
         transcript: "",
         score: 0,
         pronunciationScore: 0,
         tajwidScore: 0,
         fluencyScore: 0,
+        expectedWordStatuses,
+        extraWords: [] as ExtraWordItem[],
         mistakes: [
           {
             wordIndex: 0,
@@ -166,24 +313,115 @@ export const analyzeRecitation = action({
     const expectedComparable = useArabic ? expectedArabic : expectedLatin;
     const transcriptComparable = useArabic ? transcriptArabic : transcriptLatin;
 
-    const distance = levenshtein(expectedComparable, transcriptComparable);
-    const maxLen = Math.max(expectedComparable.length, 1);
-    const rawAccuracy = Math.max(0, 100 - (distance / maxLen) * 100);
+    const expectedWords = useArabic
+      ? expectedTokenized.normalizedWords
+      : expectedComparable.split(" ").filter(Boolean);
+    const recognizedWords = useArabic
+      ? tokenizeRecognizedWords(transcriptRaw)
+      : transcriptComparable.split(" ").filter(Boolean);
 
-    const pronunciationScore = Math.round(rawAccuracy);
-    const tajwidScore = Math.round(Math.max(0, pronunciationScore - 8));
-    const fluencyScore = Math.round(Math.min(100, pronunciationScore + 4));
+    const ops = alignWords(expectedWords, recognizedWords);
+
+    const expectedWordStatuses: ExpectedWordStatus[] = expectedWords.map((word, idx) => ({
+      displayIndex: useArabic ? expectedTokenized.normalizedToDisplayIndex[idx] : idx,
+      word,
+      status: "missing",
+      recognized: "",
+      similarity: 0,
+      note: "Kata ini belum terbaca.",
+    }));
+    const extraWords: ExtraWordItem[] = [];
+
+    let correctCount = 0;
+    let partialCount = 0;
+    let wrongCount = 0;
+    let missingCount = 0;
+
+    for (const op of ops) {
+      if (op.type === "extra") {
+        extraWords.push({
+          recognized: recognizedWords[op.recognizedIndex] ?? "",
+          atRecognizedIndex: op.recognizedIndex,
+          note: "Lafaz tambahan di luar ayat target.",
+        });
+        continue;
+      }
+
+      if (op.type === "missing") {
+        missingCount += 1;
+        continue;
+      }
+
+      const recognizedWord = recognizedWords[op.recognizedIndex] ?? "";
+      const status =
+        op.similarity >= 0.88
+          ? "correct"
+          : op.similarity >= 0.6
+            ? "partial"
+            : "wrong";
+
+      if (status === "correct") correctCount += 1;
+      if (status === "partial") partialCount += 1;
+      if (status === "wrong") wrongCount += 1;
+
+      expectedWordStatuses[op.expectedIndex] = {
+        ...expectedWordStatuses[op.expectedIndex],
+        status,
+        recognized: recognizedWord,
+        similarity: op.similarity,
+        note:
+          status === "correct"
+            ? "Lafaz sesuai target."
+            : status === "partial"
+              ? "Mendekati benar, perbaiki makhraj/harakat."
+              : "Lafaz berbeda dari target.",
+      };
+    }
+
+    missingCount += expectedWordStatuses.filter((w) => w.status === "missing").length;
+
+    const expectedCount = Math.max(expectedWordStatuses.length, 1);
+    const weightedAccuracy =
+      (correctCount + partialCount * 0.6) / expectedCount;
+
+    const pronunciationPenalty = wrongCount * 5 + missingCount * 6 + extraWords.length * 3;
+    const tajwidPenalty = wrongCount * 6 + missingCount * 4;
+    const fluencyPenalty = extraWords.length * 7 + missingCount * 2;
+
+    const pronunciationScore = Math.max(
+      0,
+      Math.min(100, Math.round(weightedAccuracy * 100 - pronunciationPenalty))
+    );
+    const tajwidScore = Math.max(
+      0,
+      Math.min(100, Math.round(weightedAccuracy * 100 - tajwidPenalty))
+    );
+    const fluencyScore = Math.max(
+      0,
+      Math.min(100, Math.round(weightedAccuracy * 100 - fluencyPenalty))
+    );
     const score = Math.round((pronunciationScore + tajwidScore + fluencyScore) / 3);
 
-    const mistakes = buildMistakes(expectedComparable, transcriptComparable).map((item) => ({
-      ...item,
-      note:
-        item.type === "missing"
-          ? "Bagian ini belum terbaca atau terlewat."
-          : item.type === "extra"
-            ? "Ada tambahan lafaz yang tidak terdeteksi pada ayat target."
-            : "Lafaz berbeda dari ayat target, perhatikan makhraj dan harakat.",
+    const wordMistakes = expectedWordStatuses
+      .filter((item) => item.status !== "correct")
+      .slice(0, 8)
+      .map((item) => ({
+        wordIndex: item.displayIndex,
+        expected: item.word,
+        recognized: item.recognized,
+        type: item.status === "missing" ? "missing" : "different",
+        note: item.note,
+      }));
+
+    const extraMistakes = extraWords.slice(0, 4).map((item) => ({
+      wordIndex: item.atRecognizedIndex,
+      expected: "",
+      recognized: item.recognized,
+      type: "extra",
+      note: item.note,
     }));
+
+    const mistakes = [...wordMistakes, ...extraMistakes];
 
     const recommendation =
       score >= 85
@@ -198,6 +436,8 @@ export const analyzeRecitation = action({
       pronunciationScore,
       tajwidScore,
       fluencyScore,
+      expectedWordStatuses,
+      extraWords,
       mistakes,
       recommendation,
     };

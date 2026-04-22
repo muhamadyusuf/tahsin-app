@@ -16,7 +16,9 @@ import { useAction } from "convex/react";
 
 import { api } from "@/convex/_generated/api";
 import { Colors } from "@/lib/constants";
-import { getAllSurahs, getSurahArabic, Surah, SurahDetail } from "@/lib/alquran-api";
+import { getAllSurahs, getSurahByEdition, Surah, SurahDetail } from "@/lib/alquran-api";
+
+type WordHighlightStatus = "correct" | "partial" | "wrong" | "missing";
 
 type AnalysisResult = {
   transcript: string;
@@ -29,6 +31,19 @@ type AnalysisResult = {
     expected: string;
     recognized: string;
     type: "missing" | "different" | "extra";
+    note: string;
+  }>;
+  expectedWordStatuses: Array<{
+    displayIndex: number;
+    word: string;
+    status: WordHighlightStatus;
+    recognized: string;
+    similarity: number;
+    note: string;
+  }>;
+  extraWords: Array<{
+    recognized: string;
+    atRecognizedIndex: number;
     note: string;
   }>;
   recommendation: string;
@@ -77,7 +92,8 @@ export default function NgajiAiScreen() {
 
     (async () => {
       try {
-        const detail = await getSurahArabic(selectedSurah.number);
+        // Force Quran Uthmani edition so displayed ayah follows mushaf standard.
+        const detail = await getSurahByEdition(selectedSurah.number, "quran-uthmani");
         setSurahDetail(detail);
       } catch (error) {
         console.error("Failed to load selected surah", error);
@@ -160,12 +176,21 @@ export default function NgajiAiScreen() {
         encoding: FileSystem.EncodingType.Base64,
       });
 
+      const uriLower = recordingUri.toLowerCase();
+      const mimeType = uriLower.endsWith(".m4a") || uriLower.endsWith(".mp4")
+        ? "audio/mp4"
+        : uriLower.endsWith(".3gp")
+          ? "audio/3gpp"
+          : uriLower.endsWith(".webm")
+            ? "audio/webm"
+            : "audio/mp4";
+
       const result = (await analyzeRecitation({
         surahNumber: selectedSurah.number,
         ayahNumber: currentAyah.numberInSurah,
         expectedText: currentAyah.text,
         audioBase64: base64,
-        mimeType: "audio/m4a",
+        mimeType,
       })) as AnalysisResult;
 
       setAnalysis(result);
@@ -182,6 +207,18 @@ export default function NgajiAiScreen() {
   }
 
   const progress = totalAyahs > 0 ? ((ayahIndex + 1) / totalAyahs) * 100 : 0;
+  const displayWords = currentAyah?.text.split(/\s+/).filter(Boolean) ?? [];
+  const wordStatusMap = new Map(
+    (analysis?.expectedWordStatuses ?? []).map((item) => [item.displayIndex, item])
+  );
+
+  const getWordStyleByStatus = (status?: WordHighlightStatus) => {
+    if (status === "correct") return st.wordCorrect;
+    if (status === "partial") return st.wordPartial;
+    if (status === "wrong") return st.wordWrong;
+    if (status === "missing") return st.wordMissing;
+    return st.wordNeutral;
+  };
 
   return (
     <View style={st.container}>
@@ -216,7 +253,40 @@ export default function NgajiAiScreen() {
       ) : (
         <>
           <View style={st.ayahCard}>
-            <Text style={st.ayahArabic}>{currentAyah.text}</Text>
+            <View style={st.ayahHeaderRow}>
+              <Text style={st.ayahLabel}>Teks Ayat (Mushaf Utsmani)</Text>
+              <Text style={st.ayahSubLabel}>Highlight per-lafaz</Text>
+            </View>
+
+            {analysis ? (
+              <View style={st.wordWrap}>
+                {displayWords.map((word, idx) => {
+                  const status = wordStatusMap.get(idx)?.status;
+                  return (
+                    <Text key={`word-${idx}`} style={[st.ayahWord, getWordStyleByStatus(status)]}>
+                      {word}{" "}
+                    </Text>
+                  );
+                })}
+              </View>
+            ) : (
+              <Text style={st.ayahArabic}>{currentAyah.text}</Text>
+            )}
+
+            <View style={st.legendRow}>
+              <View style={st.legendItem}>
+                <View style={[st.legendDot, { backgroundColor: "#2E7D32" }]} />
+                <Text style={st.legendText}>Benar</Text>
+              </View>
+              <View style={st.legendItem}>
+                <View style={[st.legendDot, { backgroundColor: "#FFB300" }]} />
+                <Text style={st.legendText}>Perlu perbaikan</Text>
+              </View>
+              <View style={st.legendItem}>
+                <View style={[st.legendDot, { backgroundColor: "#D32F2F" }]} />
+                <Text style={st.legendText}>Terlewat/salah</Text>
+              </View>
+            </View>
           </View>
 
           <View style={st.navRow}>
@@ -324,6 +394,17 @@ export default function NgajiAiScreen() {
                 <FontAwesome name="lightbulb-o" size={14} color={Colors.warning} />
                 <Text style={st.tipText}>{analysis.recommendation}</Text>
               </View>
+
+              {analysis.extraWords.length > 0 ? (
+                <View>
+                  <Text style={st.smallTitle}>Lafaz Tambahan</Text>
+                  {analysis.extraWords.map((item, idx) => (
+                    <Text key={`extra-${idx}`} style={st.extraWordText}>
+                      {idx + 1}. {item.recognized}
+                    </Text>
+                  ))}
+                </View>
+              ) : null}
             </View>
           ) : null}
         </>
@@ -445,6 +526,22 @@ const st = StyleSheet.create({
     paddingVertical: 20,
     minHeight: 120,
     justifyContent: "center",
+    gap: 8,
+  },
+  ayahHeaderRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    gap: 8,
+  },
+  ayahLabel: {
+    fontSize: 12,
+    fontWeight: "700",
+    color: Colors.textSecondary,
+  },
+  ayahSubLabel: {
+    fontSize: 11,
+    color: Colors.primary,
   },
   ayahArabic: {
     fontSize: 34,
@@ -452,6 +549,59 @@ const st = StyleSheet.create({
     textAlign: "center",
     color: Colors.primaryDark,
     writingDirection: "rtl",
+    fontFamily: "AmiriQuran",
+  },
+  wordWrap: {
+    flexDirection: "row-reverse",
+    flexWrap: "wrap",
+    justifyContent: "center",
+    rowGap: 8,
+    columnGap: 4,
+  },
+  ayahWord: {
+    fontSize: 35,
+    lineHeight: 58,
+    writingDirection: "rtl",
+    fontFamily: "AmiriQuran",
+    paddingHorizontal: 2,
+    borderRadius: 4,
+  },
+  wordNeutral: {
+    color: Colors.primaryDark,
+  },
+  wordCorrect: {
+    color: "#2E7D32",
+  },
+  wordPartial: {
+    color: "#F57C00",
+  },
+  wordWrong: {
+    color: "#D32F2F",
+  },
+  wordMissing: {
+    color: "#D32F2F",
+    textDecorationLine: "underline",
+  },
+  legendRow: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    justifyContent: "center",
+    gap: 10,
+    marginTop: 2,
+  },
+  legendItem: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 5,
+  },
+  legendDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+  },
+  legendText: {
+    fontSize: 11,
+    color: Colors.textSecondary,
   },
   navRow: {
     marginTop: 12,
@@ -586,6 +736,11 @@ const st = StyleSheet.create({
     fontSize: 12,
     color: Colors.warning,
     fontWeight: "600",
+  },
+  extraWordText: {
+    fontSize: 12,
+    color: Colors.textSecondary,
+    marginTop: 4,
   },
   modalContainer: {
     flex: 1,
