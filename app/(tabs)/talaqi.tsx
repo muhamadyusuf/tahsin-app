@@ -8,6 +8,7 @@ import {
   ActivityIndicator,
 } from "react-native";
 import FontAwesome from "@expo/vector-icons/FontAwesome";
+import { useRouter } from "expo-router";
 import { useQuery } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import { Colors, TALAQI_TYPES } from "@/lib/constants";
@@ -40,6 +41,7 @@ function formatDate(dateStr: string) {
 }
 
 export default function TalaqiScreen() {
+  const router = useRouter();
   const { userData, role } = useAuthContext();
   const [filterType, setFilterType] = useState<string | null>(null);
 
@@ -82,6 +84,23 @@ export default function TalaqiScreen() {
 
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
+      <TouchableOpacity
+        style={styles.aiCard}
+        onPress={() => router.push("/ngaji-ai")}
+        activeOpacity={0.85}
+      >
+        <View style={styles.aiLeft}>
+          <View style={styles.aiIconWrap}>
+            <FontAwesome name="microphone" size={18} color={Colors.primaryDark} />
+          </View>
+          <View style={{ flex: 1 }}>
+            <Text style={styles.aiTitle}>Ngaji AI</Text>
+            <Text style={styles.aiSubtitle}>Pilih surah, rekam suara, dan dapatkan koreksi bacaan otomatis</Text>
+          </View>
+        </View>
+        <FontAwesome name="chevron-right" size={14} color={Colors.primary} />
+      </TouchableOpacity>
+
       {/* Header */}
       <View style={styles.headerCard}>
         <View style={styles.headerTop}>
@@ -290,6 +309,42 @@ const styles = StyleSheet.create({
   content: {
     padding: 16,
     paddingBottom: 100,
+  },
+  aiCard: {
+    backgroundColor: "#E8F5E9",
+    borderWidth: 1,
+    borderColor: Colors.primaryLight,
+    borderRadius: 14,
+    padding: 12,
+    marginBottom: 10,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 10,
+  },
+  aiLeft: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    flex: 1,
+  },
+  aiIconWrap: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: "#C8E6C9",
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  aiTitle: {
+    fontSize: 15,
+    fontWeight: "700",
+    color: Colors.primaryDark,
+  },
+  aiSubtitle: {
+    fontSize: 12,
+    color: Colors.textSecondary,
+    marginTop: 2,
   },
   center: {
     flex: 1,
