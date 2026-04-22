@@ -45,8 +45,10 @@ export const Colors = {
   primaryLight: "#C8E6C9",
   secondary: "#FF9800",
   background: "#F5F5F5",
+  backgroundLight: "#FAFAFA",
   surface: "#FFFFFF",
   text: "#212121",
+  textPrimary: "#212121",
   textSecondary: "#757575",
   textLight: "#FFFFFF",
   border: "#E0E0E0",
@@ -54,6 +56,7 @@ export const Colors = {
   warning: "#FF9800",
   error: "#F44336",
   info: "#2E7D32",
+  infoLight: "#C8E6C9",
 };
 
 // Talaqi types

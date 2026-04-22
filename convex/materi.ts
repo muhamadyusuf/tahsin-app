@@ -22,6 +22,19 @@ export const list = query({
   },
 });
 
+// List all materi by type including nested children
+export const listAllByType = query({
+  args: {
+    type: v.union(v.literal("tahsin"), v.literal("ulumul_quran")),
+  },
+  handler: async (ctx, args) => {
+    return await ctx.db
+      .query("materi")
+      .withIndex("by_type_seq", (q) => q.eq("type", args.type))
+      .collect();
+  },
+});
+
 // Get children of a materi
 export const getChildren = query({
   args: { parentId: v.id("materi") },

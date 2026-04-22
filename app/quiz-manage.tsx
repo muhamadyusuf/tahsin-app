@@ -7,6 +7,9 @@ import {
   Pressable,
   Alert,
   ActivityIndicator,
+  Modal,
+  TextInput,
+  ScrollView,
 } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useMutation, useQuery } from "convex/react";
@@ -89,6 +92,9 @@ function QuizItemCard({ quiz, materiId, usage, onDelete }: QuizItemProps) {
 export default function QuizManageScreen() {
   const router = useRouter();
   const { materiId } = useLocalSearchParams<{ materiId: string }>();
+  const [jsonModalVisible, setJsonModalVisible] = React.useState(false);
+  const [jsonText, setJsonText] = React.useState("");
+  const [bulkSubmitting, setBulkSubmitting] = React.useState(false);
 
   const materi = useQuery(
     api.materi.getById,
@@ -105,6 +111,7 @@ export default function QuizManageScreen() {
       : "skip"
   );
   const removeQuiz = useMutation(api.quiz.removeQuiz);
+  const bulkCreateFromJson = useMutation(api.quiz.bulkCreateFromJson);
 
   const usageMap = new Map((usageStats ?? []).map((item) => [item.quizId, item]));
 
@@ -170,6 +177,81 @@ export default function QuizManageScreen() {
     ]);
   };
 
+  const handleBulkImport = async () => {
+    if (!materiId) {
+      return;
+    }
+
+    const raw = jsonText.trim();
+    if (!raw) {
+      Alert.alert("JSON Kosong", "Tempel JSON quiz terlebih dahulu.");
+      return;
+    }
+
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(raw);
+    } catch {
+      Alert.alert("JSON Tidak Valid", "Format JSON tidak bisa dibaca.");
+      return;
+    }
+
+    const quizArray = Array.isArray(parsed)
+      ? parsed
+      : typeof parsed === "object" && parsed !== null && Array.isArray((parsed as any).quizzes)
+        ? (parsed as any).quizzes
+        : null;
+
+    if (!quizArray || quizArray.length === 0) {
+      Alert.alert("JSON Tidak Sesuai", "Gunakan format array quiz atau {\"quizzes\": [...]}.");
+      return;
+    }
+
+    const normalized = quizArray.map((item: any) => {
+      const type = item.type === "essay" ? "essay" : "pilihan_ganda";
+      return {
+        question: String(item.question ?? "").trim(),
+        type,
+        urlImage: item.urlImage ? String(item.urlImage).trim() : undefined,
+        urlVideo: item.urlVideo ? String(item.urlVideo).trim() : undefined,
+        options:
+          type === "pilihan_ganda"
+            ? Array.isArray(item.options)
+              ? item.options.map((opt: any) => ({
+                  deskripsi: String(opt.deskripsi ?? "").trim(),
+                  poin: Number(opt.poin ?? 0),
+                  urlImage: opt.urlImage ? String(opt.urlImage).trim() : undefined,
+                }))
+              : []
+            : undefined,
+      };
+    });
+
+    const invalid = normalized.find((q: { question: string }) => !q.question);
+    if (invalid) {
+      Alert.alert("Data Tidak Valid", "Semua quiz wajib memiliki field question.");
+      return;
+    }
+
+    setBulkSubmitting(true);
+    try {
+      const result = await bulkCreateFromJson({
+        materiId: materiId as Id<"materi">,
+        quizzes: normalized,
+      });
+      setJsonModalVisible(false);
+      setJsonText("");
+      Alert.alert(
+        "Import Berhasil",
+        `${result.createdQuizCount} quiz dan ${result.createdOptionCount} opsi berhasil ditambahkan.`
+      );
+    } catch {
+      Alert.alert("Error", "Gagal import quiz dari JSON.");
+    } finally {
+      setBulkSubmitting(false);
+    }
+  };
+
   if (!materi || !quizzes) {
     return (
       <View style={st.center}>
@@ -185,6 +267,13 @@ export default function QuizManageScreen() {
         <Text style={st.subheading}>
           {quizzes.length} quiz tersedia untuk materi ini
         </Text>
+        <Pressable
+          style={({ pressed }) => [st.bulkBtn, pressed && { opacity: 0.85 }]}
+          onPress={() => setJsonModalVisible(true)}
+        >
+          <FontAwesome name="file-text-o" size={14} color={Colors.primaryDark} />
+          <Text style={st.bulkBtnText}>Import JSON</Text>
+        </Pressable>
       </View>
 
       <FlatList
@@ -221,6 +310,60 @@ export default function QuizManageScreen() {
       >
         <FontAwesome name="plus" size={20} color="#fff" />
       </Pressable>
+
+      <Modal
+        visible={jsonModalVisible}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setJsonModalVisible(false)}
+      >
+        <View style={st.modalBackdrop}>
+          <View style={st.modalCard}>
+            <View style={st.modalHeader}>
+              <Text style={st.modalTitle}>Import Quiz JSON</Text>
+              <Pressable onPress={() => setJsonModalVisible(false)}>
+                <FontAwesome name="close" size={18} color={Colors.textSecondary} />
+              </Pressable>
+            </View>
+
+            <ScrollView style={st.modalScroll}>
+              <Text style={st.modalHelp}>
+                Format contoh:
+                {"\n"}
+                {"[{\"question\":\"...\",\"type\":\"pilihan_ganda\",\"options\":[{\"deskripsi\":\"A\",\"poin\":1},{\"deskripsi\":\"B\",\"poin\":0}]}]"}
+              </Text>
+              <TextInput
+                style={st.jsonInput}
+                value={jsonText}
+                onChangeText={setJsonText}
+                placeholder="Tempel JSON quiz di sini"
+                placeholderTextColor={Colors.textSecondary}
+                multiline
+                textAlignVertical="top"
+              />
+            </ScrollView>
+
+            <Pressable
+              style={({ pressed }) => [
+                st.importBtn,
+                pressed && { opacity: 0.85 },
+                bulkSubmitting && { opacity: 0.5 },
+              ]}
+              onPress={handleBulkImport}
+              disabled={bulkSubmitting}
+            >
+              {bulkSubmitting ? (
+                <ActivityIndicator color="#fff" />
+              ) : (
+                <>
+                  <FontAwesome name="upload" size={14} color="#fff" />
+                  <Text style={st.importBtnText}>Import Sekarang</Text>
+                </>
+              )}
+            </Pressable>
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 }
@@ -246,6 +389,22 @@ const st = StyleSheet.create({
     fontSize: 13,
     color: Colors.textSecondary,
     marginTop: 4,
+  },
+  bulkBtn: {
+    marginTop: 12,
+    alignSelf: "flex-start",
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    paddingHorizontal: 10,
+    paddingVertical: 7,
+    borderRadius: 8,
+    backgroundColor: "#E8F5E9",
+  },
+  bulkBtnText: {
+    fontSize: 12,
+    fontWeight: "700",
+    color: Colors.primaryDark,
   },
   listContent: {
     padding: 16,
@@ -367,5 +526,63 @@ const st = StyleSheet.create({
     shadowOpacity: 0.2,
     shadowRadius: 8,
     elevation: 6,
+  },
+  modalBackdrop: {
+    flex: 1,
+    backgroundColor: "rgba(0,0,0,0.35)",
+    justifyContent: "center",
+    padding: 16,
+  },
+  modalCard: {
+    backgroundColor: "#fff",
+    borderRadius: 16,
+    padding: 14,
+    maxHeight: "86%",
+  },
+  modalHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    marginBottom: 8,
+  },
+  modalTitle: {
+    fontSize: 16,
+    fontWeight: "700",
+    color: Colors.text,
+  },
+  modalScroll: {
+    maxHeight: 360,
+  },
+  modalHelp: {
+    fontSize: 12,
+    color: Colors.textSecondary,
+    lineHeight: 18,
+    marginBottom: 8,
+  },
+  jsonInput: {
+    minHeight: 260,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    borderRadius: 10,
+    paddingHorizontal: 10,
+    paddingVertical: 10,
+    fontSize: 12,
+    color: Colors.text,
+    backgroundColor: Colors.background,
+  },
+  importBtn: {
+    marginTop: 10,
+    backgroundColor: Colors.primary,
+    borderRadius: 10,
+    paddingVertical: 12,
+    alignItems: "center",
+    justifyContent: "center",
+    flexDirection: "row",
+    gap: 8,
+  },
+  importBtnText: {
+    color: "#fff",
+    fontSize: 14,
+    fontWeight: "700",
   },
 });

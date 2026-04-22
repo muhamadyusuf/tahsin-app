@@ -85,6 +85,15 @@ export default function TabsLayout() {
           ),
         }}
       />
+      <Tabs.Screen
+        name="sub-bab"
+        options={{
+          title: "Sub-bab",
+          tabBarIcon: ({ color, size }) => (
+            <FontAwesome name="sitemap" size={size} color={color} />
+          ),
+        }}
+      />
     </Tabs>
   );
 }

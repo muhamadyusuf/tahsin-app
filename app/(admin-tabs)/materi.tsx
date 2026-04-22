@@ -148,6 +148,23 @@ export default function MateriScreen() {
                   <Pressable
                     style={({ pressed }) => [
                       st.actionBtn,
+                      st.actionBtnSub,
+                      pressed && { opacity: 0.7 },
+                    ]}
+                    onPress={() =>
+                      router.push({
+                        pathname: "/materi-detail",
+                        params: { id: item._id, type: activeType },
+                      })
+                    }
+                  >
+                    <FontAwesome name="sitemap" size={13} color={Colors.info} />
+                    <Text style={[st.actionBtnText, { color: Colors.info }]}>Sub-bab</Text>
+                  </Pressable>
+
+                  <Pressable
+                    style={({ pressed }) => [
+                      st.actionBtn,
                       pressed && { opacity: 0.7 },
                     ]}
                     onPress={() =>
@@ -331,6 +348,9 @@ const st = StyleSheet.create({
   },
   actionBtnQuiz: {
     backgroundColor: "#DCEFE0",
+  },
+  actionBtnSub: {
+    backgroundColor: "#E8F2FF",
   },
   actionBtnDanger: { backgroundColor: "#FFEBEE" },
   actionBtnText: { fontSize: 12, fontWeight: "600", color: Colors.primary },

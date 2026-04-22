@@ -55,6 +55,7 @@ export default function RootLayout() {
           <Stack.Screen name="pengaturan" options={{ title: "Pengaturan", headerTintColor: Colors.primary }} />
           <Stack.Screen name="bantuan" options={{ title: "Bantuan", headerTintColor: Colors.primary }} />
           <Stack.Screen name="materi/[materiId]" options={{ title: "Detail Materi", headerTintColor: Colors.primary }} />
+          <Stack.Screen name="materi-reader/[materiId]" options={{ title: "Baca Materi", headerTintColor: Colors.primary }} />
           <Stack.Screen name="quiz/[materiId]" options={{ title: "Kuis", headerTintColor: Colors.primary }} />
           <Stack.Screen name="tilawah-harian" options={{ title: "Tilawah Harian", headerTintColor: Colors.primary }} />
           <Stack.Screen name="tilawah-header-form" options={{ title: "Header Tilawah", headerTintColor: Colors.primary }} />

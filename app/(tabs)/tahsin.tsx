@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useCallback, useMemo, useRef } from "react";
 import {
   View,
   Text,
@@ -7,6 +7,7 @@ import {
   Pressable,
   ActivityIndicator,
 } from "react-native";
+import { Audio } from "expo-av";
 import FontAwesome from "@expo/vector-icons/FontAwesome";
 import { useRouter } from "expo-router";
 import { useQuery } from "convex/react";
@@ -31,17 +32,54 @@ const BAB_ICONS: Record<number, React.ComponentProps<typeof FontAwesome>["name"]
   13: "file-text",
 };
 
+const TAP_SOUND_URL = "https://actions.google.com/sounds/v1/cartoon/pop.ogg";
+
 export default function TahsinScreen() {
   const router = useRouter();
   const { userData } = useAuthContext();
+  const soundRef = useRef<Audio.Sound | null>(null);
 
-  const materiList = useQuery(api.materi.list, { type: "tahsin" });
+  const materiAll = useQuery(api.materi.listAllByType, { type: "tahsin" });
   const userProgress = useQuery(
     api.quiz.getUserProgress,
     userData?._id ? { userId: userData._id } : "skip"
   );
 
-  const isLoading = materiList === undefined;
+  const isLoading = materiAll === undefined;
+
+  const topBab = useMemo(
+    () => [...(materiAll ?? [])].filter((m) => !m.parentId).sort((a, b) => a.seq - b.seq),
+    [materiAll]
+  );
+
+  const childCountMap = useMemo(() => {
+    const map = new Map<string, number>();
+    const all = materiAll ?? [];
+    for (const item of all) {
+      if (!item.parentId) {
+        continue;
+      }
+      map.set(item.parentId, (map.get(item.parentId) ?? 0) + 1);
+    }
+    return map;
+  }, [materiAll]);
+
+  const playTapSound = useCallback(async () => {
+    try {
+      if (soundRef.current) {
+        await soundRef.current.replayAsync();
+        return;
+      }
+
+      const { sound } = await Audio.Sound.createAsync(
+        { uri: TAP_SOUND_URL },
+        { shouldPlay: true, volume: 0.6 }
+      );
+      soundRef.current = sound;
+    } catch {
+      // ignore sound failures
+    }
+  }, []);
 
   const completedIds = new Set(
     (userProgress ?? [])
@@ -49,10 +87,8 @@ export default function TahsinScreen() {
       .map((p) => p.materiId)
   );
 
-  const completedCount = materiList
-    ? materiList.filter((m) => completedIds.has(m._id)).length
-    : 0;
-  const totalCount = materiList?.length ?? 0;
+  const completedCount = topBab.filter((m) => completedIds.has(m._id)).length;
+  const totalCount = topBab.length;
   const progressPercent = totalCount > 0 ? Math.round((completedCount / totalCount) * 100) : 0;
 
   if (isLoading) {
@@ -64,7 +100,7 @@ export default function TahsinScreen() {
     );
   }
 
-  const sorted = [...(materiList ?? [])].sort((a, b) => a.seq - b.seq);
+  const sorted = topBab;
 
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
@@ -118,12 +154,16 @@ export default function TahsinScreen() {
                     pressed && isUnlocked && { opacity: 0.85 },
                   ]}
                   disabled={!isUnlocked}
-                  onPress={() =>
+                  onPress={async () => {
+                    if (!isUnlocked) {
+                      return;
+                    }
+                    await playTapSound();
                     router.push({
                       pathname: "/materi/[materiId]",
                       params: { materiId: materi._id, materiTitle: materi.judul },
-                    })
-                  }
+                    });
+                  }}
                 >
                   <View
                     style={[
@@ -147,7 +187,7 @@ export default function TahsinScreen() {
                       {materi.judul}
                     </Text>
                     <Text style={styles.pathHint} numberOfLines={2}>
-                      Materi BAB + Quiz BAB + Sub-bab berurutan
+                      {childCountMap.get(materi._id) ?? 0} sub-bab di dalam BAB ini
                     </Text>
                     {isCompleted && <Text style={styles.pathStatusDone}>Selesai</Text>}
                     {!isCompleted && !isUnlocked && (

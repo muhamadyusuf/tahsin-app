@@ -1,5 +1,6 @@
 import { query, mutation } from "./_generated/server";
 import { v } from "convex/values";
+import { Id } from "./_generated/dataModel";
 
 // List quizzes for a materi
 export const listByMateri = query({
@@ -129,6 +130,114 @@ export const createOption = mutation({
   },
   handler: async (ctx, args) => {
     return await ctx.db.insert("quiz_options", args);
+  },
+});
+
+// Bulk import quizzes from JSON payload for one materi
+export const bulkCreateFromJson = mutation({
+  args: {
+    materiId: v.id("materi"),
+    quizzes: v.array(
+      v.object({
+        question: v.string(),
+        type: v.union(v.literal("pilihan_ganda"), v.literal("essay")),
+        urlImage: v.optional(v.string()),
+        urlVideo: v.optional(v.string()),
+        options: v.optional(
+          v.array(
+            v.object({
+              deskripsi: v.string(),
+              poin: v.float64(),
+              urlImage: v.optional(v.string()),
+            })
+          )
+        ),
+      })
+    ),
+  },
+  handler: async (ctx, args) => {
+    let createdQuizCount = 0;
+    let createdOptionCount = 0;
+
+    for (const quizItem of args.quizzes) {
+      const quizId = await ctx.db.insert("quiz", {
+        materiId: args.materiId,
+        question: quizItem.question,
+        type: quizItem.type,
+        urlImage: quizItem.urlImage,
+        urlVideo: quizItem.urlVideo,
+      });
+      createdQuizCount += 1;
+
+      if (quizItem.type === "pilihan_ganda") {
+        const options = (quizItem.options ?? []).filter((o) => o.deskripsi.trim().length > 0);
+        for (let i = 0; i < options.length; i += 1) {
+          await ctx.db.insert("quiz_options", {
+            quizId,
+            seq: i + 1,
+            deskripsi: options[i].deskripsi,
+            poin: options[i].poin,
+            urlImage: options[i].urlImage,
+          });
+          createdOptionCount += 1;
+        }
+      }
+    }
+
+    return {
+      createdQuizCount,
+      createdOptionCount,
+    };
+  },
+});
+
+// Build a random final quiz set from completed descendants under a BAB
+export const getRandomFinalQuizForBab = query({
+  args: {
+    babMateriId: v.id("materi"),
+    userId: v.id("users"),
+    limit: v.optional(v.float64()),
+  },
+  handler: async (ctx, args) => {
+    const allMateri = await ctx.db.query("materi").collect();
+
+    const descendants: Id<"materi">[] = [];
+    const queue: Id<"materi">[] = [args.babMateriId];
+    while (queue.length > 0) {
+      const currentId = queue.shift()!;
+      for (const item of allMateri) {
+        if (item.parentId === currentId) {
+          descendants.push(item._id);
+          queue.push(item._id);
+        }
+      }
+    }
+
+    if (descendants.length === 0) {
+      return [];
+    }
+
+    const progress = await ctx.db
+      .query("user_progress")
+      .withIndex("by_userId", (q) => q.eq("userId", args.userId))
+      .collect();
+
+    const completedMateri = new Set(
+      progress.filter((p) => p.completedAt).map((p) => p.materiId)
+    );
+
+    const eligibleMateriIds = descendants.filter((id) => completedMateri.has(id));
+    if (eligibleMateriIds.length === 0) {
+      return [];
+    }
+
+    const quizPool = await ctx.db.query("quiz").collect();
+    const eligibleQuiz = quizPool.filter((q) => eligibleMateriIds.includes(q.materiId));
+
+    const shuffled = [...eligibleQuiz].sort(() => Math.random() - 0.5);
+    const maxItems = Math.max(1, Math.floor(args.limit ?? 20));
+
+    return shuffled.slice(0, maxItems);
   },
 });
 

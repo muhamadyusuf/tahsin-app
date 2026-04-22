@@ -18,9 +18,10 @@ import FontAwesome from "@expo/vector-icons/FontAwesome";
 import { Colors } from "@/lib/constants";
 
 export default function MateriFormScreen() {
-  const { id, type } = useLocalSearchParams<{
+  const { id, type, parentId } = useLocalSearchParams<{
     id?: string;
     type?: string;
+    parentId?: string;
   }>();
   const router = useRouter();
   const isEdit = !!id;
@@ -79,6 +80,7 @@ export default function MateriFormScreen() {
           judul: judul.trim(),
           deskripsi: deskripsi.trim() || undefined,
           seq: parseFloat(seq) || 1,
+          parentId: parentId ? (parentId as Id<"materi">) : undefined,
           urlCover: urlCover.trim() || undefined,
           urlVideo: urlVideo.trim() || undefined,
           isShow,
@@ -110,6 +112,13 @@ export default function MateriFormScreen() {
       <Text style={st.heading}>
         {isEdit ? "Edit Materi" : "Tambah Materi Baru"}
       </Text>
+
+      {!isEdit && parentId && (
+        <View style={st.infoBadge}>
+          <FontAwesome name="sitemap" size={12} color={Colors.info} />
+          <Text style={st.infoBadgeText}>Mode Sub-bab: materi baru akan dibuat di bawah BAB/Sub-bab terpilih</Text>
+        </View>
+      )}
 
       {!isEdit && (
         <>
@@ -245,6 +254,22 @@ const st = StyleSheet.create({
     fontWeight: "700",
     color: Colors.text,
     marginBottom: 20,
+  },
+  infoBadge: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    backgroundColor: "#E8F2FF",
+    borderRadius: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    marginBottom: 8,
+  },
+  infoBadgeText: {
+    flex: 1,
+    fontSize: 12,
+    color: Colors.info,
+    fontWeight: "600",
   },
 
   label: {

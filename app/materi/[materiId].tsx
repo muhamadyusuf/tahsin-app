@@ -1,50 +1,49 @@
-import React from "react";
+import React, { useCallback, useMemo, useRef } from "react";
 import {
   View,
   Text,
   StyleSheet,
   ScrollView,
-  TouchableOpacity,
   Pressable,
   ActivityIndicator,
-  Linking,
   Image,
 } from "react-native";
+import { Audio } from "expo-av";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import FontAwesome from "@expo/vector-icons/FontAwesome";
 import { useQuery } from "convex/react";
+
 import { api } from "@/convex/_generated/api";
 import { Id } from "@/convex/_generated/dataModel";
 import { Colors } from "@/lib/constants";
 import { useAuthContext } from "@/lib/auth-context";
 
+type StageItem = {
+  key: string;
+  title: string;
+  subtitle: string;
+  kind: "materi" | "quiz-sub" | "quiz-final";
+  unlocked: boolean;
+  completed: boolean;
+  onPress: () => void;
+};
+
+const TAP_SOUND_URL = "https://actions.google.com/sounds/v1/cartoon/pop.ogg";
+
 export default function MateriDetailScreen() {
-  const { materiId, materiTitle } = useLocalSearchParams<{
-    materiId: string;
-    materiTitle: string;
-  }>();
+  const { materiId } = useLocalSearchParams<{ materiId: string }>();
   const router = useRouter();
   const { userData } = useAuthContext();
+  const soundRef = useRef<Audio.Sound | null>(null);
 
   const materi = useQuery(
     api.materi.getById,
     materiId ? { id: materiId as Id<"materi"> } : "skip"
   );
 
-  const subMateri = useQuery(
-    api.materi.getChildren,
-    materiId ? { parentId: materiId as Id<"materi"> } : "skip"
-  );
-
-  const quizzes = useQuery(
-    api.quiz.listByMateri,
-    materiId ? { materiId: materiId as Id<"materi"> } : "skip"
-  );
-
-  const subIds = (subMateri ?? []).map((item) => item._id as Id<"materi">);
-  const subQuizCounts = useQuery(
-    api.quiz.getQuizCountsByMateriIds,
-    subIds.length > 0 ? { materiIds: subIds } : "skip"
+  const allMateri = useQuery(
+    api.materi.listAllByType,
+    materi?.type ? { type: materi.type } : "skip"
   );
 
   const userProgress = useQuery(
@@ -52,7 +51,65 @@ export default function MateriDetailScreen() {
     userData?._id ? { userId: userData._id } : "skip"
   );
 
-  const isLoading = materi === undefined;
+  const descendants = useMemo(() => {
+    if (!materi || !allMateri) {
+      return [] as { id: Id<"materi">; title: string; depth: number; hasChildren: boolean }[];
+    }
+
+    const childrenMap = new Map<string, typeof allMateri>();
+    allMateri.forEach((item) => {
+      if (!item.parentId) {
+        return;
+      }
+      const list = childrenMap.get(item.parentId) ?? [];
+      list.push(item);
+      childrenMap.set(item.parentId, list);
+    });
+
+    for (const [key, value] of childrenMap.entries()) {
+      childrenMap.set(
+        key,
+        [...value].sort((a, b) => a.seq - b.seq)
+      );
+    }
+
+    const result: { id: Id<"materi">; title: string; depth: number; hasChildren: boolean }[] = [];
+
+    const walk = (parentId: Id<"materi">, depth: number) => {
+      const children = childrenMap.get(parentId) ?? [];
+      for (const child of children) {
+        const grandChildren = childrenMap.get(child._id) ?? [];
+        result.push({
+          id: child._id,
+          title: child.judul,
+          depth,
+          hasChildren: grandChildren.length > 0,
+        });
+        walk(child._id, depth + 1);
+      }
+    };
+
+    walk(materi._id, 1);
+    return result;
+  }, [materi, allMateri]);
+
+  const descendantIds = descendants.map((d) => d.id);
+
+  const subQuizCounts = useQuery(
+    api.quiz.getQuizCountsByMateriIds,
+    descendantIds.length > 0 ? { materiIds: descendantIds } : "skip"
+  );
+
+  const finalQuizSet = useQuery(
+    api.quiz.getRandomFinalQuizForBab,
+    userData?._id && materiId
+      ? {
+          babMateriId: materiId as Id<"materi">,
+          userId: userData._id,
+          limit: 20,
+        }
+      : "skip"
+  );
 
   const completedIds = new Set(
     (userProgress ?? [])
@@ -60,7 +117,126 @@ export default function MateriDetailScreen() {
       .map((p) => p.materiId)
   );
 
-  if (isLoading) {
+  const playTapSound = useCallback(async () => {
+    try {
+      if (soundRef.current) {
+        await soundRef.current.replayAsync();
+        return;
+      }
+      const { sound } = await Audio.Sound.createAsync(
+        { uri: TAP_SOUND_URL },
+        { shouldPlay: true, volume: 0.6 }
+      );
+      soundRef.current = sound;
+    } catch {
+      // ignore sound failures; navigation should continue
+    }
+  }, []);
+
+  const quizCountMap = new Map((subQuizCounts ?? []).map((item) => [item.materiId, item.count]));
+
+  const stageItems = useMemo(() => {
+    if (!materi) {
+      return [] as StageItem[];
+    }
+
+    const stages: StageItem[] = [];
+    let prevStageDone = true;
+
+    descendants.forEach((entry) => {
+      const materiDone = completedIds.has(entry.id);
+      const materiUnlocked = prevStageDone;
+
+      stages.push({
+        key: `materi-${entry.id}`,
+        title: entry.title,
+        subtitle:
+          entry.depth > 1
+            ? `Sub-bab level ${entry.depth}${entry.hasChildren ? " • berisi sub-bab" : " • mode baca buku"}`
+            : "Sub-bab utama",
+        kind: "materi",
+        unlocked: materiUnlocked,
+        completed: materiDone,
+        onPress: () => {
+          if (entry.hasChildren) {
+            router.push({
+              pathname: "/materi/[materiId]",
+              params: { materiId: entry.id, materiTitle: entry.title },
+            });
+            return;
+          }
+          router.push({
+            pathname: "/materi-reader/[materiId]",
+            params: { materiId: entry.id },
+          });
+        },
+      });
+
+      prevStageDone = materiUnlocked && materiDone;
+
+      const quizCount = quizCountMap.get(entry.id) ?? 0;
+      if (quizCount > 0) {
+        const quizUnlocked = prevStageDone;
+        const quizDone = materiDone;
+
+        stages.push({
+          key: `quiz-sub-${entry.id}`,
+          title: `Quiz ${entry.title}`,
+          subtitle: `${quizCount} pertanyaan`,
+          kind: "quiz-sub",
+          unlocked: quizUnlocked,
+          completed: quizDone,
+          onPress: () =>
+            router.push({
+              pathname: "/quiz/[materiId]",
+              params: { materiId: entry.id, materiTitle: entry.title },
+            }),
+        });
+
+        prevStageDone = quizUnlocked && quizDone;
+      }
+    });
+
+    if (descendants.length > 0) {
+      const finalCount = Math.min(20, finalQuizSet?.length ?? 0);
+      stages.push({
+        key: `quiz-final-${materi._id}`,
+        title: `Quiz Akhir ${materi.judul}`,
+        subtitle:
+          finalCount > 0
+            ? `${finalCount} pertanyaan acak dari sub-bab yang sudah dilewati`
+            : "Butuh sub-bab selesai + bank soal",
+        kind: "quiz-final",
+        unlocked: prevStageDone,
+        completed: completedIds.has(materi._id),
+        onPress: () =>
+          router.push({
+            pathname: "/quiz/[materiId]",
+            params: {
+              materiId: materi._id,
+              materiTitle: `Quiz Akhir ${materi.judul}`,
+              finalMode: "1",
+              babMateriId: materi._id,
+            },
+          }),
+      });
+    }
+
+    return stages;
+  }, [materi, descendants, completedIds, quizCountMap, router, finalQuizSet]);
+
+  const handleStagePress = useCallback(
+    async (stage: StageItem) => {
+      if (!stage.unlocked) {
+        return;
+      }
+      await playTapSound();
+      stage.onPress();
+    },
+    [playTapSound]
+  );
+
+  if (!materi || allMateri === undefined) {
     return (
       <View style={styles.center}>
         <ActivityIndicator size="large" color={Colors.primary} />
@@ -77,176 +253,82 @@ export default function MateriDetailScreen() {
     );
   }
 
-  const sortedSub = [...(subMateri ?? [])].sort((a, b) => a.seq - b.seq);
-  const hasQuiz = (quizzes ?? []).length > 0;
-  const subQuizMap = new Map((subQuizCounts ?? []).map((item) => [item.materiId, item.count]));
-  const completedSubCount = sortedSub.filter((sub) => completedIds.has(sub._id)).length;
-  const allSubCompleted = sortedSub.length === 0 || completedSubCount === sortedSub.length;
-
-  const stageItems: {
-    key: string;
-    title: string;
-    subtitle: string;
-    kind: "materi" | "quiz-sub" | "quiz-bab";
-    unlocked: boolean;
-    completed: boolean;
-    onPress: () => void;
-  }[] = [];
-
-  sortedSub.forEach((sub, index) => {
-    const isCompleted = completedIds.has(sub._id);
-    const isUnlocked = index === 0 || completedIds.has(sortedSub[index - 1]._id);
-    const quizCount = subQuizMap.get(sub._id) ?? 0;
-
-    stageItems.push({
-      key: `materi-${sub._id}`,
-      title: sub.judul,
-      subtitle: "Materi Sub-bab",
-      kind: "materi",
-      unlocked: isUnlocked,
-      completed: isCompleted,
-      onPress: () =>
-        router.push({
-          pathname: "/materi/[materiId]",
-          params: { materiId: sub._id, materiTitle: sub.judul },
-        }),
-    });
-
-    if (quizCount > 0) {
-      stageItems.push({
-        key: `quiz-sub-${sub._id}`,
-        title: `Quiz ${sub.judul}`,
-        subtitle: `${quizCount} pertanyaan`,
-        kind: "quiz-sub",
-        unlocked: isCompleted,
-        completed: isCompleted,
-        onPress: () =>
-          router.push({
-            pathname: "/quiz/[materiId]",
-            params: { materiId: sub._id, materiTitle: sub.judul },
-          }),
-      });
-    }
-  });
-
-  if (hasQuiz) {
-    stageItems.push({
-      key: `quiz-bab-${materi._id}`,
-      title: `Quiz Penutup ${materi.judul}`,
-      subtitle: `${quizzes!.length} pertanyaan ringkasan BAB`,
-      kind: "quiz-bab",
-      unlocked: allSubCompleted,
-      completed: completedIds.has(materi._id),
-      onPress: () =>
-        router.push({
-          pathname: "/quiz/[materiId]",
-          params: { materiId: materi._id, materiTitle: materi.judul },
-        }),
-    });
-  }
+  const completedSubCount = descendants.filter((sub) => completedIds.has(sub.id)).length;
 
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
-      {/* Cover image */}
-      {materi.urlCover && (
-        <Image
-          source={{ uri: materi.urlCover }}
-          style={styles.cover}
-          resizeMode="cover"
-        />
-      )}
+      {materi.urlCover ? (
+        <Image source={{ uri: materi.urlCover }} style={styles.cover} resizeMode="cover" />
+      ) : null}
 
-      {/* Title & Description */}
       <View style={styles.headerCard}>
         <Text style={styles.title}>{materi.judul}</Text>
-        {materi.deskripsi && (
-          <Text style={styles.description}>{materi.deskripsi}</Text>
-        )}
+        <Text style={styles.description}>
+          {materi.deskripsi ?? "Pelajari materi ini secara bertahap seperti game belajar bahasa."}
+        </Text>
       </View>
 
-      {/* Video */}
-      {materi.urlVideo && (
-        <TouchableOpacity
-          style={styles.videoCard}
-          onPress={() => Linking.openURL(materi.urlVideo!)}
-        >
-          <View style={styles.videoIcon}>
-            <FontAwesome name="play-circle" size={32} color={Colors.primary} />
-          </View>
-          <View style={styles.videoInfo}>
-            <Text style={styles.videoTitle}>Video Pembelajaran</Text>
-            <Text style={styles.videoDesc}>Tonton video materi ini</Text>
-          </View>
-          <FontAwesome name="external-link" size={16} color={Colors.textSecondary} />
-        </TouchableOpacity>
-      )}
+      <Text style={styles.sectionTitle}>Peta Belajar Duolingo Mode</Text>
+      <View style={styles.chapterProgressWrap}>
+        <Text style={styles.chapterProgressText}>
+          Progress node: {completedSubCount}/{descendants.length} selesai
+        </Text>
+      </View>
 
-      {/* Zig-zag path */}
-      {stageItems.length > 0 && (
-        <>
-          <Text style={styles.sectionTitle}>Peta Belajar BAB</Text>
-          <View style={styles.chapterProgressWrap}>
-            <Text style={styles.chapterProgressText}>
-              Progress Sub-bab: {completedSubCount}/{sortedSub.length}
-            </Text>
-          </View>
-
-          <View style={styles.mapWrap}>
-            {stageItems.map((item, idx) => {
-              const alignLeft = idx % 2 === 0;
-              const isQuiz = item.kind !== "materi";
-
-              return (
-                <View key={item.key} style={styles.mapStageWrap}>
-                  {idx > 0 && <View style={styles.mapConnector} />}
-
-                  <Pressable
-                    style={({ pressed }) => [
-                      styles.mapNode,
-                      alignLeft ? styles.mapNodeLeft : styles.mapNodeRight,
-                      isQuiz && styles.mapNodeQuiz,
-                      !item.unlocked && styles.mapNodeLocked,
-                      item.completed && styles.mapNodeDone,
-                      pressed && item.unlocked && { opacity: 0.85 },
-                    ]}
-                    disabled={!item.unlocked}
-                    onPress={item.onPress}
-                  >
-                    <View
-                      style={[
-                        styles.mapNodeIcon,
-                        isQuiz && styles.mapNodeIconQuiz,
-                        item.completed && styles.mapNodeIconDone,
-                        !item.unlocked && styles.mapNodeIconLocked,
-                      ]}
-                    >
-                      {item.completed ? (
-                        <FontAwesome name="check" size={16} color="#fff" />
-                      ) : !item.unlocked ? (
-                        <FontAwesome name="lock" size={14} color={Colors.textSecondary} />
-                      ) : item.kind === "materi" ? (
-                        <FontAwesome name="book" size={15} color={Colors.primary} />
-                      ) : (
-                        <FontAwesome name="question" size={14} color={Colors.primary} />
-                      )}
-                    </View>
-
-                    <View style={styles.mapNodeTextWrap}>
-                      <Text style={styles.mapNodeTitle} numberOfLines={2}>
-                        {item.title}
-                      </Text>
-                      <Text style={styles.mapNodeSubtitle} numberOfLines={2}>
-                        {item.subtitle}
-                        {!item.unlocked ? " • Terkunci" : ""}
-                      </Text>
-                    </View>
-                  </Pressable>
+      <View style={styles.mapWrap}>
+        {stageItems.map((item, idx) => {
+          const alignLeft = idx % 2 === 0;
+          const isQuiz = item.kind !== "materi";
+          return (
+            <View key={item.key} style={styles.mapStageWrap}>
+              {idx > 0 && <View style={styles.mapConnector} />}
+              <Pressable
+                style={({ pressed }) => [
+                  styles.mapNode,
+                  alignLeft ? styles.mapNodeLeft : styles.mapNodeRight,
+                  isQuiz && styles.mapNodeQuiz,
+                  !item.unlocked && styles.mapNodeLocked,
+                  item.completed && styles.mapNodeDone,
+                  pressed && item.unlocked && { transform: [{ scale: 0.98 }] },
+                ]}
+                disabled={!item.unlocked}
+                onPress={() => handleStagePress(item)}
+              >
+                <View
+                  style={[
+                    styles.mapNodeIcon,
+                    isQuiz && styles.mapNodeIconQuiz,
+                    item.completed && styles.mapNodeIconDone,
+                    !item.unlocked && styles.mapNodeIconLocked,
+                  ]}
+                >
+                  {item.completed ? (
+                    <FontAwesome name="check" size={16} color="#fff" />
+                  ) : !item.unlocked ? (
+                    <FontAwesome name="lock" size={14} color={Colors.textSecondary} />
+                  ) : item.kind === "materi" ? (
+                    <FontAwesome name="book" size={15} color={Colors.primary} />
+                  ) : item.kind === "quiz-final" ? (
+                    <FontAwesome name="trophy" size={15} color={Colors.primary} />
+                  ) : (
+                    <FontAwesome name="question" size={14} color={Colors.primary} />
+                  )}
                 </View>
-              );
-            })}
-          </View>
-        </>
-      )}
+
+                <View style={styles.mapNodeTextWrap}>
+                  <Text style={styles.mapNodeTitle} numberOfLines={2}>
+                    {item.title}
+                  </Text>
+                  <Text style={styles.mapNodeSubtitle} numberOfLines={2}>
+                    {item.subtitle}
+                    {!item.unlocked ? " • Terkunci" : ""}
+                  </Text>
+                </View>
+              </Pressable>
+            </View>
+          );
+        })}
+      </View>
     </ScrollView>
   );
 }
@@ -270,14 +352,10 @@ const styles = StyleSheet.create({
     fontSize: 15,
     color: Colors.textSecondary,
   },
-
-  // Cover
   cover: {
     width: "100%",
     height: 200,
   },
-
-  // Header
   headerCard: {
     backgroundColor: "#fff",
     padding: 20,
@@ -294,46 +372,6 @@ const styles = StyleSheet.create({
     lineHeight: 22,
     marginTop: 8,
   },
-
-  // Video
-  videoCard: {
-    flexDirection: "row",
-    alignItems: "center",
-    backgroundColor: "#fff",
-    marginHorizontal: 16,
-    marginTop: 8,
-    borderRadius: 12,
-    padding: 16,
-    gap: 12,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.05,
-    shadowRadius: 2,
-    elevation: 1,
-  },
-  videoIcon: {
-    width: 48,
-    height: 48,
-    borderRadius: 12,
-    backgroundColor: Colors.primaryLight,
-    justifyContent: "center",
-    alignItems: "center",
-  },
-  videoInfo: {
-    flex: 1,
-  },
-  videoTitle: {
-    fontSize: 15,
-    fontWeight: "600",
-    color: Colors.text,
-  },
-  videoDesc: {
-    fontSize: 12,
-    color: Colors.textSecondary,
-    marginTop: 2,
-  },
-
-  // Section
   sectionTitle: {
     fontSize: 16,
     fontWeight: "bold",
@@ -356,8 +394,6 @@ const styles = StyleSheet.create({
     fontWeight: "700",
     color: Colors.primaryDark,
   },
-
-  // Zig-zag map
   mapWrap: {
     marginTop: 4,
   },
@@ -379,7 +415,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
     backgroundColor: "#fff",
     width: "86%",
-    borderRadius: 12,
+    borderRadius: 18,
     padding: 14,
     gap: 10,
     shadowColor: "#000",
@@ -430,7 +466,7 @@ const styles = StyleSheet.create({
   },
   mapNodeTitle: {
     fontSize: 14,
-    fontWeight: "600",
+    fontWeight: "700",
     color: Colors.text,
   },
   mapNodeSubtitle: {

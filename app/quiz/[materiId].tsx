@@ -37,16 +37,30 @@ type OptionDoc = {
 };
 
 export default function QuizScreen() {
-  const { materiId, materiTitle } = useLocalSearchParams<{
+  const { materiId, materiTitle, finalMode, babMateriId } = useLocalSearchParams<{
     materiId: string;
     materiTitle: string;
+    finalMode?: string;
+    babMateriId?: string;
   }>();
   const router = useRouter();
   const { userData } = useAuthContext();
 
+  const isFinalMode = finalMode === "1";
+
   const quizzes = useQuery(
     api.quiz.listByMateri,
     materiId ? { materiId: materiId as Id<"materi"> } : "skip"
+  );
+  const finalQuizzes = useQuery(
+    api.quiz.getRandomFinalQuizForBab,
+    isFinalMode && babMateriId && userData?._id
+      ? {
+          babMateriId: babMateriId as Id<"materi">,
+          userId: userData._id,
+          limit: 20,
+        }
+      : "skip"
   );
 
   const submitAnswer = useMutation(api.quiz.submitAnswer);
@@ -60,7 +74,8 @@ export default function QuizScreen() {
   const [isFinished, setIsFinished] = useState(false);
   const [submitting, setSubmitting] = useState(false);
 
-  const currentQuiz: QuizDoc | undefined = quizzes?.[currentIndex];
+  const activeQuizzes = isFinalMode ? (finalQuizzes as QuizDoc[] | undefined) : quizzes;
+  const currentQuiz: QuizDoc | undefined = activeQuizzes?.[currentIndex];
 
   const options = useQuery(
     api.quiz.getOptions,
@@ -115,9 +130,9 @@ export default function QuizScreen() {
   }, [selectedOption, currentQuiz, userData, sortedOptions, submitAnswer]);
 
   const handleNext = useCallback(async () => {
-    if (!quizzes) return;
+    if (!activeQuizzes) return;
 
-    if (currentIndex < quizzes.length - 1) {
+    if (currentIndex < activeQuizzes.length - 1) {
       setCurrentIndex((prev) => prev + 1);
       setSelectedOption(null);
       setIsAnswered(false);
@@ -128,9 +143,10 @@ export default function QuizScreen() {
 
       if (userData?._id && materiId) {
         try {
+          const progressMateriId = isFinalMode && babMateriId ? babMateriId : materiId;
           await saveProgress({
             userId: userData._id,
-            materiId: materiId as Id<"materi">,
+            materiId: progressMateriId as Id<"materi">,
             score: finalScore,
           });
         } catch {
@@ -138,9 +154,9 @@ export default function QuizScreen() {
         }
       }
     }
-  }, [currentIndex, quizzes, score, totalPoin, userData, materiId, saveProgress]);
+  }, [currentIndex, activeQuizzes, score, totalPoin, userData, materiId, isFinalMode, babMateriId, saveProgress]);
 
-  if (quizzes === undefined) {
+  if (activeQuizzes === undefined) {
     return (
       <View style={styles.center}>
         <ActivityIndicator size="large" color={Colors.primary} />
@@ -148,11 +164,15 @@ export default function QuizScreen() {
     );
   }
 
-  if (quizzes.length === 0) {
+  if (activeQuizzes.length === 0) {
     return (
       <View style={styles.center}>
         <FontAwesome name="info-circle" size={40} color={Colors.textSecondary} />
-        <Text style={styles.emptyText}>Tidak ada kuis untuk materi ini</Text>
+        <Text style={styles.emptyText}>
+          {isFinalMode
+            ? "Belum ada cukup quiz dari sub-bab yang sudah diselesaikan"
+            : "Tidak ada kuis untuk materi ini"}
+        </Text>
       </View>
     );
   }
@@ -191,7 +211,7 @@ export default function QuizScreen() {
 
           <View style={styles.resultStats}>
             <View style={styles.statItem}>
-              <Text style={styles.statValue}>{quizzes.length}</Text>
+              <Text style={styles.statValue}>{activeQuizzes.length}</Text>
               <Text style={styles.statLabel}>Pertanyaan</Text>
             </View>
             <View style={styles.statDivider} />
@@ -234,7 +254,7 @@ export default function QuizScreen() {
   // Quiz question screen
   const selected = sortedOptions.find((o) => o._id === selectedOption);
   const isCorrect = selected ? selected.poin > 0 : false;
-  const progress = (currentIndex + 1) / quizzes.length;
+  const progress = (currentIndex + 1) / activeQuizzes.length;
   const optionLabels = ["A", "B", "C", "D", "E", "F", "G", "H"];
 
   return (
@@ -244,7 +264,7 @@ export default function QuizScreen() {
         <View style={[styles.progressFill, { width: `${progress * 100}%` }]} />
       </View>
       <Text style={styles.progressText}>
-        Soal {currentIndex + 1} dari {quizzes.length}
+        Soal {currentIndex + 1} dari {activeQuizzes.length}
       </Text>
 
       {/* Question */}
@@ -360,7 +380,7 @@ export default function QuizScreen() {
       ) : (
         <TouchableOpacity style={styles.btnPrimary} onPress={handleNext}>
           <Text style={styles.btnPrimaryText}>
-            {currentIndex < quizzes.length - 1 ? "Soal Berikutnya" : "Lihat Hasil"}
+            {currentIndex < activeQuizzes.length - 1 ? "Soal Berikutnya" : "Lihat Hasil"}
           </Text>
         </TouchableOpacity>
       )}
