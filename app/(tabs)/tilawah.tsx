@@ -645,7 +645,7 @@ const styles = StyleSheet.create({
     color: Colors.primaryDark,
   },
   popularArabic: {
-    fontFamily: "Amiri",
+    fontFamily: "AmiriQuran",
     fontSize: 20,
     color: Colors.text,
     marginBottom: 4,
@@ -737,7 +737,7 @@ const styles = StyleSheet.create({
     marginTop: 2,
   },
   surahArabic: {
-    fontFamily: "Amiri",
+    fontFamily: "AmiriQuran",
     fontSize: 20,
     color: Colors.text,
   },

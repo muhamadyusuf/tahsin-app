@@ -848,7 +848,7 @@ const styles = StyleSheet.create({
     marginBottom: 8,
   },
   surahArabicName: {
-    fontFamily: "Amiri",
+    fontFamily: "AmiriQuran",
     fontSize: 32,
     color: Colors.textLight,
     marginBottom: 8,

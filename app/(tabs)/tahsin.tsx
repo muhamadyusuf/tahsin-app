@@ -12,27 +12,31 @@ import FontAwesome from "@expo/vector-icons/FontAwesome";
 import { useRouter } from "expo-router";
 import { useQuery } from "convex/react";
 import { api } from "@/convex/_generated/api";
+import { Id } from "@/convex/_generated/dataModel";
 import { Colors } from "@/lib/constants";
 import { useAuthContext } from "@/lib/auth-context";
 
-const BAB_ICONS: Record<number, React.ComponentProps<typeof FontAwesome>["name"]> = {
-  0: "book",
-  1: "info-circle",
-  2: "comment",
-  3: "list",
-  4: "file-text",
-  5: "file-text",
-  6: "file-text",
-  7: "file-text",
-  8: "file-text",
-  9: "file-text",
-  10: "file-text",
-  11: "file-text",
-  12: "file-text",
-  13: "file-text",
+const TAP_SOUND_URL = "https://actions.google.com/sounds/v1/cartoon/pop.ogg";
+
+type StageKind = "materi" | "quiz-sub" | "quiz-final";
+
+type Stage = {
+  key: string;
+  kind: StageKind;
+  id: Id<"materi">;
+  title: string;
+  subtitle: string;
+  unlocked: boolean;
+  completed: boolean;
+  onPress: () => void;
 };
 
-const TAP_SOUND_URL = "https://actions.google.com/sounds/v1/cartoon/pop.ogg";
+type BabSection = {
+  babId: Id<"materi">;
+  babTitle: string;
+  babIndex: number;
+  stages: Stage[];
+};
 
 export default function TahsinScreen() {
   const router = useRouter();
@@ -45,24 +49,54 @@ export default function TahsinScreen() {
     userData?._id ? { userId: userData._id } : "skip"
   );
 
-  const isLoading = materiAll === undefined;
+  const allMateriIds = useMemo(() => (materiAll ?? []).map((m) => m._id), [materiAll]);
 
-  const topBab = useMemo(
-    () => [...(materiAll ?? [])].filter((m) => !m.parentId).sort((a, b) => a.seq - b.seq),
-    [materiAll]
+  const quizCounts = useQuery(
+    api.quiz.getQuizCountsByMateriIds,
+    allMateriIds.length > 0 ? { materiIds: allMateriIds } : "skip"
   );
 
-  const childCountMap = useMemo(() => {
-    const map = new Map<string, number>();
-    const all = materiAll ?? [];
-    for (const item of all) {
-      if (!item.parentId) {
-        continue;
-      }
-      map.set(item.parentId, (map.get(item.parentId) ?? 0) + 1);
+  const isLoading =
+    materiAll === undefined ||
+    (allMateriIds.length > 0 && quizCounts === undefined);
+
+  const completedIds = useMemo(
+    () =>
+      new Set(
+        (userProgress ?? [])
+          .filter((p) => p.completedAt)
+          .map((p) => p.materiId)
+      ),
+    [userProgress]
+  );
+
+  const quizCountMap = useMemo(
+    () => new Map((quizCounts ?? []).map((item) => [item.materiId, item.count])),
+    [quizCounts]
+  );
+
+  const childrenMap = useMemo(() => {
+    const map = new Map<string, NonNullable<typeof materiAll>>();
+    if (!materiAll) return map;
+    for (const item of materiAll) {
+      if (!item.parentId) continue;
+      const list = map.get(item.parentId) ?? [];
+      list.push(item);
+      map.set(item.parentId, list);
+    }
+    for (const [key, list] of map.entries()) {
+      map.set(key, [...list].sort((a, b) => a.seq - b.seq));
     }
     return map;
   }, [materiAll]);
+
+  const topBab = useMemo(
+    () =>
+      [...(materiAll ?? [])]
+        .filter((m) => !m.parentId)
+        .sort((a, b) => a.seq - b.seq),
+    [materiAll]
+  );
 
   const playTapSound = useCallback(async () => {
     try {
@@ -70,7 +104,6 @@ export default function TahsinScreen() {
         await soundRef.current.replayAsync();
         return;
       }
-
       const { sound } = await Audio.Sound.createAsync(
         { uri: TAP_SOUND_URL },
         { shouldPlay: true, volume: 0.6 }
@@ -81,15 +114,142 @@ export default function TahsinScreen() {
     }
   }, []);
 
-  const completedIds = new Set(
-    (userProgress ?? [])
-      .filter((p) => p.completedAt)
-      .map((p) => p.materiId)
-  );
+  const sections = useMemo<BabSection[]>(() => {
+    if (!materiAll || quizCounts === undefined) return [];
 
-  const completedCount = topBab.filter((m) => completedIds.has(m._id)).length;
-  const totalCount = topBab.length;
-  const progressPercent = totalCount > 0 ? Math.round((completedCount / totalCount) * 100) : 0;
+    let prevStageDone = true;
+    const result: BabSection[] = [];
+
+    topBab.forEach((bab, babIndex) => {
+      const children = childrenMap.get(bab._id) ?? [];
+      const stages: Stage[] = [];
+
+      if (children.length === 0) {
+        // Leaf BAB — materi node + optional quiz
+        const done = completedIds.has(bab._id);
+        const unlocked = prevStageDone;
+
+        stages.push({
+          key: `materi-${bab._id}`,
+          kind: "materi",
+          id: bab._id,
+          title: bab.judul,
+          subtitle: "Materi utama",
+          unlocked,
+          completed: done,
+          onPress: () =>
+            router.push({
+              pathname: "/materi-reader/[materiId]",
+              params: { materiId: bab._id },
+            }),
+        });
+        prevStageDone = unlocked && done;
+
+        const qCount = quizCountMap.get(bab._id) ?? 0;
+        if (qCount > 0) {
+          const qUnlocked = prevStageDone;
+          stages.push({
+            key: `quiz-${bab._id}`,
+            kind: "quiz-sub",
+            id: bab._id,
+            title: `Quiz ${bab.judul}`,
+            subtitle: `${qCount} pertanyaan`,
+            unlocked: qUnlocked,
+            completed: done,
+            onPress: () =>
+              router.push({
+                pathname: "/quiz/[materiId]",
+                params: { materiId: bab._id, materiTitle: bab.judul },
+              }),
+          });
+          prevStageDone = qUnlocked && done;
+        }
+      } else {
+        // BAB with sub-babs
+        children.forEach((sub) => {
+          const subDone = completedIds.has(sub._id);
+          const subUnlocked = prevStageDone;
+          const hasGrandChildren = (childrenMap.get(sub._id) ?? []).length > 0;
+
+          stages.push({
+            key: `materi-${sub._id}`,
+            kind: "materi",
+            id: sub._id,
+            title: sub.judul,
+            subtitle: hasGrandChildren ? "Berisi sub-unit" : "Sub-bab",
+            unlocked: subUnlocked,
+            completed: subDone,
+            onPress: () => {
+              if (hasGrandChildren) {
+                router.push({
+                  pathname: "/materi/[materiId]",
+                  params: { materiId: sub._id, materiTitle: sub.judul },
+                });
+              } else {
+                router.push({
+                  pathname: "/materi-reader/[materiId]",
+                  params: { materiId: sub._id },
+                });
+              }
+            },
+          });
+          prevStageDone = subUnlocked && subDone;
+
+          const subQCount = quizCountMap.get(sub._id) ?? 0;
+          if (subQCount > 0) {
+            const qUnlocked = prevStageDone;
+            stages.push({
+              key: `quiz-sub-${sub._id}`,
+              kind: "quiz-sub",
+              id: sub._id,
+              title: `Quiz ${sub.judul}`,
+              subtitle: `${subQCount} pertanyaan`,
+              unlocked: qUnlocked,
+              completed: subDone,
+              onPress: () =>
+                router.push({
+                  pathname: "/quiz/[materiId]",
+                  params: { materiId: sub._id, materiTitle: sub.judul },
+                }),
+            });
+            prevStageDone = qUnlocked && subDone;
+          }
+        });
+
+        // Final BAB quiz (random from all completed sub-babs)
+        const babFinalDone = completedIds.has(bab._id);
+        const finalUnlocked = prevStageDone;
+        stages.push({
+          key: `quiz-final-${bab._id}`,
+          kind: "quiz-final",
+          id: bab._id,
+          title: `Quiz Akhir ${bab.judul}`,
+          subtitle: "Quiz penutup dari seluruh sub-bab",
+          unlocked: finalUnlocked,
+          completed: babFinalDone,
+          onPress: () =>
+            router.push({
+              pathname: "/quiz/[materiId]",
+              params: {
+                materiId: bab._id,
+                materiTitle: `Quiz Akhir ${bab.judul}`,
+                finalMode: "1",
+                babMateriId: bab._id,
+              },
+            }),
+        });
+        prevStageDone = finalUnlocked && babFinalDone;
+      }
+
+      result.push({ babId: bab._id, babTitle: bab.judul, babIndex, stages });
+    });
+
+    return result;
+  }, [materiAll, quizCounts, topBab, childrenMap, completedIds, quizCountMap, router]);
+
+  const completedBabCount = topBab.filter((bab) => completedIds.has(bab._id)).length;
+  const progressPercent =
+    topBab.length > 0 ? Math.round((completedBabCount / topBab.length) * 100) : 0;
 
   if (isLoading) {
     return (
@@ -100,7 +260,8 @@ export default function TahsinScreen() {
     );
   }
 
-  const sorted = topBab;
+  // Running global stage index for zigzag alignment across all sections
+  let globalStageIdx = 0;
 
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
@@ -109,9 +270,7 @@ export default function TahsinScreen() {
         <View style={styles.progressTop}>
           <View>
             <Text style={styles.progressTitle}>Belajar Tahsin</Text>
-            <Text style={styles.progressSubtitle}>
-              Pedoman Dauroh Al-Qur'an
-            </Text>
+            <Text style={styles.progressSubtitle}>Pedoman Dauroh Al-Qur'an</Text>
           </View>
           <View style={styles.progressCircle}>
             <Text style={styles.progressCircleText}>{progressPercent}%</Text>
@@ -121,12 +280,11 @@ export default function TahsinScreen() {
           <View style={[styles.progressFill, { width: `${progressPercent}%` }]} />
         </View>
         <Text style={styles.progressText}>
-          {completedCount} dari {totalCount} BAB selesai
+          {completedBabCount} dari {topBab.length} BAB selesai
         </Text>
       </View>
 
-      {/* Materi List */}
-      {sorted.length === 0 ? (
+      {sections.length === 0 ? (
         <View style={styles.emptyState}>
           <FontAwesome name="inbox" size={40} color={Colors.textSecondary} />
           <Text style={styles.emptyTitle}>Belum ada materi</Text>
@@ -136,65 +294,142 @@ export default function TahsinScreen() {
         </View>
       ) : (
         <View style={styles.pathWrap}>
-          {sorted.map((materi, index) => {
-            const isCompleted = completedIds.has(materi._id);
-            const isUnlocked = index === 0 || completedIds.has(sorted[index - 1]._id);
-            const icon = BAB_ICONS[index] ?? "file-text";
-            const alignLeft = index % 2 === 0;
+          {sections.map((section) => {
+            const babDone = completedIds.has(section.babId);
+            const firstStageUnlocked = section.stages[0]?.unlocked ?? false;
 
             return (
-              <View key={materi._id} style={styles.pathNodeWrap}>
-                {index > 0 && <View style={styles.pathConnector} />}
-                <Pressable
-                  style={({ pressed }) => [
-                    styles.pathNode,
-                    alignLeft ? styles.pathNodeLeft : styles.pathNodeRight,
-                    !isUnlocked && styles.pathNodeLocked,
-                    isCompleted && styles.pathNodeDone,
-                    pressed && isUnlocked && { opacity: 0.85 },
+              <View key={`sec-${section.babId}`}>
+                {/* BAB Section Header */}
+                <View
+                  style={[
+                    styles.babHeader,
+                    babDone && styles.babHeaderDone,
+                    !firstStageUnlocked && styles.babHeaderLocked,
                   ]}
-                  disabled={!isUnlocked}
-                  onPress={async () => {
-                    if (!isUnlocked) {
-                      return;
-                    }
-                    await playTapSound();
-                    router.push({
-                      pathname: "/materi/[materiId]",
-                      params: { materiId: materi._id, materiTitle: materi.judul },
-                    });
-                  }}
                 >
                   <View
                     style={[
-                      styles.pathIcon,
-                      isCompleted && styles.pathIconDone,
-                      !isUnlocked && styles.pathIconLocked,
+                      styles.babBadge,
+                      babDone && styles.babBadgeDone,
+                      !firstStageUnlocked && styles.babBadgeLocked,
                     ]}
                   >
-                    {isCompleted ? (
-                      <FontAwesome name="check" size={18} color="#fff" />
-                    ) : !isUnlocked ? (
-                      <FontAwesome name="lock" size={16} color={Colors.textSecondary} />
-                    ) : (
-                      <FontAwesome name={icon} size={18} color={Colors.primary} />
-                    )}
+                    <Text style={styles.babBadgeText}>
+                      BAB {section.babIndex + 1}
+                    </Text>
                   </View>
+                  <Text
+                    style={[
+                      styles.babHeaderTitle,
+                      babDone && styles.babHeaderTitleDone,
+                      !firstStageUnlocked && styles.babHeaderTitleLocked,
+                    ]}
+                    numberOfLines={2}
+                  >
+                    {section.babTitle}
+                  </Text>
+                  {babDone && (
+                    <FontAwesome
+                      name="check-circle"
+                      size={18}
+                      color={Colors.success}
+                      style={styles.babCheckIcon}
+                    />
+                  )}
+                  {!firstStageUnlocked && !babDone && (
+                    <FontAwesome
+                      name="lock"
+                      size={14}
+                      color={Colors.textSecondary}
+                      style={styles.babCheckIcon}
+                    />
+                  )}
+                </View>
 
-                  <View style={styles.pathTextWrap}>
-                    <Text style={styles.pathBab}>BAB {index + 1}</Text>
-                    <Text style={styles.pathTitle} numberOfLines={2}>
-                      {materi.judul}
-                    </Text>
-                    <Text style={styles.pathHint} numberOfLines={2}>
-                      {childCountMap.get(materi._id) ?? 0} sub-bab di dalam BAB ini
-                    </Text>
-                    {isCompleted && <Text style={styles.pathStatusDone}>Selesai</Text>}
-                    {!isCompleted && !isUnlocked && (
-                      <Text style={styles.pathStatusLocked}>Selesaikan BAB sebelumnya</Text>
-                    )}
-                  </View>
-                </Pressable>
+                {/* Stage nodes within this BAB */}
+                <View style={styles.sectionStages}>
+                  {section.stages.map((stage, stageIdx) => {
+                    const alignLeft = globalStageIdx % 2 === 0;
+                    globalStageIdx += 1;
+                    const isQuiz = stage.kind !== "materi";
+                    const isFinal = stage.kind === "quiz-final";
+
+                    return (
+                      <View key={stage.key} style={styles.pathNodeWrap}>
+                        {stageIdx > 0 && <View style={styles.pathConnector} />}
+                        <Pressable
+                          style={({ pressed }) => [
+                            styles.pathNode,
+                            alignLeft ? styles.pathNodeLeft : styles.pathNodeRight,
+                            isQuiz && styles.pathNodeQuiz,
+                            isFinal && styles.pathNodeFinal,
+                            !stage.unlocked && styles.pathNodeLocked,
+                            stage.completed && styles.pathNodeDone,
+                            pressed && stage.unlocked && { opacity: 0.85 },
+                          ]}
+                          disabled={!stage.unlocked}
+                          onPress={async () => {
+                            if (!stage.unlocked) return;
+                            await playTapSound();
+                            stage.onPress();
+                          }}
+                        >
+                          <View
+                            style={[
+                              styles.pathIcon,
+                              isQuiz && styles.pathIconQuiz,
+                              isFinal && styles.pathIconFinal,
+                              stage.completed && styles.pathIconDone,
+                              !stage.unlocked && styles.pathIconLocked,
+                            ]}
+                          >
+                            {stage.completed ? (
+                              <FontAwesome name="check" size={18} color="#fff" />
+                            ) : !stage.unlocked ? (
+                              <FontAwesome
+                                name="lock"
+                                size={16}
+                                color={Colors.textSecondary}
+                              />
+                            ) : isFinal ? (
+                              <FontAwesome name="trophy" size={18} color="#fff" />
+                            ) : isQuiz ? (
+                              <FontAwesome
+                                name="pencil-square-o"
+                                size={18}
+                                color="#fff"
+                              />
+                            ) : (
+                              <FontAwesome
+                                name="book"
+                                size={18}
+                                color={Colors.primary}
+                              />
+                            )}
+                          </View>
+
+                          <View style={styles.pathTextWrap}>
+                            <Text style={styles.pathTitle} numberOfLines={2}>
+                              {stage.title}
+                            </Text>
+                            <Text style={styles.pathSubtitle} numberOfLines={1}>
+                              {stage.subtitle}
+                            </Text>
+                            {stage.completed && (
+                              <Text style={styles.statusDone}>Selesai</Text>
+                            )}
+                            {!stage.completed && !stage.unlocked && (
+                              <Text style={styles.statusLocked}>
+                                Selesaikan tahap sebelumnya
+                              </Text>
+                            )}
+                          </View>
+                        </Pressable>
+                      </View>
+                    );
+                  })}
+                </View>
               </View>
             );
           })}
@@ -225,7 +460,7 @@ const styles = StyleSheet.create({
     fontSize: 14,
   },
 
-  // Progress
+  // Progress header
   progressHeader: {
     backgroundColor: Colors.primary,
     borderRadius: 16,
@@ -281,7 +516,7 @@ const styles = StyleSheet.create({
     opacity: 0.8,
   },
 
-  // Empty
+  // Empty state
   emptyState: {
     alignItems: "center",
     paddingVertical: 48,
@@ -297,9 +532,70 @@ const styles = StyleSheet.create({
     color: Colors.textSecondary,
   },
 
+  // Full path container
   pathWrap: {
+    gap: 4,
+  },
+
+  // BAB section header
+  babHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: Colors.primaryLight,
+    borderRadius: 12,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    marginTop: 16,
+    marginBottom: 8,
     gap: 8,
   },
+  babHeaderDone: {
+    backgroundColor: "#C8E6C9",
+  },
+  babHeaderLocked: {
+    backgroundColor: "#EEEEEE",
+  },
+  babBadge: {
+    backgroundColor: Colors.primary,
+    borderRadius: 8,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+  },
+  babBadgeDone: {
+    backgroundColor: Colors.success,
+  },
+  babBadgeLocked: {
+    backgroundColor: Colors.textSecondary,
+  },
+  babBadgeText: {
+    color: "#fff",
+    fontSize: 11,
+    fontWeight: "bold",
+    letterSpacing: 0.5,
+  },
+  babHeaderTitle: {
+    flex: 1,
+    fontSize: 14,
+    fontWeight: "700",
+    color: Colors.primaryDark,
+  },
+  babHeaderTitleDone: {
+    color: Colors.primaryDark,
+  },
+  babHeaderTitleLocked: {
+    color: Colors.textSecondary,
+  },
+  babCheckIcon: {
+    marginLeft: 4,
+  },
+
+  // Stages within a BAB section
+  sectionStages: {
+    gap: 8,
+    paddingBottom: 4,
+  },
+
+  // Stage path nodes
   pathNodeWrap: {
     position: "relative",
   },
@@ -315,13 +611,13 @@ const styles = StyleSheet.create({
   pathNode: {
     backgroundColor: "#fff",
     borderRadius: 12,
-    padding: 16,
-    width: "88%",
+    padding: 14,
+    width: "86%",
     flexDirection: "row",
     alignItems: "center",
     shadowColor: "#000",
     shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.05,
+    shadowOpacity: 0.06,
     shadowRadius: 2,
     elevation: 1,
   },
@@ -331,6 +627,14 @@ const styles = StyleSheet.create({
   pathNodeRight: {
     alignSelf: "flex-end",
   },
+  pathNodeQuiz: {
+    backgroundColor: "#FFF8E1",
+  },
+  pathNodeFinal: {
+    backgroundColor: "#FFF3E0",
+    borderWidth: 1.5,
+    borderColor: Colors.secondary,
+  },
   pathNodeLocked: {
     backgroundColor: "#F3F3F3",
   },
@@ -339,13 +643,20 @@ const styles = StyleSheet.create({
     borderColor: Colors.success,
   },
   pathIcon: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
+    width: 42,
+    height: 42,
+    borderRadius: 21,
     backgroundColor: Colors.primaryLight,
     justifyContent: "center",
     alignItems: "center",
     marginRight: 12,
+    flexShrink: 0,
+  },
+  pathIconQuiz: {
+    backgroundColor: Colors.secondary,
+  },
+  pathIconFinal: {
+    backgroundColor: "#FF6F00",
   },
   pathIconDone: {
     backgroundColor: Colors.success,
@@ -356,32 +667,24 @@ const styles = StyleSheet.create({
   pathTextWrap: {
     flex: 1,
   },
-  pathBab: {
-    fontSize: 11,
-    fontWeight: "bold",
-    color: Colors.primary,
-    textTransform: "uppercase",
-    letterSpacing: 0.5,
-  },
   pathTitle: {
-    fontSize: 15,
+    fontSize: 14,
     fontWeight: "600",
     color: Colors.text,
-    marginTop: 2,
   },
-  pathHint: {
+  pathSubtitle: {
     fontSize: 12,
     color: Colors.textSecondary,
-    marginTop: 4,
+    marginTop: 2,
   },
-  pathStatusDone: {
-    marginTop: 6,
+  statusDone: {
+    marginTop: 5,
     fontSize: 11,
     fontWeight: "700",
     color: Colors.success,
   },
-  pathStatusLocked: {
-    marginTop: 6,
+  statusLocked: {
+    marginTop: 5,
     fontSize: 11,
     color: Colors.textSecondary,
   },

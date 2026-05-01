@@ -1678,7 +1678,7 @@ const s = StyleSheet.create({
     alignItems: "center",
   },
   topBarSurah: {
-    fontFamily: "Amiri",
+    fontFamily: "AmiriQuran",
     fontSize: 15,
     fontWeight: "700",
     color: M.toolbarText,
@@ -1762,14 +1762,14 @@ const s = StyleSheet.create({
     paddingBottom: 6,
   },
   mushafPageHeaderJuz: {
-    fontFamily: "Amiri",
+    fontFamily: "AmiriQuran",
     fontSize: 11,
     color: M.surahDecor,
     flex: 1,
     textAlign: "left",
   },
   mushafPageHeaderPage: {
-    fontFamily: "Amiri",
+    fontFamily: "AmiriQuran",
     fontSize: 12,
     color: M.text,
     fontWeight: "600",
@@ -1777,7 +1777,7 @@ const s = StyleSheet.create({
     minWidth: 40,
   },
   mushafPageHeaderSurah: {
-    fontFamily: "Amiri",
+    fontFamily: "AmiriQuran",
     fontSize: 11,
     color: M.surahDecor,
     flex: 1,
@@ -1812,7 +1812,7 @@ const s = StyleSheet.create({
     paddingVertical: 6,
   },
   surahNameText: {
-    fontFamily: "Amiri",
+    fontFamily: "AmiriQuran",
     fontSize: 16,
     color: M.surahDecor,
     textAlign: "center",

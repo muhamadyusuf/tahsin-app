@@ -37,11 +37,12 @@ type OptionDoc = {
 };
 
 export default function QuizScreen() {
-  const { materiId, materiTitle, finalMode, babMateriId } = useLocalSearchParams<{
+  const { materiId, materiTitle, finalMode, babMateriId, nextMateriId } = useLocalSearchParams<{
     materiId: string;
     materiTitle: string;
     finalMode?: string;
     babMateriId?: string;
+    nextMateriId?: string;
   }>();
   const router = useRouter();
   const { userData } = useAuthContext();
@@ -224,12 +225,28 @@ export default function QuizScreen() {
           </View>
         </View>
 
-        <TouchableOpacity
-          style={styles.btnPrimary}
-          onPress={() => router.back()}
-        >
-          <Text style={styles.btnPrimaryText}>Kembali ke Materi</Text>
-        </TouchableOpacity>
+        {passed && nextMateriId ? (
+          <TouchableOpacity
+            style={styles.btnPrimary}
+            onPress={() =>
+              router.replace({
+                pathname: "/materi-reader/[materiId]",
+                params: { materiId: nextMateriId },
+              })
+            }
+          >
+            <Text style={styles.btnPrimaryText}>Materi Berikutnya →</Text>
+          </TouchableOpacity>
+        ) : (
+          <TouchableOpacity
+            style={styles.btnPrimary}
+            onPress={() => router.back()}
+          >
+            <Text style={styles.btnPrimaryText}>
+              {passed ? "Kembali ke Materi" : "Kembali"}
+            </Text>
+          </TouchableOpacity>
+        )}
 
         {!passed && (
           <TouchableOpacity

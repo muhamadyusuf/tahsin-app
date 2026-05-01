@@ -1,7 +1,7 @@
 {
   "expo": {
     "name": "Tahsin",
-    "slug": "tahsin-app",
+    "slug": "tahsin",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
@@ -24,7 +24,10 @@
       },
       "package": "com.tahsin.app",
       "edgeToEdgeEnabled": true,
-      "predictiveBackGestureEnabled": false
+      "predictiveBackGestureEnabled": false,
+      "permissions": [
+        "android.permission.RECORD_AUDIO"
+      ]
     },
     "web": {
       "bundler": "metro",
@@ -47,8 +50,10 @@
     },
     "extra": {
       "eas": {
-        "projectId": "YOUR_EAS_PROJECT_ID"
-      }
-    }
+        "projectId": "127f4b61-def8-4e4a-a001-8f2e4bb8f5a0"
+      },
+      "router": {}
+    },
+    "owner": "muhamadyusufaas-organization"
   }
 }
