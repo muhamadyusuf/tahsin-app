@@ -16,6 +16,25 @@ import { api } from "@/convex/_generated/api";
 import { Id } from "@/convex/_generated/dataModel";
 import FontAwesome from "@expo/vector-icons/FontAwesome";
 import { Colors } from "@/lib/constants";
+import MarkdownRenderer from "@/components/MarkdownRenderer";
+
+const MD_CHEATSHEET = `# Heading 1
+## Heading 2
+### Heading 3
+
+Teks biasa. **tebal** atau *miring*
+
+> Blockquote / kutipan penting
+
+- Item daftar pertama
+- Item daftar kedua
+
+1. Nomor satu
+2. Nomor dua
+
+\`kode inline\`
+
+---`;
 
 export default function MateriFormScreen() {
   const { id, type, parentId } = useLocalSearchParams<{
@@ -44,6 +63,8 @@ export default function MateriFormScreen() {
     (type as any) ?? "tahsin"
   );
   const [submitting, setSubmitting] = useState(false);
+  const [mdTab, setMdTab] = useState<"edit" | "preview">("edit");
+  const [showCheatsheet, setShowCheatsheet] = useState(false);
 
   useEffect(() => {
     if (existing) {
@@ -108,6 +129,7 @@ export default function MateriFormScreen() {
     <ScrollView
       style={st.container}
       contentContainerStyle={{ padding: 16, paddingBottom: 40 }}
+      keyboardShouldPersistTaps="handled"
     >
       <Text style={st.heading}>
         {isEdit ? "Edit Materi" : "Tambah Materi Baru"}
@@ -116,7 +138,9 @@ export default function MateriFormScreen() {
       {!isEdit && parentId && (
         <View style={st.infoBadge}>
           <FontAwesome name="sitemap" size={12} color={Colors.info} />
-          <Text style={st.infoBadgeText}>Mode Sub-bab: materi baru akan dibuat di bawah BAB/Sub-bab terpilih</Text>
+          <Text style={st.infoBadgeText}>
+            Mode Sub-bab: materi baru akan dibuat di bawah BAB/Sub-bab terpilih
+          </Text>
         </View>
       )}
 
@@ -166,15 +190,121 @@ export default function MateriFormScreen() {
         placeholderTextColor={Colors.textSecondary}
       />
 
-      <Text style={st.label}>Deskripsi</Text>
-      <TextInput
-        style={[st.input, { height: 80, textAlignVertical: "top" }]}
-        value={deskripsi}
-        onChangeText={setDeskripsi}
-        placeholder="Deskripsi materi (opsional)"
-        placeholderTextColor={Colors.textSecondary}
-        multiline
-      />
+      {/* Markdown editor with live preview */}
+      <View style={st.mdSection}>
+        {/* Header row */}
+        <View style={st.mdHeader}>
+          <Text style={st.label}>Konten Materi (Markdown)</Text>
+          <Pressable
+            style={st.cheatsheetBtn}
+            onPress={() => setShowCheatsheet((v) => !v)}
+          >
+            <FontAwesome name="question-circle" size={14} color={Colors.primary} />
+            <Text style={st.cheatsheetBtnText}>
+              {showCheatsheet ? "Tutup" : "Panduan MD"}
+            </Text>
+          </Pressable>
+        </View>
+
+        {/* Cheatsheet panel */}
+        {showCheatsheet && (
+          <View style={st.cheatsheetPanel}>
+            <Text style={st.cheatsheetTitle}>Panduan Format Markdown</Text>
+            <View style={st.cheatsheetGrid}>
+              {[
+                { input: "# Judul 1", result: "Heading besar" },
+                { input: "## Judul 2", result: "Heading sedang" },
+                { input: "**teks**", result: "Teks tebal" },
+                { input: "*teks*", result: "Teks miring" },
+                { input: "> teks", result: "Kutipan/penting" },
+                { input: "- item", result: "Daftar bullet" },
+                { input: "1. item", result: "Daftar angka" },
+                { input: "`kode`", result: "Kode inline" },
+                { input: "---", result: "Garis pemisah" },
+              ].map((r) => (
+                <View key={r.input} style={st.cheatsheetRow}>
+                  <Text style={st.cheatsheetCode}>{r.input}</Text>
+                  <Text style={st.cheatsheetArrow}>→</Text>
+                  <Text style={st.cheatsheetResult}>{r.result}</Text>
+                </View>
+              ))}
+            </View>
+          </View>
+        )}
+
+        {/* Editor / Preview tabs */}
+        <View style={st.tabBar}>
+          <Pressable
+            style={[st.tab, mdTab === "edit" && st.tabActive]}
+            onPress={() => setMdTab("edit")}
+          >
+            <FontAwesome
+              name="pencil"
+              size={13}
+              color={mdTab === "edit" ? Colors.primary : Colors.textSecondary}
+            />
+            <Text
+              style={[st.tabText, mdTab === "edit" && st.tabTextActive]}
+            >
+              Editor
+            </Text>
+          </Pressable>
+          <Pressable
+            style={[st.tab, mdTab === "preview" && st.tabActive]}
+            onPress={() => setMdTab("preview")}
+          >
+            <FontAwesome
+              name="eye"
+              size={13}
+              color={
+                mdTab === "preview" ? Colors.primary : Colors.textSecondary
+              }
+            />
+            <Text
+              style={[st.tabText, mdTab === "preview" && st.tabTextActive]}
+            >
+              Preview
+            </Text>
+          </Pressable>
+        </View>
+
+        {mdTab === "edit" ? (
+          <TextInput
+            style={st.mdInput}
+            value={deskripsi}
+            onChangeText={setDeskripsi}
+            placeholder={`Tulis konten materi dalam format Markdown...\n\nContoh:\n# Pendahuluan\n\nIlmu tajwid adalah...\n\n## Definisi\n\nTajwid berarti...`}
+            placeholderTextColor={Colors.textSecondary}
+            multiline
+            autoCorrect={false}
+            autoCapitalize="sentences"
+            textAlignVertical="top"
+          />
+        ) : (
+          <View style={st.previewBox}>
+            {deskripsi.trim().length === 0 ? (
+              <View style={st.previewEmpty}>
+                <FontAwesome
+                  name="file-text-o"
+                  size={28}
+                  color={Colors.textSecondary}
+                />
+                <Text style={st.previewEmptyText}>
+                  Belum ada konten — tulis di tab Editor
+                </Text>
+              </View>
+            ) : (
+              <MarkdownRenderer content={deskripsi} />
+            )}
+          </View>
+        )}
+
+        <Text style={st.mdHint}>
+          {deskripsi.length > 0
+            ? `${deskripsi.length} karakter`
+            : "Kosong — isi konten materi di atas"}
+        </Text>
+      </View>
 
       <Text style={st.label}>Urutan (Seq)</Text>
       <TextInput
@@ -307,6 +437,140 @@ const st = StyleSheet.create({
   typeBtnText: { fontSize: 14, fontWeight: "600", color: Colors.textSecondary },
   typeBtnTextActive: { color: "#fff" },
 
+  // Markdown editor section
+  mdSection: {
+    marginTop: 14,
+  },
+  mdHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    marginBottom: 6,
+  },
+  cheatsheetBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 5,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 8,
+    backgroundColor: Colors.primaryLight,
+  },
+  cheatsheetBtnText: {
+    fontSize: 12,
+    fontWeight: "600",
+    color: Colors.primary,
+  },
+  cheatsheetPanel: {
+    backgroundColor: "#fff",
+    borderRadius: 12,
+    padding: 14,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    marginBottom: 10,
+  },
+  cheatsheetTitle: {
+    fontSize: 13,
+    fontWeight: "700",
+    color: Colors.text,
+    marginBottom: 10,
+  },
+  cheatsheetGrid: {
+    gap: 6,
+  },
+  cheatsheetRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+  },
+  cheatsheetCode: {
+    width: 100,
+    fontFamily: "monospace",
+    fontSize: 12,
+    color: Colors.primaryDark,
+    backgroundColor: "#F0F4F0",
+    borderRadius: 4,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+  },
+  cheatsheetArrow: {
+    fontSize: 13,
+    color: Colors.textSecondary,
+  },
+  cheatsheetResult: {
+    flex: 1,
+    fontSize: 12,
+    color: Colors.textSecondary,
+  },
+  tabBar: {
+    flexDirection: "row",
+    backgroundColor: "#fff",
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    padding: 4,
+    marginBottom: 8,
+    gap: 4,
+  },
+  tab: {
+    flex: 1,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 6,
+    paddingVertical: 8,
+    borderRadius: 7,
+  },
+  tabActive: {
+    backgroundColor: Colors.primaryLight,
+  },
+  tabText: {
+    fontSize: 13,
+    fontWeight: "600",
+    color: Colors.textSecondary,
+  },
+  tabTextActive: {
+    color: Colors.primary,
+  },
+  mdInput: {
+    backgroundColor: "#fff",
+    borderRadius: 12,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    fontSize: 14,
+    color: Colors.text,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    minHeight: 260,
+    fontFamily: "monospace",
+    lineHeight: 22,
+  },
+  previewBox: {
+    backgroundColor: "#fff",
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    padding: 16,
+    minHeight: 180,
+  },
+  previewEmpty: {
+    flex: 1,
+    alignItems: "center",
+    paddingVertical: 32,
+    gap: 10,
+  },
+  previewEmptyText: {
+    fontSize: 13,
+    color: Colors.textSecondary,
+    textAlign: "center",
+  },
+  mdHint: {
+    fontSize: 11,
+    color: Colors.textSecondary,
+    textAlign: "right",
+    marginTop: 4,
+  },
+
   switchRow: {
     flexDirection: "row",
     alignItems: "center",
@@ -339,3 +603,4 @@ const st = StyleSheet.create({
     color: "#fff",
   },
 });
+

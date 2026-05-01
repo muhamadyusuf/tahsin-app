@@ -16,6 +16,7 @@ import FontAwesome from "@expo/vector-icons/FontAwesome";
 import { api } from "@/convex/_generated/api";
 import { Id } from "@/convex/_generated/dataModel";
 import { Colors } from "@/lib/constants";
+import MarkdownRenderer from "@/components/MarkdownRenderer";
 
 export default function MateriReaderScreen() {
   const { materiId } = useLocalSearchParams<{ materiId: string }>();
@@ -64,39 +65,8 @@ export default function MateriReaderScreen() {
 
   const hasQuiz = (quizCounts[0]?.count ?? 0) > 0;
   const quizCount = quizCounts[0]?.count ?? 0;
-
-  // Parse deskripsi into typed blocks (supports # H1, ## H2, body paragraphs)
-  type Block =
-    | { kind: "h1"; text: string }
-    | { kind: "h2"; text: string }
-    | { kind: "body"; text: string };
-
-  const blocks: Block[] = [];
-  const rawLines = (materi.deskripsi ?? "").split("\n");
-  let buffer = "";
-
-  const flushBuffer = () => {
-    const trimmed = buffer.trim();
-    if (trimmed) blocks.push({ kind: "body", text: trimmed });
-    buffer = "";
-  };
-
-  for (const line of rawLines) {
-    if (line.startsWith("## ")) {
-      flushBuffer();
-      blocks.push({ kind: "h2", text: line.slice(3).trim() });
-    } else if (line.startsWith("# ")) {
-      flushBuffer();
-      blocks.push({ kind: "h1", text: line.slice(2).trim() });
-    } else if (line.trim() === "") {
-      flushBuffer();
-    } else {
-      buffer += (buffer ? "\n" : "") + line;
-    }
-  }
-  flushBuffer();
-
-  const isEmpty = blocks.length === 0;
+  const mdContent = (materi.deskripsi ?? "").trim();
+  const isEmpty = mdContent.length === 0;
 
   return (
     <ScrollView
@@ -126,27 +96,7 @@ export default function MateriReaderScreen() {
             <Text style={st.emptyContentText}>Isi materi belum ditambahkan.</Text>
           </View>
         ) : (
-          blocks.map((block, i) => {
-            if (block.kind === "h1") {
-              return (
-                <Text key={i} style={st.heading1}>
-                  {block.text}
-                </Text>
-              );
-            }
-            if (block.kind === "h2") {
-              return (
-                <Text key={i} style={st.heading2}>
-                  {block.text}
-                </Text>
-              );
-            }
-            return (
-              <Text key={i} style={st.body}>
-                {block.text}
-              </Text>
-            );
-          })
+          <MarkdownRenderer content={mdContent} />
         )}
       </View>
 
@@ -314,27 +264,7 @@ const st = StyleSheet.create({
     elevation: 1,
     gap: 12,
   },
-  heading1: {
-    fontSize: 19,
-    fontWeight: "800",
-    color: Colors.primaryDark,
-    marginTop: 6,
-  },
-  heading2: {
-    fontSize: 16,
-    fontWeight: "700",
-    color: Colors.primary,
-    marginTop: 4,
-    borderLeftWidth: 3,
-    borderLeftColor: Colors.primary,
-    paddingLeft: 10,
-  },
-  body: {
-    fontSize: 16,
-    color: Colors.text,
-    lineHeight: 28,
-    textAlign: "justify",
-  },
+
   emptyContent: {
     alignItems: "center",
     paddingVertical: 24,
