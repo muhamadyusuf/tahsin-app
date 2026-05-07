@@ -48,7 +48,7 @@ import {
 } from "@/lib/sholat-api";
 import * as Location from "expo-location";
 import Svg, { Circle, Line, Text as SvgText, G, Polygon } from "react-native-svg";
-import { getQiblaDirection, bearingToCardinal, QiblaData } from "@/lib/qibla-api";
+import { getQiblaData, bearingToCardinal, QiblaData } from "@/lib/qibla-api";
 
 const { width } = Dimensions.get("window");
 
@@ -330,51 +330,69 @@ export default function TilawahScreen() {
     await loadSholatData(loc);
   };
 
+  const getWebCoords = (): Promise<{ latitude: number; longitude: number }> =>
+    new Promise((resolve, reject) => {
+      if (!navigator?.geolocation) {
+        reject(new Error("Geolocation tidak didukung browser ini."));
+        return;
+      }
+      navigator.geolocation.getCurrentPosition(
+        (pos) => resolve({ latitude: pos.coords.latitude, longitude: pos.coords.longitude }),
+        (err) => reject(err),
+        { enableHighAccuracy: false, timeout: 10000, maximumAge: 60000 }
+      );
+    });
+
   const loadQiblaData = async () => {
     setQiblaLoading(true);
     setQiblaError(null);
+    let latitude: number;
+    let longitude: number;
+
+    // ── Step 1: get coordinates ──
     try {
-      // On web the browser handles the permission prompt itself;
-      // requestForegroundPermissionsAsync is only needed on native.
-      if (Platform.OS !== "web") {
+      if (Platform.OS === "web") {
+        const coords = await getWebCoords();
+        latitude = coords.latitude;
+        longitude = coords.longitude;
+      } else {
         const { status } = await Location.requestForegroundPermissionsAsync();
         if (status !== "granted") {
           setQiblaError("Izin lokasi ditolak. Aktifkan izin lokasi di pengaturan perangkat.");
+          setQiblaLoading(false);
           return;
         }
+        const loc = await Location.getCurrentPositionAsync({
+          accuracy: Location.Accuracy.Balanced,
+        });
+        latitude = loc.coords.latitude;
+        longitude = loc.coords.longitude;
       }
-      const loc = await Location.getCurrentPositionAsync(
-        Platform.OS === "web"
-          ? {}
-          : { accuracy: Location.Accuracy.Balanced }
-      );
-      const { latitude, longitude } = loc.coords;
-      setQiblaCoords({ lat: latitude, lon: longitude });
-      const data = await getQiblaDirection(latitude, longitude);
-      setQiblaData(data);
     } catch (err: any) {
-      console.error("Failed to load qibla:", err);
+      console.error("Qibla geolocation error:", err);
       const isWeb = Platform.OS === "web";
       const isDenied =
         err?.code === 1 ||
         String(err?.message).toLowerCase().includes("denied") ||
         String(err?.message).toLowerCase().includes("permission");
-      if (isDenied) {
-        setQiblaError(
-          isWeb
-            ? "Akses lokasi ditolak. Izinkan akses lokasi di browser Anda lalu coba lagi."
+      setQiblaError(
+        isDenied
+          ? isWeb
+            ? "Akses lokasi ditolak. Izinkan akses lokasi di browser lalu coba lagi."
             : "Izin lokasi ditolak. Aktifkan izin lokasi di pengaturan perangkat."
-        );
-      } else {
-        setQiblaError(
-          isWeb
-            ? "Gagal mendapatkan lokasi. Pastikan browser mengizinkan akses lokasi."
-            : "Gagal memuat arah kiblat. Pastikan GPS aktif."
-        );
-      }
-    } finally {
+          : isWeb
+            ? "Gagal mendapatkan lokasi dari browser. Coba reload halaman."
+            : "Gagal mendapatkan lokasi. Pastikan GPS aktif."
+      );
       setQiblaLoading(false);
+      return;
     }
+
+    // ── Step 2: calculate bearing locally (no API needed) ──
+    setQiblaCoords({ lat: latitude, lon: longitude });
+    const data = getQiblaData(latitude, longitude);
+    setQiblaData(data);
+    setQiblaLoading(false);
   };
 
   const handleNextHadis = async () => {

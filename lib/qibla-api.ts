@@ -1,25 +1,35 @@
-const ALADHAN_BASE = "https://api.aladhan.com/v1";
+// Koordinat Ka'bah, Mekkah
+const KAABA_LAT = 21.4225;
+const KAABA_LON = 39.8262;
 
 export interface QiblaData {
   latitude: number;
   longitude: number;
-  bearing: number; // degrees clockwise from North
+  bearing: number; // degrees clockwise from North (0–360)
 }
 
-export async function getQiblaDirection(
-  lat: number,
-  lon: number
-): Promise<QiblaData> {
-  const res = await fetch(`${ALADHAN_BASE}/qibla/${lat}/${lon}`);
-  if (!res.ok) throw new Error("Gagal mendapatkan arah kiblat");
-  const json = await res.json();
-  if (json.code !== 200) throw new Error("Gagal mendapatkan arah kiblat");
-  const data = json.data;
-  if (data?.bearing == null) throw new Error("Data arah kiblat tidak valid");
+/**
+ * Menghitung arah kiblat secara lokal menggunakan formula great-circle bearing.
+ * Tidak membutuhkan koneksi internet.
+ */
+export function calculateQiblaBearing(userLat: number, userLon: number): number {
+  const toRad = (deg: number) => (deg * Math.PI) / 180;
+  const lat1 = toRad(userLat);
+  const lat2 = toRad(KAABA_LAT);
+  const dLon = toRad(KAABA_LON - userLon);
+  const y = Math.sin(dLon) * Math.cos(lat2);
+  const x =
+    Math.cos(lat1) * Math.sin(lat2) -
+    Math.sin(lat1) * Math.cos(lat2) * Math.cos(dLon);
+  const bearing = (Math.atan2(y, x) * 180) / Math.PI;
+  return ((bearing % 360) + 360) % 360;
+}
+
+export function getQiblaData(userLat: number, userLon: number): QiblaData {
   return {
-    latitude: Number(data.latitude),
-    longitude: Number(data.longitude),
-    bearing: Number(data.bearing),
+    latitude: userLat,
+    longitude: userLon,
+    bearing: calculateQiblaBearing(userLat, userLon),
   };
 }
 
