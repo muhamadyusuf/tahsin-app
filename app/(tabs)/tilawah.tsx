@@ -55,63 +55,178 @@ const { width } = Dimensions.get("window");
 // Quick access surahs
 const POPULAR_SURAHS = [36, 67, 56, 18, 55, 1]; // Yasin, Al-Mulk, Al-Waqi'ah, Al-Kahf, Ar-Rahman, Al-Fatihah
 
-function QiblaCompass({ bearing }: { bearing: number }) {
-  const SIZE = 240;
+function QiblaCompassLive({
+  bearing,
+  deviceHeading,
+  compassAvailable,
+}: {
+  bearing: number;
+  deviceHeading: number | null;
+  compassAvailable: boolean;
+}) {
+  const SIZE = 280;
   const CX = SIZE / 2;
   const CY = SIZE / 2;
-  const OUTER_R = SIZE / 2 - 8;
-  const INNER_R = OUTER_R - 16;
+  const OUTER_R = SIZE / 2 - 3;
+  const RING_R = OUTER_R - 18;
+  const TIP_Y = CY - RING_R + 14;
+
+  // Initialize needle to static bearing so it shows qibla even without compass
+  const needleAnim = useRef(new Animated.Value(bearing)).current;
+  const roseAnim = useRef(new Animated.Value(0)).current;
+  const prevNeedle = useRef(bearing);
+  const prevRose = useRef(0);
+  const pulseAnim = useRef(new Animated.Value(1)).current;
+  const pulseLoopRef = useRef<Animated.CompositeAnimation | null>(null);
+
+  const diff = deviceHeading != null ? ((bearing - deviceHeading + 360) % 360) : null;
+  const isAligned = diff != null && (diff < 12 || diff > 348);
+  const turnDeg = diff != null ? (diff <= 180 ? Math.round(diff) : Math.round(360 - diff)) : 0;
+  const turnDir = diff != null && diff <= 180 ? "kanan" : "kiri";
+
+  const animStyle = (anim: Animated.Value) => ({
+    transform: [{
+      rotate: anim.interpolate({
+        inputRange: [-7200, 7200],
+        outputRange: ["-7200deg", "7200deg"],
+        extrapolate: "extend",
+      }),
+    }],
+  });
+
+  useEffect(() => {
+    if (deviceHeading == null) return;
+    const rawN = bearing - deviceHeading;
+    const dN = ((rawN - prevNeedle.current + 540) % 360) - 180;
+    prevNeedle.current += dN;
+    const rawR = -deviceHeading;
+    const dR = ((rawR - prevRose.current + 540) % 360) - 180;
+    prevRose.current += dR;
+    Animated.spring(needleAnim, { toValue: prevNeedle.current, useNativeDriver: false, damping: 18, stiffness: 100, mass: 0.6 }).start();
+    Animated.spring(roseAnim, { toValue: prevRose.current, useNativeDriver: false, damping: 18, stiffness: 100, mass: 0.6 }).start();
+  }, [deviceHeading, bearing]);
+
+  useEffect(() => {
+    if (isAligned) {
+      pulseLoopRef.current = Animated.loop(
+        Animated.sequence([
+          Animated.timing(pulseAnim, { toValue: 1.06, duration: 700, useNativeDriver: false }),
+          Animated.timing(pulseAnim, { toValue: 1.0, duration: 700, useNativeDriver: false }),
+        ])
+      );
+      pulseLoopRef.current.start();
+    } else {
+      pulseLoopRef.current?.stop();
+      pulseAnim.setValue(1);
+    }
+  }, [isAligned]);
+
+  const absLayer = { position: "absolute" as const, top: 0, left: 0, width: SIZE, height: SIZE };
 
   return (
-    <Svg width={SIZE} height={SIZE}>
-      {/* Outer ring */}
-      <Circle cx={CX} cy={CY} r={OUTER_R} fill="#ECEFF1" stroke="#CFD8DC" strokeWidth={2} />
-      {/* Compass face */}
-      <Circle cx={CX} cy={CY} r={INNER_R} fill="#FAFAFA" />
+    <View style={{ alignItems: "center" }}>
+      <View style={{ width: SIZE, height: SIZE }}>
 
-      {/* Tick marks every 45° */}
-      {Array.from({ length: 8 }, (_, i) => {
-        const deg = i * 45;
-        const rad = (deg - 90) * (Math.PI / 180);
-        const isMajor = deg % 90 === 0;
-        const tickInner = INNER_R - (isMajor ? 13 : 7);
-        return (
-          <Line
-            key={deg}
-            x1={CX + Math.cos(rad) * tickInner}
-            y1={CY + Math.sin(rad) * tickInner}
-            x2={CX + Math.cos(rad) * INNER_R}
-            y2={CY + Math.sin(rad) * INNER_R}
-            stroke={isMajor ? "#455A64" : "#90A4AE"}
-            strokeWidth={isMajor ? 2.5 : 1.5}
-          />
-        );
-      })}
+        {/* ── Layer 1: Fixed outer ring + degree ticks ── */}
+        <Svg width={SIZE} height={SIZE} style={absLayer}>
+          <Circle cx={CX} cy={CY} r={OUTER_R} fill="#E8F5E9" stroke="#A5D6A7" strokeWidth={2} />
+          {Array.from({ length: 36 }, (_, i) => {
+            const deg = i * 10;
+            const rad = (deg - 90) * (Math.PI / 180);
+            const isMajor = deg % 30 === 0;
+            return (
+              <Line key={deg}
+                x1={CX + Math.cos(rad) * (OUTER_R - 2)} y1={CY + Math.sin(rad) * (OUTER_R - 2)}
+                x2={CX + Math.cos(rad) * (OUTER_R - (isMajor ? 14 : 7))} y2={CY + Math.sin(rad) * (OUTER_R - (isMajor ? 14 : 7))}
+                stroke={isMajor ? "#558B2F" : "#AED581"} strokeWidth={isMajor ? 2.5 : 1}
+              />
+            );
+          })}
+          <Circle cx={CX} cy={CY} r={RING_R} fill="#FAFAFA" stroke="#C8E6C9" strokeWidth={1.5} />
+        </Svg>
 
-      {/* Cardinal labels: U=Utara(N), S, T=Timur(E), B=Barat(W) */}
-      <SvgText x={CX} y={CY - INNER_R + 22} textAnchor="middle" fontSize="16" fontWeight="bold" fill="#E53935">U</SvgText>
-      <SvgText x={CX} y={CY + INNER_R - 6} textAnchor="middle" fontSize="13" fill="#546E7A">S</SvgText>
-      <SvgText x={CX + INNER_R - 7} y={CY + 5} textAnchor="middle" fontSize="13" fill="#546E7A">T</SvgText>
-      <SvgText x={CX - INNER_R + 7} y={CY + 5} textAnchor="middle" fontSize="13" fill="#546E7A">B</SvgText>
+        {/* ── Layer 2: Animated compass rose (N/S/T/B rotate with world) ── */}
+        <Animated.View style={[absLayer, animStyle(roseAnim)]}>
+          <Svg width={SIZE} height={SIZE}>
+            {Array.from({ length: 8 }, (_, i) => {
+              const deg = i * 45;
+              const rad = (deg - 90) * (Math.PI / 180);
+              const isMajor = deg % 90 === 0;
+              return (
+                <Line key={deg}
+                  x1={CX + Math.cos(rad) * (RING_R - 2)} y1={CY + Math.sin(rad) * (RING_R - 2)}
+                  x2={CX + Math.cos(rad) * (RING_R - (isMajor ? 22 : 14))} y2={CY + Math.sin(rad) * (RING_R - (isMajor ? 22 : 14))}
+                  stroke={isMajor ? "#2E7D32" : "#81C784"} strokeWidth={isMajor ? 3.5 : 1.5}
+                />
+              );
+            })}
+            <SvgText x={CX} y={CY - RING_R + 28} textAnchor="middle" fontSize="20" fontWeight="bold" fill="#C62828">U</SvgText>
+            <SvgText x={CX} y={CY + RING_R - 6} textAnchor="middle" fontSize="15" fill="#546E7A">S</SvgText>
+            <SvgText x={CX + RING_R - 10} y={CY + 6} textAnchor="middle" fontSize="15" fill="#546E7A">T</SvgText>
+            <SvgText x={CX - RING_R + 10} y={CY + 6} textAnchor="middle" fontSize="15" fill="#546E7A">B</SvgText>
+          </Svg>
+        </Animated.View>
 
-      {/* Qibla needle — rotated by bearing degrees from North (top) */}
-      <G rotation={bearing} origin={`${CX}, ${CY}`}>
-        {/* Tail triangle (gray, below center) */}
-        <Polygon
-          points={`${CX},${CY + 38} ${CX - 7},${CY + 16} ${CX + 7},${CY + 16}`}
-          fill="#B0BEC5"
-        />
-        {/* Head triangle (green, above center — pointing North by default) */}
-        <Polygon
-          points={`${CX},${CY - INNER_R + 10} ${CX - 9},${CY - 12} ${CX + 9},${CY - 12}`}
-          fill="#2E7D32"
-        />
-      </G>
+        {/* ── Layer 3: Animated qibla needle ── */}
+        <Animated.View style={[absLayer, animStyle(needleAnim)]}>
+          <Svg width={SIZE} height={SIZE}>
+            {/* Needle body */}
+            <Line x1={CX} y1={CY + 52} x2={CX} y2={TIP_Y + 28} stroke="#2E7D32" strokeWidth={5} strokeLinecap="round" />
+            {/* Head arrowhead */}
+            <Polygon points={`${CX},${TIP_Y} ${CX - 14},${TIP_Y + 30} ${CX + 14},${TIP_Y + 30}`} fill="#2E7D32" />
+            {/* Tail */}
+            <Polygon points={`${CX},${CY + 62} ${CX - 8},${CY + 52} ${CX + 8},${CY + 52}`} fill="#9E9E9E" />
+            {/* Ka'bah marker circle at tip */}
+            <Circle cx={CX} cy={TIP_Y + 8} r={13} fill="#1B5E20" />
+            <Circle cx={CX} cy={TIP_Y + 8} r={6} fill="none" stroke="rgba(255,255,255,0.6)" strokeWidth={2} />
+          </Svg>
+        </Animated.View>
 
-      {/* Center dot */}
-      <Circle cx={CX} cy={CY} r={9} fill="#1B5E20" />
-      <Circle cx={CX} cy={CY} r={5} fill="#fff" />
-    </Svg>
+        {/* ── Layer 4: Fixed center pin ── */}
+        <Svg width={SIZE} height={SIZE} style={absLayer}>
+          <Circle cx={CX} cy={CY} r={18} fill="#1B5E20" />
+          <Circle cx={CX} cy={CY} r={11} fill="#fff" />
+          <Circle cx={CX} cy={CY} r={5} fill="#2E7D32" />
+        </Svg>
+
+        {/* ── Layer 5: Alignment pulse ring ── */}
+        {isAligned && (
+          <Animated.View style={[absLayer, { transform: [{ scale: pulseAnim }] }]}>
+            <Svg width={SIZE} height={SIZE}>
+              <Circle cx={CX} cy={CY} r={OUTER_R - 1} fill="none" stroke="#4CAF50" strokeWidth={5} strokeOpacity={0.5} />
+            </Svg>
+          </Animated.View>
+        )}
+      </View>
+
+      {/* Status badge */}
+      {deviceHeading != null ? (
+        <View style={[styles.qiblaAlignBadge, isAligned && styles.qiblaAlignBadgeActive]}>
+          {isAligned
+            ? <FontAwesome name="check-circle" size={16} color="#fff" />
+            : <FontAwesome5 name="directions" size={16} color={Colors.primary} />}
+          <Text style={[styles.qiblaAlignText, isAligned && styles.qiblaAlignTextActive]}>
+            {isAligned ? "Anda Menghadap Kiblat ✓" : `Putar ${turnDeg}° ke ${turnDir}`}
+          </Text>
+        </View>
+      ) : (
+        <View style={styles.qiblaNoCompassBadge}>
+          {!compassAvailable ? (
+            <>
+              <FontAwesome name="info-circle" size={13} color={Colors.textSecondary} />
+              <Text style={styles.qiblaNoCompassText}>
+                {Platform.OS === "web" ? "Kompas tidak tersedia, lihat sudut di bawah" : "Sensor kompas tidak ditemukan"}
+              </Text>
+            </>
+          ) : (
+            <>
+              <ActivityIndicator size="small" color={Colors.primary} />
+              <Text style={styles.qiblaNoCompassText}>Menunggu kompas...</Text>
+            </>
+          )}
+        </View>
+      )}
+    </View>
   );
 }
 
@@ -158,6 +273,12 @@ export default function TilawahScreen() {
   const [qiblaLoading, setQiblaLoading] = useState(false);
   const [qiblaError, setQiblaError] = useState<string | null>(null);
   const [qiblaCoords, setQiblaCoords] = useState<{ lat: number; lon: number } | null>(null);
+  // Live compass heading
+  const [deviceHeading, setDeviceHeading] = useState<number | null>(null);
+  const [compassAvailable, setCompassAvailable] = useState(true);
+  const headingSubRef = useRef<{ remove: () => void } | null>(null);
+  const webOrientationHandlerRef = useRef<((e: Event) => void) | null>(null);
+  const webCompassReceivedRef = useRef(false);
 
   const scrollY = useRef(new Animated.Value(0)).current;
 
@@ -394,6 +515,87 @@ export default function TilawahScreen() {
     setQiblaData(data);
     setQiblaLoading(false);
   };
+
+  // ── Compass heading watch ──
+  const stopHeadingWatch = () => {
+    if (Platform.OS === "web") {
+      if (webOrientationHandlerRef.current) {
+        window.removeEventListener("deviceorientationabsolute", webOrientationHandlerRef.current as any, true);
+        window.removeEventListener("deviceorientation", webOrientationHandlerRef.current as any, true);
+        webOrientationHandlerRef.current = null;
+      }
+    } else {
+      headingSubRef.current?.remove();
+      headingSubRef.current = null;
+    }
+    setDeviceHeading(null);
+  };
+
+  const startHeadingWatch = async () => {
+    setCompassAvailable(true);
+    webCompassReceivedRef.current = false;
+
+    if (Platform.OS === "web") {
+      // iOS 13+ requires explicit permission for DeviceOrientationEvent
+      if (typeof (DeviceOrientationEvent as any).requestPermission === "function") {
+        try {
+          const perm = await (DeviceOrientationEvent as any).requestPermission();
+          if (perm !== "granted") { setCompassAvailable(false); return; }
+        } catch { setCompassAvailable(false); return; }
+      }
+      const handler = (e: Event) => {
+        const ev = e as DeviceOrientationEvent;
+        let heading: number | null = null;
+        // iOS Safari: webkitCompassHeading gives magnetic-north heading directly
+        if ((ev as any).webkitCompassHeading != null && (ev as any).webkitCompassHeading >= 0) {
+          heading = (ev as any).webkitCompassHeading;
+        // Android Chrome: alpha with absolute=true is degrees from magnetic north
+        } else if (ev.alpha != null) {
+          heading = (360 - ev.alpha + 360) % 360;
+        }
+        if (heading != null) {
+          webCompassReceivedRef.current = true;
+          setDeviceHeading(heading);
+        }
+      };
+      window.addEventListener("deviceorientationabsolute", handler as any, true);
+      window.addEventListener("deviceorientation", handler as any, true);
+      webOrientationHandlerRef.current = handler as any;
+      // After 3 s with no data → compass unavailable (desktop browser)
+      setTimeout(() => {
+        if (!webCompassReceivedRef.current) setCompassAvailable(false);
+      }, 3000);
+    } else {
+      try {
+        const sub = await Location.watchHeadingAsync((h) => {
+          const heading = h.trueHeading >= 0 ? h.trueHeading : h.magHeading;
+          setDeviceHeading(heading);
+        });
+        headingSubRef.current = sub;
+      } catch {
+        setCompassAvailable(false);
+      }
+    }
+  };
+
+  // Start/stop compass when qibla modal opens/closes
+  useEffect(() => {
+    if (!qiblaModalVisible || !qiblaData) return;
+    startHeadingWatch();
+    return () => {
+      if (Platform.OS === "web") {
+        if (webOrientationHandlerRef.current) {
+          window.removeEventListener("deviceorientationabsolute", webOrientationHandlerRef.current as any, true);
+          window.removeEventListener("deviceorientation", webOrientationHandlerRef.current as any, true);
+          webOrientationHandlerRef.current = null;
+        }
+      } else {
+        headingSubRef.current?.remove();
+        headingSubRef.current = null;
+      }
+      setDeviceHeading(null);
+    };
+  }, [qiblaModalVisible, !!qiblaData]);
 
   const handleNextHadis = async () => {
     if (!hadis) return;
@@ -1020,7 +1222,7 @@ export default function TilawahScreen() {
         onRequestClose={() => setQiblaModalVisible(false)}
       >
         <View style={styles.modalOverlay}>
-          <View style={[styles.modalSheet, { paddingBottom: 28 }]}>
+        <View style={[styles.modalSheet, { paddingBottom: 20, maxHeight: "93%" }]}>
             {/* Header */}
             <View style={styles.modalHeader}>
               <View>
@@ -1055,10 +1257,14 @@ export default function TilawahScreen() {
                 </TouchableOpacity>
               </View>
             ) : qiblaData && qiblaData.bearing != null ? (
-              <>
-                {/* Compass */}
+              <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 8 }}>
+                {/* Live compass */}
                 <View style={styles.qiblaCompassWrap}>
-                  <QiblaCompass bearing={qiblaData.bearing} />
+                  <QiblaCompassLive
+                    bearing={qiblaData.bearing}
+                    deviceHeading={deviceHeading}
+                    compassAvailable={compassAvailable}
+                  />
                 </View>
 
                 {/* Bearing info */}
@@ -1077,27 +1283,24 @@ export default function TilawahScreen() {
                   </View>
                 </View>
 
-                {/* Instruction */}
-                <View style={styles.qiblaInstructionBox}>
-                  <FontAwesome name="info-circle" size={15} color={Colors.primary} style={{ marginTop: 1 }} />
-                  <Text style={styles.qiblaInstructionText}>
-                    Hadapkan diri ke arah{" "}
-                    <Text style={{ fontWeight: "700" }}>
-                      {qiblaData.bearing.toFixed(0)}° dari Utara
-                    </Text>{" "}
-                    ({bearingToCardinal(qiblaData.bearing)}).{" "}
-                    {Platform.OS === "web"
-                      ? "Gunakan kompas di perangkat atau aplikasi kompas untuk menentukan arah Utara terlebih dahulu."
-                      : "Gunakan kompas fisik atau aplikasi kompas untuk menentukan arah Utara terlebih dahulu."}
-                  </Text>
-                </View>
+                {/* Web desktop: static instruction */}
+                {(Platform.OS === "web" && !compassAvailable) && (
+                  <View style={styles.qiblaInstructionBox}>
+                    <FontAwesome name="info-circle" size={15} color={Colors.primary} style={{ marginTop: 1 }} />
+                    <Text style={styles.qiblaInstructionText}>
+                      Hadapkan diri ke arah{" "}
+                      <Text style={{ fontWeight: "700" }}>{qiblaData.bearing.toFixed(0)}° dari Utara</Text>
+                      {" "}({bearingToCardinal(qiblaData.bearing)}). Gunakan kompas fisik untuk menentukan Utara terlebih dahulu.
+                    </Text>
+                  </View>
+                )}
 
                 {/* Re-detect button */}
                 <TouchableOpacity style={styles.qiblaRedetectBtn} onPress={loadQiblaData}>
                   <FontAwesome name="location-arrow" size={13} color={Colors.primary} />
                   <Text style={styles.qiblaRedetectText}>Deteksi Ulang Lokasi</Text>
                 </TouchableOpacity>
-              </>
+              </ScrollView>
             ) : null}
           </View>
         </View>
@@ -2283,5 +2486,47 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: "600",
     color: Colors.primary,
+  },
+  // Alignment badge (live compass)
+  qiblaAlignBadge: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    marginTop: 14,
+    paddingHorizontal: 20,
+    paddingVertical: 10,
+    borderRadius: 20,
+    backgroundColor: Colors.primaryLight,
+    borderWidth: 1.5,
+    borderColor: Colors.primary,
+  },
+  qiblaAlignBadgeActive: {
+    backgroundColor: Colors.primary,
+    borderColor: Colors.primaryDark,
+  },
+  qiblaAlignText: {
+    fontSize: 14,
+    fontWeight: "700",
+    color: Colors.primary,
+  },
+  qiblaAlignTextActive: {
+    color: "#fff",
+  },
+  qiblaNoCompassBadge: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    marginTop: 12,
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: 10,
+    backgroundColor: Colors.backgroundLight,
+    borderWidth: 1,
+    borderColor: Colors.border,
+  },
+  qiblaNoCompassText: {
+    fontSize: 12,
+    color: Colors.textSecondary,
+    flex: 1,
   },
 });
