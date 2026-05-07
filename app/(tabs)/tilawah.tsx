@@ -437,63 +437,6 @@ export default function TilawahScreen() {
           <FontAwesome name="chevron-right" size={14} color={Colors.primary} />
         </TouchableOpacity>
 
-        {/* Hadis Harian */}
-        <View style={styles.sectionHeader}>
-          <Text style={styles.sectionTitle}>Hadis Harian</Text>
-          <View style={{ flexDirection: "row", gap: 12 }}>
-            <TouchableOpacity
-              onPress={() => {
-                setHadisSearch("");
-                setHadisSearchResults([]);
-                setMode("hadis-search");
-              }}
-            >
-              <FontAwesome name="search" size={16} color={Colors.primary} />
-            </TouchableOpacity>
-            <TouchableOpacity onPress={loadRandomHadis} disabled={hadisLoading}>
-              <FontAwesome name="refresh" size={16} color={Colors.primary} />
-            </TouchableOpacity>
-          </View>
-        </View>
-        <View style={styles.hadisCard}>
-          {hadisLoading ? (
-            <ActivityIndicator size="small" color={Colors.primary} style={{ paddingVertical: 24 }} />
-          ) : hadis ? (
-            <>
-              {hadis.grade || hadis.takhrij ? (
-                <View style={styles.hadisMetaRow}>
-                  {hadis.takhrij ? (
-                    <View style={styles.hadisMetaBadge}>
-                      <Text style={styles.hadisMetaText}>{hadis.takhrij}</Text>
-                    </View>
-                  ) : null}
-                  {hadis.grade ? (
-                    <View style={[styles.hadisMetaBadge, styles.hadisGradeBadge]}>
-                      <Text style={styles.hadisMetaText}>{hadis.grade}</Text>
-                    </View>
-                  ) : null}
-                </View>
-              ) : null}
-              <Text style={styles.hadisArab}>{hadis.text.ar}</Text>
-              <View style={styles.hadisDivider} />
-              <Text style={styles.hadisIndo}>{hadis.text.id}</Text>
-              <View style={styles.hadisNav}>
-                <TouchableOpacity style={styles.hadisNavBtn} onPress={handlePrevHadis}>
-                  <FontAwesome name="chevron-left" size={13} color={Colors.primary} />
-                  <Text style={styles.hadisNavText}>Sebelumnya</Text>
-                </TouchableOpacity>
-                <Text style={styles.hadisId}>#{hadis.id}</Text>
-                <TouchableOpacity style={styles.hadisNavBtn} onPress={handleNextHadis}>
-                  <Text style={styles.hadisNavText}>Berikutnya</Text>
-                  <FontAwesome name="chevron-right" size={13} color={Colors.primary} />
-                </TouchableOpacity>
-              </View>
-            </>
-          ) : (
-            <Text style={styles.hadisError}>Gagal memuat hadis</Text>
-          )}
-        </View>
-
         {/* Menu Categories */}
         <View style={styles.sectionHeader}>
           <Text style={styles.sectionTitle}>Menu Utama</Text>
@@ -588,6 +531,63 @@ export default function TilawahScreen() {
               color={Colors.textSecondary}
             />
           </TouchableOpacity>
+        </View>
+
+        {/* Hadis Harian */}
+        <View style={styles.sectionHeader}>
+          <Text style={styles.sectionTitle}>Hadis Harian</Text>
+          <View style={{ flexDirection: "row", gap: 12 }}>
+            <TouchableOpacity
+              onPress={() => {
+                setHadisSearch("");
+                setHadisSearchResults([]);
+                setMode("hadis-search");
+              }}
+            >
+              <FontAwesome name="search" size={16} color={Colors.primary} />
+            </TouchableOpacity>
+            <TouchableOpacity onPress={loadRandomHadis} disabled={hadisLoading}>
+              <FontAwesome name="refresh" size={16} color={Colors.primary} />
+            </TouchableOpacity>
+          </View>
+        </View>
+        <View style={styles.hadisCard}>
+          {hadisLoading ? (
+            <ActivityIndicator size="small" color={Colors.primary} style={{ paddingVertical: 24 }} />
+          ) : hadis ? (
+            <>
+              {hadis.grade || hadis.takhrij ? (
+                <View style={styles.hadisMetaRow}>
+                  {hadis.takhrij ? (
+                    <View style={styles.hadisMetaBadge}>
+                      <Text style={styles.hadisMetaText}>{hadis.takhrij}</Text>
+                    </View>
+                  ) : null}
+                  {hadis.grade ? (
+                    <View style={[styles.hadisMetaBadge, styles.hadisGradeBadge]}>
+                      <Text style={styles.hadisMetaText}>{hadis.grade}</Text>
+                    </View>
+                  ) : null}
+                </View>
+              ) : null}
+              <Text style={styles.hadisArab}>{hadis.text.ar}</Text>
+              <View style={styles.hadisDivider} />
+              <Text style={styles.hadisIndo}>{hadis.text.id}</Text>
+              <View style={styles.hadisNav}>
+                <TouchableOpacity style={styles.hadisNavBtn} onPress={handlePrevHadis}>
+                  <FontAwesome name="chevron-left" size={13} color={Colors.primary} />
+                  <Text style={styles.hadisNavText}>Sebelumnya</Text>
+                </TouchableOpacity>
+                <Text style={styles.hadisId}>#{hadis.id}</Text>
+                <TouchableOpacity style={styles.hadisNavBtn} onPress={handleNextHadis}>
+                  <Text style={styles.hadisNavText}>Berikutnya</Text>
+                  <FontAwesome name="chevron-right" size={13} color={Colors.primary} />
+                </TouchableOpacity>
+              </View>
+            </>
+          ) : (
+            <Text style={styles.hadisError}>Gagal memuat hadis</Text>
+          )}
         </View>
 
         {/* Popular Surahs */}
