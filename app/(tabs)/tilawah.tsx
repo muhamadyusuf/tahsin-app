@@ -46,11 +46,74 @@ import {
   SholatJadwal,
   NextPrayer,
 } from "@/lib/sholat-api";
+import * as Location from "expo-location";
+import Svg, { Circle, Line, Text as SvgText, G, Polygon } from "react-native-svg";
+import { getQiblaDirection, bearingToCardinal, QiblaData } from "@/lib/qibla-api";
 
 const { width } = Dimensions.get("window");
 
 // Quick access surahs
 const POPULAR_SURAHS = [36, 67, 56, 18, 55, 1]; // Yasin, Al-Mulk, Al-Waqi'ah, Al-Kahf, Ar-Rahman, Al-Fatihah
+
+function QiblaCompass({ bearing }: { bearing: number }) {
+  const SIZE = 240;
+  const CX = SIZE / 2;
+  const CY = SIZE / 2;
+  const OUTER_R = SIZE / 2 - 8;
+  const INNER_R = OUTER_R - 16;
+
+  return (
+    <Svg width={SIZE} height={SIZE}>
+      {/* Outer ring */}
+      <Circle cx={CX} cy={CY} r={OUTER_R} fill="#ECEFF1" stroke="#CFD8DC" strokeWidth={2} />
+      {/* Compass face */}
+      <Circle cx={CX} cy={CY} r={INNER_R} fill="#FAFAFA" />
+
+      {/* Tick marks every 45° */}
+      {Array.from({ length: 8 }, (_, i) => {
+        const deg = i * 45;
+        const rad = (deg - 90) * (Math.PI / 180);
+        const isMajor = deg % 90 === 0;
+        const tickInner = INNER_R - (isMajor ? 13 : 7);
+        return (
+          <Line
+            key={deg}
+            x1={CX + Math.cos(rad) * tickInner}
+            y1={CY + Math.sin(rad) * tickInner}
+            x2={CX + Math.cos(rad) * INNER_R}
+            y2={CY + Math.sin(rad) * INNER_R}
+            stroke={isMajor ? "#455A64" : "#90A4AE"}
+            strokeWidth={isMajor ? 2.5 : 1.5}
+          />
+        );
+      })}
+
+      {/* Cardinal labels: U=Utara(N), S, T=Timur(E), B=Barat(W) */}
+      <SvgText x={CX} y={CY - INNER_R + 22} textAnchor="middle" fontSize="16" fontWeight="bold" fill="#E53935">U</SvgText>
+      <SvgText x={CX} y={CY + INNER_R - 6} textAnchor="middle" fontSize="13" fill="#546E7A">S</SvgText>
+      <SvgText x={CX + INNER_R - 7} y={CY + 5} textAnchor="middle" fontSize="13" fill="#546E7A">T</SvgText>
+      <SvgText x={CX - INNER_R + 7} y={CY + 5} textAnchor="middle" fontSize="13" fill="#546E7A">B</SvgText>
+
+      {/* Qibla needle — rotated by bearing degrees from North (top) */}
+      <G rotation={bearing} origin={`${CX}, ${CY}`}>
+        {/* Tail triangle (gray, below center) */}
+        <Polygon
+          points={`${CX},${CY + 38} ${CX - 7},${CY + 16} ${CX + 7},${CY + 16}`}
+          fill="#B0BEC5"
+        />
+        {/* Head triangle (green, above center — pointing North by default) */}
+        <Polygon
+          points={`${CX},${CY - INNER_R + 10} ${CX - 9},${CY - 12} ${CX + 9},${CY - 12}`}
+          fill="#2E7D32"
+        />
+      </G>
+
+      {/* Center dot */}
+      <Circle cx={CX} cy={CY} r={9} fill="#1B5E20" />
+      <Circle cx={CX} cy={CY} r={5} fill="#fff" />
+    </Svg>
+  );
+}
 
 type ScreenMode = "home" | "surah-list" | "hadis-search";
 
@@ -88,6 +151,14 @@ export default function TilawahScreen() {
   const [kabkotaList, setKabkotaList] = useState<string[]>([]);
   const [pickerSelectedProvinsi, setPickerSelectedProvinsi] = useState("");
   const [pickerLoading, setPickerLoading] = useState(false);
+
+  // Qibla state
+  const [qiblaModalVisible, setQiblaModalVisible] = useState(false);
+  const [qiblaData, setQiblaData] = useState<QiblaData | null>(null);
+  const [qiblaLoading, setQiblaLoading] = useState(false);
+  const [qiblaError, setQiblaError] = useState<string | null>(null);
+  const [qiblaCoords, setQiblaCoords] = useState<{ lat: number; lon: number } | null>(null);
+
   const scrollY = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
@@ -257,6 +328,53 @@ export default function TilawahScreen() {
     setPickerMode("jadwal");
     setSholatModalVisible(false);
     await loadSholatData(loc);
+  };
+
+  const loadQiblaData = async () => {
+    setQiblaLoading(true);
+    setQiblaError(null);
+    try {
+      // On web the browser handles the permission prompt itself;
+      // requestForegroundPermissionsAsync is only needed on native.
+      if (Platform.OS !== "web") {
+        const { status } = await Location.requestForegroundPermissionsAsync();
+        if (status !== "granted") {
+          setQiblaError("Izin lokasi ditolak. Aktifkan izin lokasi di pengaturan perangkat.");
+          return;
+        }
+      }
+      const loc = await Location.getCurrentPositionAsync(
+        Platform.OS === "web"
+          ? {}
+          : { accuracy: Location.Accuracy.Balanced }
+      );
+      const { latitude, longitude } = loc.coords;
+      setQiblaCoords({ lat: latitude, lon: longitude });
+      const data = await getQiblaDirection(latitude, longitude);
+      setQiblaData(data);
+    } catch (err: any) {
+      console.error("Failed to load qibla:", err);
+      const isWeb = Platform.OS === "web";
+      const isDenied =
+        err?.code === 1 ||
+        String(err?.message).toLowerCase().includes("denied") ||
+        String(err?.message).toLowerCase().includes("permission");
+      if (isDenied) {
+        setQiblaError(
+          isWeb
+            ? "Akses lokasi ditolak. Izinkan akses lokasi di browser Anda lalu coba lagi."
+            : "Izin lokasi ditolak. Aktifkan izin lokasi di pengaturan perangkat."
+        );
+      } else {
+        setQiblaError(
+          isWeb
+            ? "Gagal mendapatkan lokasi. Pastikan browser mengizinkan akses lokasi."
+            : "Gagal memuat arah kiblat. Pastikan GPS aktif."
+        );
+      }
+    } finally {
+      setQiblaLoading(false);
+    }
   };
 
   const handleNextHadis = async () => {
@@ -876,6 +994,97 @@ export default function TilawahScreen() {
         </View>
       </Modal>
 
+      {/* ===== Qibla Modal ===== */}
+      <Modal
+        visible={qiblaModalVisible}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setQiblaModalVisible(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={[styles.modalSheet, { paddingBottom: 28 }]}>
+            {/* Header */}
+            <View style={styles.modalHeader}>
+              <View>
+                <Text style={styles.modalTitle}>Arah Kiblat</Text>
+                {qiblaCoords && (
+                  <Text style={styles.modalLocationText}>
+                    {qiblaCoords.lat.toFixed(4)}, {qiblaCoords.lon.toFixed(4)}
+                  </Text>
+                )}
+              </View>
+              <TouchableOpacity
+                style={styles.modalCloseBtn}
+                onPress={() => setQiblaModalVisible(false)}
+              >
+                <FontAwesome name="times" size={18} color={Colors.textSecondary} />
+              </TouchableOpacity>
+            </View>
+
+            {/* Body */}
+            {qiblaLoading ? (
+              <View style={styles.qiblaCenter}>
+                <ActivityIndicator size="large" color={Colors.primary} />
+                <Text style={styles.qiblaLoadingText}>Mendeteksi lokasi...</Text>
+              </View>
+            ) : qiblaError ? (
+              <View style={styles.qiblaCenter}>
+                <FontAwesome name="exclamation-circle" size={36} color="#EF5350" />
+                <Text style={styles.qiblaErrorText}>{qiblaError}</Text>
+                <TouchableOpacity style={styles.qiblaRetryBtn} onPress={loadQiblaData}>
+                  <FontAwesome name="refresh" size={13} color="#fff" />
+                  <Text style={styles.qiblaRetryBtnText}>Coba Lagi</Text>
+                </TouchableOpacity>
+              </View>
+            ) : qiblaData && qiblaData.bearing != null ? (
+              <>
+                {/* Compass */}
+                <View style={styles.qiblaCompassWrap}>
+                  <QiblaCompass bearing={qiblaData.bearing} />
+                </View>
+
+                {/* Bearing info */}
+                <View style={styles.qiblaBearingRow}>
+                  <View style={styles.qiblaBearingBox}>
+                    <Text style={styles.qiblaBearingValue}>
+                      {qiblaData.bearing.toFixed(1)}°
+                    </Text>
+                    <Text style={styles.qiblaBearingLabel}>dari Utara</Text>
+                  </View>
+                  <View style={styles.qiblaCardinalBox}>
+                    <Text style={styles.qiblaCardinalValue}>
+                      {bearingToCardinal(qiblaData.bearing)}
+                    </Text>
+                    <Text style={styles.qiblaCardinalLabel}>arah kiblat</Text>
+                  </View>
+                </View>
+
+                {/* Instruction */}
+                <View style={styles.qiblaInstructionBox}>
+                  <FontAwesome name="info-circle" size={15} color={Colors.primary} style={{ marginTop: 1 }} />
+                  <Text style={styles.qiblaInstructionText}>
+                    Hadapkan diri ke arah{" "}
+                    <Text style={{ fontWeight: "700" }}>
+                      {qiblaData.bearing.toFixed(0)}° dari Utara
+                    </Text>{" "}
+                    ({bearingToCardinal(qiblaData.bearing)}).{" "}
+                    {Platform.OS === "web"
+                      ? "Gunakan kompas di perangkat atau aplikasi kompas untuk menentukan arah Utara terlebih dahulu."
+                      : "Gunakan kompas fisik atau aplikasi kompas untuk menentukan arah Utara terlebih dahulu."}
+                  </Text>
+                </View>
+
+                {/* Re-detect button */}
+                <TouchableOpacity style={styles.qiblaRedetectBtn} onPress={loadQiblaData}>
+                  <FontAwesome name="location-arrow" size={13} color={Colors.primary} />
+                  <Text style={styles.qiblaRedetectText}>Deteksi Ulang Lokasi</Text>
+                </TouchableOpacity>
+              </>
+            ) : null}
+          </View>
+        </View>
+      </Modal>
+
       {/* Tilawah Harian Card */}
         <TouchableOpacity
           style={styles.tilawahBanner}
@@ -1007,6 +1216,24 @@ export default function TilawahScreen() {
               <FontAwesome5 name="praying-hands" size={20} color="#2E7D32" />
             </View>
             <Text style={styles.categoryLabel}>Kumpulan{"\n"}Do'a</Text>
+            <FontAwesome
+              name="chevron-right"
+              size={12}
+              color={Colors.textSecondary}
+            />
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={styles.categoryCard}
+            onPress={() => {
+              setQiblaModalVisible(true);
+              if (!qiblaData && !qiblaLoading) loadQiblaData();
+            }}
+          >
+            <View style={[styles.categoryIcon, { backgroundColor: "#E8EAF6" }]}>
+              <FontAwesome name="compass" size={22} color="#283593" />
+            </View>
+            <Text style={styles.categoryLabel}>Arah{"\n"}Kiblat</Text>
             <FontAwesome
               name="chevron-right"
               size={12}
@@ -1929,5 +2156,114 @@ const styles = StyleSheet.create({
     color: Colors.text,
     lineHeight: 20,
     flex: 1,
+  },
+
+  // ===== Qibla =====
+  qiblaCenter: {
+    alignItems: "center",
+    paddingVertical: 32,
+    gap: 12,
+  },
+  qiblaLoadingText: {
+    fontSize: 13,
+    color: Colors.textSecondary,
+    marginTop: 4,
+  },
+  qiblaErrorText: {
+    fontSize: 13,
+    color: Colors.textSecondary,
+    textAlign: "center",
+    marginTop: 4,
+  },
+  qiblaRetryBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    backgroundColor: Colors.primary,
+    paddingHorizontal: 20,
+    paddingVertical: 10,
+    borderRadius: 10,
+    marginTop: 8,
+  },
+  qiblaRetryBtnText: {
+    color: "#fff",
+    fontSize: 13,
+    fontWeight: "600",
+  },
+  qiblaCompassWrap: {
+    alignItems: "center",
+    marginVertical: 12,
+  },
+  qiblaBearingRow: {
+    flexDirection: "row",
+    gap: 12,
+    marginBottom: 14,
+  },
+  qiblaBearingBox: {
+    flex: 1,
+    backgroundColor: Colors.primaryLight,
+    borderRadius: 12,
+    paddingVertical: 12,
+    alignItems: "center",
+  },
+  qiblaBearingValue: {
+    fontSize: 22,
+    fontWeight: "bold",
+    color: Colors.primaryDark,
+  },
+  qiblaBearingLabel: {
+    fontSize: 11,
+    color: Colors.primary,
+    marginTop: 2,
+  },
+  qiblaCardinalBox: {
+    flex: 1,
+    backgroundColor: "#E8EAF6",
+    borderRadius: 12,
+    paddingVertical: 12,
+    alignItems: "center",
+  },
+  qiblaCardinalValue: {
+    fontSize: 16,
+    fontWeight: "bold",
+    color: "#283593",
+  },
+  qiblaCardinalLabel: {
+    fontSize: 11,
+    color: "#3949AB",
+    marginTop: 2,
+  },
+  qiblaInstructionBox: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    gap: 8,
+    backgroundColor: Colors.backgroundLight,
+    borderRadius: 10,
+    padding: 12,
+    marginBottom: 14,
+    borderWidth: 1,
+    borderColor: Colors.primaryLight,
+  },
+  qiblaInstructionText: {
+    flex: 1,
+    fontSize: 12,
+    color: Colors.textSecondary,
+    lineHeight: 18,
+  },
+  qiblaRedetectBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 6,
+    paddingVertical: 12,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: Colors.primaryLight,
+    backgroundColor: "#fff",
+  },
+  qiblaRedetectText: {
+    fontSize: 13,
+    fontWeight: "600",
+    color: Colors.primary,
   },
 });
