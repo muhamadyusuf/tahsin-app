@@ -64,6 +64,8 @@ export default function RootLayout() {
           <Stack.Screen name="quiz-manage" options={{ title: "Kelola Quiz", headerTintColor: Colors.primary }} />
           <Stack.Screen name="lembaga-form" options={{ title: "Form Lembaga", headerTintColor: Colors.primary }} />
           <Stack.Screen name="user-detail" options={{ title: "Detail Pengguna", headerTintColor: Colors.primary }} />
+          <Stack.Screen name="hadis" options={{ headerShown: false }} />
+          <Stack.Screen name="doa" options={{ headerShown: false }} />
         </Stack>
       </AuthProvider>
     </Providers>

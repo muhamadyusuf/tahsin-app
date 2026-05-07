@@ -15,6 +15,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useQuery } from "convex/react";
 import { useRouter } from "expo-router";
 import FontAwesome from "@expo/vector-icons/FontAwesome";
+import FontAwesome5 from "@expo/vector-icons/FontAwesome5";
 import { api } from "@/convex/_generated/api";
 import { Colors } from "@/lib/constants";
 import { getAllSurahs, Surah } from "@/lib/alquran-api";
@@ -566,6 +567,21 @@ export default function TilawahScreen() {
               <FontAwesome name="book" size={20} color="#4527A0" />
             </View>
             <Text style={styles.categoryLabel}>Koleksi{"\n"}Hadis</Text>
+            <FontAwesome
+              name="chevron-right"
+              size={12}
+              color={Colors.textSecondary}
+            />
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={styles.categoryCard}
+            onPress={() => router.push("/doa")}
+          >
+            <View style={[styles.categoryIcon, { backgroundColor: "#E8F5E9" }]}>
+              <FontAwesome5 name="praying-hands" size={20} color="#2E7D32" />
+            </View>
+            <Text style={styles.categoryLabel}>Kumpulan{"\n"}Do'a</Text>
             <FontAwesome
               name="chevron-right"
               size={12}

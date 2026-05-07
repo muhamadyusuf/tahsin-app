@@ -323,7 +323,7 @@ export default function MushafView({ initialPage = 0 }: Props) {
   const [loading, setLoading] = useState(true);
   const [showTajwid, setShowTajwid] = useState(true);
   const [legendVisible, setLegendVisible] = useState(false);
-  const [showBars, setShowBars] = useState(false);
+  const [showBars, setShowBars] = useState(true);
   const swipeX = useRef(new Animated.Value(0)).current;
 
   // Slider
@@ -987,7 +987,7 @@ export default function MushafView({ initialPage = 0 }: Props) {
                   </ScrollView>
                 </Animated.View>
               </View>
-              <Text style={s.swipeHint}>Geser kiri/kanan untuk pindah halaman</Text>
+              {/* <Text style={s.swipeHint}>Geser kiri/kanan untuk pindah halaman</Text> */}
             </Pressable>
           )}
 
