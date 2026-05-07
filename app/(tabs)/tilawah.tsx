@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import {
   View,
   Text,
@@ -9,7 +9,9 @@ import {
   TextInput,
   ScrollView,
   Dimensions,
-  Image
+  Image,
+  Modal,
+  Platform,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useQuery } from "convex/react";
@@ -29,6 +31,20 @@ import {
   getHadisById,
   searchHadis,
 } from "@/lib/hadis-api";
+import {
+  detectLocation,
+  getSholatTimes,
+  getNextPrayer,
+  getProvinsi,
+  getKabKota,
+  saveLocation,
+  loadSavedLocation,
+  PRAYER_DISPLAY,
+  LocationResult,
+  SholatData,
+  SholatJadwal,
+  NextPrayer,
+} from "@/lib/sholat-api";
 
 const { width } = Dimensions.get("window");
 
@@ -55,10 +71,42 @@ export default function TilawahScreen() {
   const [hadisSearchPage, setHadisSearchPage] = useState(1);
   const [hadisSearchTotalPages, setHadisSearchTotalPages] = useState(1);
 
+  // Sholat state
+  const [locationResult, setLocationResult] = useState<LocationResult | null>(null);
+  const [sholatData, setSholatData] = useState<SholatData | null>(null);
+  const [todayJadwal, setTodayJadwal] = useState<SholatJadwal | null>(null);
+  const [nextPrayer, setNextPrayer] = useState<NextPrayer | null>(null);
+  const [sholatLoading, setSholatLoading] = useState(false);
+  const [sholatError, setSholatError] = useState<string | null>(null);
+  const [sholatModalVisible, setSholatModalVisible] = useState(false);
+  const countdownRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  // Manual location picker state
+  const [pickerMode, setPickerMode] = useState<"jadwal" | "provinsi" | "kabkota">("jadwal");
+  const [provinsiList, setProvinsiList] = useState<string[]>([]);
+  const [kabkotaList, setKabkotaList] = useState<string[]>([]);
+  const [pickerSelectedProvinsi, setPickerSelectedProvinsi] = useState("");
+  const [pickerLoading, setPickerLoading] = useState(false);
+
   useEffect(() => {
     loadSurahs();
     loadRandomHadis();
+    loadSholatData();
   }, []);
+
+  // Update countdown every minute
+  useEffect(() => {
+    if (!todayJadwal) return;
+    const tick = () => {
+      const next = getNextPrayer(todayJadwal, new Date());
+      setNextPrayer(next);
+    };
+    tick();
+    countdownRef.current = setInterval(tick, 60_000);
+    return () => {
+      if (countdownRef.current) clearInterval(countdownRef.current);
+    };
+  }, [todayJadwal]);
 
   useEffect(() => {
     if (search.trim()) {
@@ -98,6 +146,115 @@ export default function TilawahScreen() {
     } finally {
       setHadisLoading(false);
     }
+  };
+
+  const applyLocation = async (loc: LocationResult) => {
+    setLocationResult(loc);
+    const now = new Date();
+    const data = await getSholatTimes(loc.provinsi, loc.kabkota, now.getMonth() + 1, now.getFullYear());
+    setSholatData(data);
+    const todayDate = now.getDate();
+    const today =
+      data.jadwal?.find((j) => {
+        const d = String(j.tanggal ?? j.date ?? "");
+        return d.includes(String(todayDate)) || d.startsWith(String(todayDate).padStart(2, "0"));
+      }) ??
+      data.jadwal?.[todayDate - 1] ??
+      null;
+    setTodayJadwal(today);
+  };
+
+  const loadSholatData = async (forcedLoc?: LocationResult) => {
+    setSholatLoading(true);
+    setSholatError(null);
+    try {
+      let loc: LocationResult | undefined = forcedLoc;
+
+      // 1. Use forced location (manual pick or re-detect)
+      if (!loc) {
+        // 2. Try saved location from storage
+        const saved = await loadSavedLocation();
+        if (saved) loc = saved;
+      }
+      if (!loc) {
+        // 3. Try GPS auto-detect
+        const detected = await detectLocation();
+        if (detected) {
+          loc = detected;
+          await saveLocation(loc);
+        }
+      }
+      if (!loc) {
+        setSholatError("Lokasi tidak ditemukan. Pilih lokasi manual.");
+        return;
+      }
+      await applyLocation(loc);
+    } catch (err) {
+      console.error("Failed to load sholat:", err);
+      setSholatError("Gagal memuat jadwal sholat");
+    } finally {
+      setSholatLoading(false);
+    }
+  };
+
+  const handleAutoDetect = async () => {
+    setSholatModalVisible(false);
+    setSholatLoading(true);
+    setSholatError(null);
+    try {
+      const loc = await detectLocation();
+      if (!loc) {
+        setSholatError("Gagal mendeteksi lokasi. Pilih lokasi manual.");
+        return;
+      }
+      await saveLocation(loc);
+      await applyLocation(loc);
+    } catch {
+      setSholatError("Gagal mendeteksi lokasi");
+    } finally {
+      setSholatLoading(false);
+    }
+  };
+
+  const openManualPicker = async () => {
+    setPickerMode("provinsi");
+    if (provinsiList.length === 0) {
+      setPickerLoading(true);
+      try {
+        const list = await getProvinsi();
+        setProvinsiList(list);
+      } catch {
+        setProvinsiList([]);
+      } finally {
+        setPickerLoading(false);
+      }
+    }
+  };
+
+  const handleSelectProvinsi = async (provinsi: string) => {
+    setPickerSelectedProvinsi(provinsi);
+    setPickerMode("kabkota");
+    setPickerLoading(true);
+    try {
+      const list = await getKabKota(provinsi);
+      setKabkotaList(list);
+    } catch {
+      setKabkotaList([]);
+    } finally {
+      setPickerLoading(false);
+    }
+  };
+
+  const handleSelectKabkota = async (kabkota: string) => {
+    const loc: LocationResult = {
+      provinsi: pickerSelectedProvinsi,
+      kabkota,
+      displayName: kabkota,
+    };
+    await saveLocation(loc);
+    setPickerMode("jadwal");
+    setSholatModalVisible(false);
+    await loadSholatData(loc);
   };
 
   const handleNextHadis = async () => {
@@ -342,58 +499,361 @@ export default function TilawahScreen() {
 
   // HOME mode
   return (
-    <View style={styles.container}>
-      <View style={styles.headerShell}>
-        {/* Header */}
-        <View style={[styles.header, { paddingTop: insets.top + 16 }]}> 
-          {headerImageUrl ? (
-            <Image
-              source={{ uri: headerImageUrl }}
-              style={styles.headerImageBg}
-              resizeMode="cover"
-            />
-          ) : null}
-          <View
-            style={[
-              styles.headerOverlay,
-              { backgroundColor: headerImageUrl ? "rgba(0,0,0,0.28)" : "transparent" },
-            ]}
-          />
-          <View style={styles.headerContent}>
-            <View style={styles.headerTextWrap}>
-              <Text style={styles.greeting}>Assalamu'alaikum 👋</Text>
-              <Text style={styles.userName}>{firstName}</Text>
-            </View>
+    <View style={[styles.container, { backgroundColor: Colors.primary }]}>
+      {/* Full-header background: covers sticky bar + scrollable header */}
+      {headerImageUrl ? (
+        <Image
+          source={{ uri: headerImageUrl }}
+          style={StyleSheet.absoluteFillObject}
+          resizeMode="cover"
+        />
+      ) : null}
+      {headerImageUrl ? (
+        <View style={[StyleSheet.absoluteFillObject, { backgroundColor: "rgba(0,0,0,0.28)" }]} />
+      ) : null}
+
+      <ScrollView
+        stickyHeaderIndices={[0]}
+        showsVerticalScrollIndicator={false}
+        contentContainerStyle={{ paddingBottom: 32 }}
+      >
+        {/* ── child 0: sticky search bar (top) ── */}
+        <View style={[styles.stickySearchWrapper, { paddingTop: insets.top + 10 }]}>
+          <View style={styles.stickySearchRow}>
             <TouchableOpacity
-              style={[styles.avatarCircle, styles.avatarInHeader]}
+              style={styles.searchBarInner}
+              onPress={() => setMode("surah-list")}
+            >
+              <FontAwesome name="search" size={16} color={Colors.textSecondary} />
+              <Text style={styles.searchPlaceholder}>Cari surah...</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.avatarCircleTop}
               onPress={() => router.push("/(tabs)/profil")}
             >
               {userData?.avatarUrl ? (
-              <Image
-                source={{ uri: userData.avatarUrl }}
-                style={styles.avatarImage}
-              />
-            ) : (
-              <FontAwesome name="user" size={40} color={Colors.primary} />
-            )}
+                <Image source={{ uri: userData.avatarUrl }} style={styles.avatarImageTop} />
+              ) : (
+                <FontAwesome name="user" size={20} color={Colors.primary} />
+              )}
             </TouchableOpacity>
           </View>
         </View>
 
-        <TouchableOpacity
-          style={styles.searchBar}
-          onPress={() => setMode("surah-list")}
-        >
-          <FontAwesome name="search" size={16} color={Colors.textSecondary} />
-          <Text style={styles.searchPlaceholder}>Cari surah...</Text>
-        </TouchableOpacity>
-      </View>
+        {/* ── child 1: scrollable header ── */}
+        <View style={[styles.header, { paddingTop: 16 }]}>
+          <View style={styles.headerContent}>
+            {/* Greeting row */}
+            {/* <View style={styles.headerTopRow}>
+              <View style={styles.headerTextWrap}>
+                <Text style={styles.greeting}>Assalamu'alaikum 👋</Text>
+                <Text style={styles.userName}>{firstName}</Text>
+              </View>
+            </View> */}
 
-      <ScrollView
-        showsVerticalScrollIndicator={false}
-        style={{ backgroundColor: Colors.background }}
-        contentContainerStyle={{ paddingBottom: 32 }}
+            {/* Sholat widget */}
+            <TouchableOpacity
+              style={styles.sholatWidget}
+              onPress={() => setSholatModalVisible(true)}
+              activeOpacity={0.8}
+            >
+              {/* Location row */}
+              <View style={styles.sholatLocationRow}>
+                <FontAwesome name="map-marker" size={12} color="rgba(255,255,255,0.7)" />
+                <Text style={styles.sholatLocationText} numberOfLines={1}>
+                  {locationResult
+                    ? locationResult.displayName
+                    : sholatLoading
+                    ? "Mendeteksi lokasi..."
+                    : sholatError
+                    ? "Lokasi tidak tersedia"
+                    : "Memuat lokasi..."}
+                </Text>
+              </View>
+
+              {/* Prayer info */}
+              {sholatLoading && !nextPrayer ? (
+                <View style={styles.sholatLoadingRow}>
+                  <ActivityIndicator size="small" color="rgba(255,255,255,0.8)" />
+                  <Text style={styles.sholatLoadingText}>Memuat jadwal...</Text>
+                </View>
+              ) : nextPrayer ? (
+                <View style={styles.sholatInfoRow}>
+                  <View>
+                    <Text style={styles.sholatNextLabel}>Waktu Sholat Berikutnya</Text>
+                    <View style={styles.sholatNextRow}>
+                      <FontAwesome5 name="mosque" size={14} color="#fff" style={{ marginRight: 6 }} />
+                      <Text style={styles.sholatNextName}>{nextPrayer.name}</Text>
+                      <Text style={styles.sholatNextTime}>{nextPrayer.time}</Text>
+                    </View>
+                  </View>
+                  <View style={styles.sholatCountdownBox}>
+                    <Text style={styles.sholatCountdownValue}>{nextPrayer.timeLeft}</Text>
+                    <Text style={styles.sholatCountdownLabel}>lagi</Text>
+                  </View>
+                </View>
+              ) : sholatError ? (
+                <TouchableOpacity onPress={() => loadSholatData()} style={styles.sholatErrorRow}>
+                  <FontAwesome name="refresh" size={12} color="rgba(255,255,255,0.7)" />
+                  <Text style={styles.sholatErrorText}>Ketuk untuk coba lagi</Text>
+                </TouchableOpacity>
+              ) : null}
+
+              {/* Tap hint */}
+              {sholatData && (
+                <View style={styles.sholatTapHint}>
+                  <Text style={styles.sholatTapHintText}>Lihat semua waktu sholat →</Text>
+                </View>
+              )}
+              <br/>
+            </TouchableOpacity>
+          </View>
+        </View>
+
+        {/* ── child 2: main content ── */}
+        <View style={{ backgroundColor: Colors.background }}>
+      <Modal
+        visible={sholatModalVisible}
+        transparent
+        animationType="slide"
+        onRequestClose={() => {
+          setPickerMode("jadwal");
+          setSholatModalVisible(false);
+        }}
       >
+        <View style={styles.modalOverlay}>
+          <View style={[styles.modalSheet, { paddingBottom: insets.bottom + 20 }]}>
+
+            {/* ===== JADWAL VIEW ===== */}
+            {pickerMode === "jadwal" && (
+              <>
+                <View style={styles.modalHeader}>
+                  <View>
+                    <Text style={styles.modalTitle}>Jadwal Sholat</Text>
+                    <View style={styles.modalLocationRow}>
+                      <FontAwesome name="map-marker" size={12} color={Colors.primary} />
+                      <Text style={styles.modalLocationText}>
+                        {locationResult?.displayName ?? "Lokasi belum diset"}
+                      </Text>
+                    </View>
+                  </View>
+                  <TouchableOpacity
+                    style={styles.modalCloseBtn}
+                    onPress={() => setSholatModalVisible(false)}
+                  >
+                    <FontAwesome name="times" size={18} color={Colors.textSecondary} />
+                  </TouchableOpacity>
+                </View>
+
+                {todayJadwal && (
+                  <Text style={styles.modalDateText}>
+                    {new Date().toLocaleDateString("id-ID", {
+                      weekday: "long",
+                      day: "numeric",
+                      month: "long",
+                      year: "numeric",
+                    })}
+                  </Text>
+                )}
+
+                {!todayJadwal && sholatError && (
+                  <View style={styles.modalEmptyBox}>
+                    <FontAwesome name="exclamation-circle" size={32} color={Colors.primaryLight} />
+                    <Text style={styles.modalEmptyText}>{sholatError}</Text>
+                  </View>
+                )}
+
+                {todayJadwal && (
+                  <View style={styles.prayerList}>
+                    {PRAYER_DISPLAY.map(({ key, label }) => {
+                      const time = todayJadwal?.[key] as string | undefined;
+                      const isNext = nextPrayer?.key === key;
+                      return (
+                        <View
+                          key={key}
+                          style={[
+                            styles.prayerRow,
+                            isNext && styles.prayerRowActive,
+                          ]}
+                        >
+                          <View style={[styles.prayerIconWrap, isNext && styles.prayerIconWrapActive]}>
+                            <FontAwesome5
+                              name="mosque"
+                              size={14}
+                              color={isNext ? "#fff" : Colors.primary}
+                            />
+                          </View>
+                          <Text style={[styles.prayerLabel, isNext && styles.prayerLabelActive]}>
+                            {label}
+                          </Text>
+                          <Text style={[styles.prayerTime, isNext && styles.prayerTimeActive]}>
+                            {time ?? "-"}
+                          </Text>
+                          {isNext && (
+                            <View style={styles.prayerBadge}>
+                              <Text style={styles.prayerBadgeText}>{nextPrayer.timeLeft} lagi</Text>
+                            </View>
+                          )}
+                        </View>
+                      );
+                    })}
+                  </View>
+                )}
+
+                {/* Action buttons */}
+                <View style={styles.modalActions}>
+                  <TouchableOpacity
+                    style={[styles.modalActionBtn, styles.modalActionBtnSecondary]}
+                    onPress={handleAutoDetect}
+                  >
+                    <FontAwesome name="location-arrow" size={13} color={Colors.primary} />
+                    <Text style={[styles.modalActionBtnText, { color: Colors.primary }]}>
+                      Deteksi Otomatis
+                    </Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={[styles.modalActionBtn, styles.modalActionBtnPrimary]}
+                    onPress={openManualPicker}
+                  >
+                    <FontAwesome name="map-marker" size={13} color="#fff" />
+                    <Text style={[styles.modalActionBtnText, { color: "#fff" }]}>
+                      Pilih Manual
+                    </Text>
+                  </TouchableOpacity>
+                </View>
+              </>
+            )}
+
+            {/* ===== PROVINSI PICKER ===== */}
+            {pickerMode === "provinsi" && (
+              <>
+                <View style={styles.modalHeader}>
+                  <TouchableOpacity
+                    style={styles.pickerBackBtn}
+                    onPress={() => setPickerMode("jadwal")}
+                  >
+                    <FontAwesome name="arrow-left" size={16} color={Colors.primary} />
+                  </TouchableOpacity>
+                  <Text style={[styles.modalTitle, { flex: 1, marginLeft: 10 }]}>Pilih Provinsi</Text>
+                  <TouchableOpacity
+                    style={styles.modalCloseBtn}
+                    onPress={() => { setPickerMode("jadwal"); setSholatModalVisible(false); }}
+                  >
+                    <FontAwesome name="times" size={18} color={Colors.textSecondary} />
+                  </TouchableOpacity>
+                </View>
+                {pickerLoading ? (
+                  <View style={styles.pickerLoading}>
+                    <ActivityIndicator size="large" color={Colors.primary} />
+                    <Text style={styles.pickerLoadingText}>Memuat provinsi...</Text>
+                  </View>
+                ) : (
+                  <ScrollView
+                    style={styles.pickerScroll}
+                    showsVerticalScrollIndicator={false}
+                  >
+                    {provinsiList.map((p) => (
+                      <TouchableOpacity
+                        key={p}
+                        style={styles.pickerItem}
+                        onPress={() => handleSelectProvinsi(p)}
+                      >
+                        <Text style={styles.pickerItemText}>{p}</Text>
+                        <FontAwesome name="chevron-right" size={12} color={Colors.textSecondary} />
+                      </TouchableOpacity>
+                    ))}
+                    {provinsiList.length === 0 && (
+                      <Text style={styles.pickerEmptyText}>Gagal memuat daftar provinsi</Text>
+                    )}
+                  </ScrollView>
+                )}
+              </>
+            )}
+
+            {/* ===== KABKOTA PICKER ===== */}
+            {pickerMode === "kabkota" && (
+              <>
+                <View style={styles.modalHeader}>
+                  <TouchableOpacity
+                    style={styles.pickerBackBtn}
+                    onPress={() => setPickerMode("provinsi")}
+                  >
+                    <FontAwesome name="arrow-left" size={16} color={Colors.primary} />
+                  </TouchableOpacity>
+                  <View style={{ flex: 1, marginLeft: 10 }}>
+                    <Text style={styles.modalTitle}>Pilih Kab/Kota</Text>
+                    <Text style={styles.pickerSubtitle}>{pickerSelectedProvinsi}</Text>
+                  </View>
+                  <TouchableOpacity
+                    style={styles.modalCloseBtn}
+                    onPress={() => { setPickerMode("jadwal"); setSholatModalVisible(false); }}
+                  >
+                    <FontAwesome name="times" size={18} color={Colors.textSecondary} />
+                  </TouchableOpacity>
+                </View>
+                {pickerLoading ? (
+                  <View style={styles.pickerLoading}>
+                    <ActivityIndicator size="large" color={Colors.primary} />
+                    <Text style={styles.pickerLoadingText}>Memuat kota...</Text>
+                  </View>
+                ) : (
+                  <ScrollView
+                    style={styles.pickerScroll}
+                    showsVerticalScrollIndicator={false}
+                  >
+                    {kabkotaList.map((k) => (
+                      <TouchableOpacity
+                        key={k}
+                        style={[
+                          styles.pickerItem,
+                          locationResult?.kabkota === k && styles.pickerItemActive,
+                        ]}
+                        onPress={() => handleSelectKabkota(k)}
+                      >
+                        <Text
+                          style={[
+                            styles.pickerItemText,
+                            locationResult?.kabkota === k && styles.pickerItemTextActive,
+                          ]}
+                        >
+                          {k}
+                        </Text>
+                        {locationResult?.kabkota === k ? (
+                          <FontAwesome name="check" size={12} color={Colors.primary} />
+                        ) : (
+                          <FontAwesome name="chevron-right" size={12} color={Colors.textSecondary} />
+                        )}
+                      </TouchableOpacity>
+                    ))}
+                    {kabkotaList.length === 0 && (
+                      <Text style={styles.pickerEmptyText}>Gagal memuat daftar kota</Text>
+                    )}
+                  </ScrollView>
+                )}
+              </>
+            )}
+
+          </View>
+        </View>
+      </Modal>
+
+      {/* Tilawah Harian Card */}
+        <TouchableOpacity
+          style={styles.tilawahBanner}
+          onPress={() => router.push("/tilawah-harian")}
+        >
+          <View style={styles.tilawahBannerIcon}>
+            <FontAwesome name="pencil-square-o" size={24} color={Colors.primary} />
+          </View>
+          <View style={{ flex: 1 }}>
+            <Text style={styles.tilawahBannerTitle}>Tilawah Harian</Text>
+            <Text style={styles.tilawahBannerSub}>
+              Catat & lihat riwayat bacaan harianmu
+            </Text>
+          </View>
+          <FontAwesome name="chevron-right" size={14} color={Colors.primary} />
+        </TouchableOpacity>
+
         {/* Hero Banner */}
         <View style={styles.heroBanner}>
           <View style={styles.heroContent}>
@@ -419,23 +879,6 @@ export default function TilawahScreen() {
                 />
           </View>
         </View>
-
-        {/* Tilawah Harian Card */}
-        <TouchableOpacity
-          style={styles.tilawahBanner}
-          onPress={() => router.push("/tilawah-harian")}
-        >
-          <View style={styles.tilawahBannerIcon}>
-            <FontAwesome name="pencil-square-o" size={24} color={Colors.primary} />
-          </View>
-          <View style={{ flex: 1 }}>
-            <Text style={styles.tilawahBannerTitle}>Tilawah Harian</Text>
-            <Text style={styles.tilawahBannerSub}>
-              Catat & lihat riwayat bacaan harianmu
-            </Text>
-          </View>
-          <FontAwesome name="chevron-right" size={14} color={Colors.primary} />
-        </TouchableOpacity>
 
         {/* Menu Categories */}
         <View style={styles.sectionHeader}>
@@ -630,6 +1073,7 @@ export default function TilawahScreen() {
             </TouchableOpacity>
           ))}
         </ScrollView>
+        </View>
       </ScrollView>
     </View>
   );
@@ -654,18 +1098,16 @@ const styles = StyleSheet.create({
 
   // ===== Header =====
   headerShell: {
-    position: "relative",
-    marginBottom: 40,
+    // kept for reference, no longer used
   },
   header: {
-    backgroundColor: Colors.primary,
+    backgroundColor: "transparent",
     paddingTop: 16,
     paddingHorizontal: 20,
-    paddingBottom: 34,
-    borderBottomLeftRadius: 0,
-    borderBottomRightRadius: 0,
+    paddingBottom: 20,
+    borderBottomLeftRadius: 24,
+    borderBottomRightRadius: 24,
     overflow: "hidden",
-    position: "relative",
   },
   headerImageBg: {
     ...StyleSheet.absoluteFillObject,
@@ -674,28 +1116,28 @@ const styles = StyleSheet.create({
     ...StyleSheet.absoluteFillObject,
   },
   headerContent: {
-    justifyContent: "center",
-    alignItems: "center",
-    marginBottom: 35,
     zIndex: 2,
     position: "relative",
-    minHeight: 44,
+  },
+  headerTopRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "flex-start",
+    marginBottom: 14,
   },
   headerTextWrap: {
-    alignItems: "center",
-    marginTop: 50,
+    flex: 1,
+    paddingRight: 52,
   },
   greeting: {
-    fontSize: 14,
+    fontSize: 13,
     color: "rgba(255,255,255,0.8)",
-    textAlign: "center",
   },
   userName: {
-    fontSize: 22,
+    fontSize: 20,
     fontWeight: "bold",
     color: "#fff",
     marginTop: 2,
-    textAlign: "center",
   },
   avatarCircle: {
     width: 44,
@@ -715,11 +1157,132 @@ const styles = StyleSheet.create({
     right: 0,
     top: 0,
   },
+
+  // ===== Sholat Widget =====
+  sholatWidget: {
+    // backgroundColor: "rgba(255,255,255,0.15)",
+    // borderRadius: 14,
+    padding: 12,
+    // borderWidth: 1,
+    // borderColor: "rgba(255,255,255,0.25)",
+  },
+  sholatLocationRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 5,
+    marginBottom: 8,
+  },
+  sholatLocationText: {
+    fontSize: 11,
+    color: "rgba(255,255,255,0.75)",
+    flex: 1,
+  },
+  sholatLoadingRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    paddingVertical: 4,
+  },
+  sholatLoadingText: {
+    fontSize: 12,
+    color: "rgba(255,255,255,0.7)",
+  },
+  sholatInfoRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+  },
+  sholatNextLabel: {
+    fontSize: 10,
+    color: "rgba(255,255,255,0.7)",
+    marginBottom: 3,
+  },
+  sholatNextRow: {
+    flexDirection: "row",
+    alignItems: "center",
+  },
+  sholatNextName: {
+    fontSize: 16,
+    fontWeight: "bold",
+    color: "#fff",
+    marginRight: 8,
+  },
+  sholatNextTime: {
+    fontSize: 14,
+    color: "rgba(255,255,255,0.85)",
+    fontWeight: "600",
+  },
+  sholatCountdownBox: {
+    alignItems: "center",
+    backgroundColor: "rgba(255,255,255,0.2)",
+    borderRadius: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+  },
+  sholatCountdownValue: {
+    fontSize: 15,
+    fontWeight: "bold",
+    color: "#fff",
+  },
+  sholatCountdownLabel: {
+    fontSize: 10,
+    color: "rgba(255,255,255,0.8)",
+  },
+  sholatErrorRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    paddingVertical: 4,
+  },
+  sholatErrorText: {
+    fontSize: 12,
+    color: "rgba(255,255,255,0.7)",
+  },
+  sholatTapHint: {
+    marginTop: 8,
+    alignItems: "flex-end",
+  },
+  sholatTapHintText: {
+    fontSize: 10,
+    color: "rgba(255,255,255,0.6)",
+  },
+
+  // ===== Sticky Search Bar =====
+  stickySearchWrapper: {
+    backgroundColor: "transparent",
+    paddingHorizontal: 16,
+    paddingBottom: 10,
+  },
+  stickySearchRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+  },
+  searchBarInner: {
+    flex: 1,
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "#f2f2f2",
+    borderRadius: 22,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    gap: 10,
+  },
+  avatarCircleTop: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: Colors.primaryLight,
+    justifyContent: "center",
+    alignItems: "center",
+    overflow: "hidden",
+  },
+  avatarImageTop: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+  },
   searchBar: {
-    position: "absolute",
-    left: 20,
-    right: 20,
-    bottom: -26,
     flexDirection: "row",
     alignItems: "center",
     backgroundColor: "#fff",
@@ -727,16 +1290,200 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingVertical: 14,
     gap: 10,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.12,
-    shadowRadius: 10,
-    elevation: 6,
-    zIndex: 10,
   },
   searchPlaceholder: {
     color: Colors.textSecondary,
     fontSize: 15,
+  },
+
+  // ===== Sholat Modal =====
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: "rgba(0,0,0,0.45)",
+    justifyContent: "flex-end",
+  },
+  modalSheet: {
+    backgroundColor: "#fff",
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    paddingTop: 20,
+    paddingHorizontal: 20,
+    maxHeight: "85%",
+  },
+  modalHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "flex-start",
+    marginBottom: 4,
+  },
+  modalTitle: {
+    fontSize: 18,
+    fontWeight: "bold",
+    color: Colors.text,
+  },
+  modalLocationRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 5,
+    marginTop: 4,
+  },
+  modalLocationText: {
+    fontSize: 13,
+    color: Colors.primary,
+    fontWeight: "600",
+  },
+  modalCloseBtn: {
+    padding: 4,
+  },
+  modalDateText: {
+    fontSize: 12,
+    color: Colors.textSecondary,
+    marginBottom: 16,
+    marginTop: 2,
+  },
+  modalEmptyBox: {
+    alignItems: "center",
+    paddingVertical: 24,
+    gap: 10,
+  },
+  modalEmptyText: {
+    fontSize: 13,
+    color: Colors.textSecondary,
+    textAlign: "center",
+  },
+  prayerList: {
+    gap: 8,
+    marginBottom: 20,
+  },
+  prayerRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingVertical: 12,
+    paddingHorizontal: 14,
+    borderRadius: 12,
+    backgroundColor: Colors.backgroundLight,
+    gap: 12,
+  },
+  prayerRowActive: {
+    backgroundColor: Colors.primary,
+  },
+  prayerIconWrap: {
+    width: 32,
+    height: 32,
+    borderRadius: 8,
+    backgroundColor: Colors.primaryLight,
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  prayerIconWrapActive: {
+    backgroundColor: "rgba(255,255,255,0.25)",
+  },
+  prayerLabel: {
+    flex: 1,
+    fontSize: 15,
+    fontWeight: "600",
+    color: Colors.text,
+  },
+  prayerLabelActive: {
+    color: "#fff",
+  },
+  prayerTime: {
+    fontSize: 15,
+    fontWeight: "700",
+    color: Colors.text,
+  },
+  prayerTimeActive: {
+    color: "#fff",
+  },
+  prayerBadge: {
+    backgroundColor: "rgba(255,255,255,0.25)",
+    borderRadius: 8,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    marginLeft: 6,
+  },
+  prayerBadgeText: {
+    fontSize: 11,
+    color: "#fff",
+    fontWeight: "600",
+  },
+  modalActions: {
+    flexDirection: "row",
+    gap: 10,
+    marginBottom: 8,
+  },
+  modalActionBtn: {
+    flex: 1,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 6,
+    paddingVertical: 12,
+    borderRadius: 12,
+  },
+  modalActionBtnPrimary: {
+    backgroundColor: Colors.primary,
+  },
+  modalActionBtnSecondary: {
+    borderWidth: 1,
+    borderColor: Colors.primaryLight,
+    backgroundColor: "#fff",
+  },
+  modalActionBtnText: {
+    fontSize: 13,
+    fontWeight: "600",
+  },
+  // ===== Location Picker =====
+  pickerBackBtn: {
+    padding: 4,
+  },
+  pickerSubtitle: {
+    fontSize: 12,
+    color: Colors.textSecondary,
+    marginTop: 2,
+  },
+  pickerLoading: {
+    alignItems: "center",
+    paddingVertical: 40,
+    gap: 12,
+  },
+  pickerLoadingText: {
+    fontSize: 13,
+    color: Colors.textSecondary,
+  },
+  pickerScroll: {
+    marginTop: 12,
+    maxHeight: 380,
+  },
+  pickerItem: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    paddingVertical: 13,
+    paddingHorizontal: 14,
+    borderRadius: 10,
+    marginBottom: 4,
+    backgroundColor: Colors.backgroundLight,
+  },
+  pickerItemActive: {
+    backgroundColor: Colors.primaryLight,
+    borderWidth: 1,
+    borderColor: Colors.primary,
+  },
+  pickerItemText: {
+    fontSize: 14,
+    color: Colors.text,
+    flex: 1,
+  },
+  pickerItemTextActive: {
+    color: Colors.primaryDark,
+    fontWeight: "600",
+  },
+  pickerEmptyText: {
+    textAlign: "center",
+    fontSize: 13,
+    color: Colors.textSecondary,
+    paddingVertical: 20,
   },
 
   // ===== Hero Banner =====
@@ -798,7 +1545,8 @@ const styles = StyleSheet.create({
     alignItems: "center",
     backgroundColor: "#fff",
     marginHorizontal: 20,
-    marginTop: 20,
+    marginTop: -40,
+    marginBottom: 15,
     borderRadius: 14,
     padding: 16,
     gap: 12,
