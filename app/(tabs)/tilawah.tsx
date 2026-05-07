@@ -1323,6 +1323,87 @@ export default function TilawahScreen() {
           <FontAwesome name="chevron-right" size={14} color={Colors.primary} />
         </TouchableOpacity>
 
+        {/* Menu Categories */}
+        {/* <View style={styles.sectionHeader}>
+          <Text style={styles.sectionTitle}>Menu Utama</Text>
+        </View> */}
+        <View style={styles.categoryGrid}>
+          {/* <TouchableOpacity
+            style={styles.categoryCard}
+            onPress={() => setMode("surah-list")}
+          >
+            <View style={[styles.categoryIcon, { backgroundColor: "#E8F5E9" }]}>
+              <FontAwesome name="list" size={22} color={Colors.primary} />
+            </View>
+            <Text style={styles.categoryLabel}>Daftar{"\n"}Surah</Text>
+          </TouchableOpacity> */}
+
+          <TouchableOpacity
+            style={styles.categoryCard}
+            onPress={() => router.push("/mushaf")}
+          >
+            <View style={[styles.categoryIcon, { backgroundColor: "#FFF3E0" }]}>
+              <FontAwesome name="book" size={22} color="#E65100" />
+            </View>
+            <Text style={styles.categoryLabel}>Mushaf{"\n"}Al-Qur'an</Text>
+          </TouchableOpacity>
+
+          {/* <TouchableOpacity
+            style={styles.categoryCard}
+            onPress={() => router.push("/(tabs)/tahsin")}
+          >
+            <View style={[styles.categoryIcon, { backgroundColor: "#E3F2FD" }]}>
+              <FontAwesome name="graduation-cap" size={20} color="#1565C0" />
+            </View>
+            <Text style={styles.categoryLabel}>Tahsin{"\n"}Tilawah</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={styles.categoryCard}
+            onPress={() => router.push("/(tabs)/talaqi")}
+          >
+            <View style={[styles.categoryIcon, { backgroundColor: "#FCE4EC" }]}>
+              <FontAwesome name="users" size={20} color="#C62828" />
+            </View>
+            <Text style={styles.categoryLabel}>Talaqi{"\n"}Online</Text>
+          </TouchableOpacity> */}
+
+          <TouchableOpacity
+            style={styles.categoryCard}
+            onPress={() => router.push("/hadis")}
+          >
+            <View style={[styles.categoryIcon, { backgroundColor: "#EDE7F6" }]}>
+              <FontAwesome name="book" size={20} color="#4527A0" />
+            </View>
+            <Text style={styles.categoryLabel}>Koleksi{"\n"}Hadis</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={styles.categoryCard}
+            onPress={() => router.push("/doa")}
+          >
+            <View style={[styles.categoryIcon, { backgroundColor: "#E8F5E9" }]}>
+              <FontAwesome5 name="praying-hands" size={20} color="#2E7D32" />
+            </View>
+            <Text style={styles.categoryLabel}>Kumpulan{"\n"}Do'a</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={styles.categoryCard}
+            onPress={() => {
+              setQiblaModalVisible(true);
+              if (!qiblaData && !qiblaLoading) loadQiblaData();
+            }}
+          >
+            <View style={[styles.categoryIcon, { backgroundColor: "#E8EAF6" }]}>
+              <FontAwesome name="compass" size={22} color="#283593" />
+            </View>
+            <Text style={styles.categoryLabel}>Arah{"\n"}Kiblat</Text>
+          </TouchableOpacity>
+        </View>
+
+
+
         {/* Hero Banner */}
         <View style={styles.heroBanner}>
           <View style={styles.heroContent}>
@@ -1347,120 +1428,6 @@ export default function TilawahScreen() {
                   resizeMode="contain"
                 />
           </View>
-        </View>
-
-        {/* Menu Categories */}
-        <View style={styles.sectionHeader}>
-          <Text style={styles.sectionTitle}>Menu Utama</Text>
-        </View>
-        <View style={styles.categoryGrid}>
-          <TouchableOpacity
-            style={styles.categoryCard}
-            onPress={() => setMode("surah-list")}
-          >
-            <View style={[styles.categoryIcon, { backgroundColor: "#E8F5E9" }]}>
-              <FontAwesome name="list" size={22} color={Colors.primary} />
-            </View>
-            <Text style={styles.categoryLabel}>Daftar{"\n"}Surah</Text>
-            <FontAwesome
-              name="chevron-right"
-              size={12}
-              color={Colors.textSecondary}
-            />
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            style={styles.categoryCard}
-            onPress={() => router.push("/mushaf")}
-          >
-            <View style={[styles.categoryIcon, { backgroundColor: "#FFF3E0" }]}>
-              <FontAwesome name="book" size={22} color="#E65100" />
-            </View>
-            <Text style={styles.categoryLabel}>Mushaf{"\n"}Al-Qur'an</Text>
-            <FontAwesome
-              name="chevron-right"
-              size={12}
-              color={Colors.textSecondary}
-            />
-          </TouchableOpacity>
-
-          {/* <TouchableOpacity
-            style={styles.categoryCard}
-            onPress={() => router.push("/(tabs)/tahsin")}
-          >
-            <View style={[styles.categoryIcon, { backgroundColor: "#E3F2FD" }]}>
-              <FontAwesome name="graduation-cap" size={20} color="#1565C0" />
-            </View>
-            <Text style={styles.categoryLabel}>Tahsin{"\n"}Tilawah</Text>
-            <FontAwesome
-              name="chevron-right"
-              size={12}
-              color={Colors.textSecondary}
-            />
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            style={styles.categoryCard}
-            onPress={() => router.push("/(tabs)/talaqi")}
-          >
-            <View style={[styles.categoryIcon, { backgroundColor: "#FCE4EC" }]}>
-              <FontAwesome name="users" size={20} color="#C62828" />
-            </View>
-            <Text style={styles.categoryLabel}>Talaqi{"\n"}Online</Text>
-            <FontAwesome
-              name="chevron-right"
-              size={12}
-              color={Colors.textSecondary}
-            />
-          </TouchableOpacity> */}
-
-          <TouchableOpacity
-            style={styles.categoryCard}
-            onPress={() => router.push("/hadis")}
-          >
-            <View style={[styles.categoryIcon, { backgroundColor: "#EDE7F6" }]}>
-              <FontAwesome name="book" size={20} color="#4527A0" />
-            </View>
-            <Text style={styles.categoryLabel}>Koleksi{"\n"}Hadis</Text>
-            <FontAwesome
-              name="chevron-right"
-              size={12}
-              color={Colors.textSecondary}
-            />
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            style={styles.categoryCard}
-            onPress={() => router.push("/doa")}
-          >
-            <View style={[styles.categoryIcon, { backgroundColor: "#E8F5E9" }]}>
-              <FontAwesome5 name="praying-hands" size={20} color="#2E7D32" />
-            </View>
-            <Text style={styles.categoryLabel}>Kumpulan{"\n"}Do'a</Text>
-            <FontAwesome
-              name="chevron-right"
-              size={12}
-              color={Colors.textSecondary}
-            />
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            style={styles.categoryCard}
-            onPress={() => {
-              setQiblaModalVisible(true);
-              if (!qiblaData && !qiblaLoading) loadQiblaData();
-            }}
-          >
-            <View style={[styles.categoryIcon, { backgroundColor: "#E8EAF6" }]}>
-              <FontAwesome name="compass" size={22} color="#283593" />
-            </View>
-            <Text style={styles.categoryLabel}>Arah{"\n"}Kiblat</Text>
-            <FontAwesome
-              name="chevron-right"
-              size={12}
-              color={Colors.textSecondary}
-            />
-          </TouchableOpacity>
         </View>
 
         {/* Hadis Harian */}
@@ -2036,12 +2003,10 @@ const styles = StyleSheet.create({
     backgroundColor: "#fff",
     marginHorizontal: 20,
     marginTop: -40,
-    marginBottom: 15,
+    marginBottom: 5,
     borderRadius: 14,
     padding: 16,
     gap: 12,
-    borderWidth: 1,
-    borderColor: Colors.primaryLight,
     shadowColor: "#000",
     shadowOffset: { width: 0, height: 1 },
     shadowOpacity: 0.06,
@@ -2092,21 +2057,21 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     flexWrap: "wrap",
     paddingHorizontal: 14,
-    gap: 10,
+    gap: 5,
   },
   categoryCard: {
-    width: (width - 48) / 2,
-    backgroundColor: "#fff",
+    width: (width - 48) / 4 - 5, // 4 columns with 14px horizontal padding and 10px gap
+    // backgroundColor: "#fff",
     borderRadius: 14,
     padding: 16,
-    flexDirection: "row",
+    flexDirection: "column",
     alignItems: "center",
-    gap: 10,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.06,
-    shadowRadius: 4,
-    elevation: 2,
+    gap:10,
+    // shadowColor: "#000",
+    // shadowOffset: { width: 0, height: 1 },
+    // shadowOpacity: 0.06,
+    // shadowRadius: 4,
+    // elevation: 2,
   },
   categoryIcon: {
     width: 44,
@@ -2118,9 +2083,10 @@ const styles = StyleSheet.create({
   categoryLabel: {
     flex: 1,
     fontSize: 13,
-    fontWeight: "600",
+    fontWeight: "500",
     color: Colors.text,
     lineHeight: 18,
+    textAlign: "center",
   },
 
   // ===== Popular Surahs =====
