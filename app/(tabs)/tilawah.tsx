@@ -87,6 +87,7 @@ export default function TilawahScreen() {
   const [kabkotaList, setKabkotaList] = useState<string[]>([]);
   const [pickerSelectedProvinsi, setPickerSelectedProvinsi] = useState("");
   const [pickerLoading, setPickerLoading] = useState(false);
+  const [isScrolled, setIsScrolled] = useState(false);
 
   useEffect(() => {
     loadSurahs();
@@ -515,10 +516,18 @@ export default function TilawahScreen() {
       <ScrollView
         stickyHeaderIndices={[0]}
         showsVerticalScrollIndicator={false}
-        // contentContainerStyle={{ paddingBottom: 32 }}
+        contentContainerStyle={{ paddingBottom: 32 }}
+        onScroll={(e) => setIsScrolled(e.nativeEvent.contentOffset.y > 10)}
+        scrollEventThrottle={16}
       >
         {/* ── child 0: sticky search bar (top) ── */}
-        <View style={[styles.stickySearchWrapper, { paddingTop: insets.top + 10 }]}>
+        <View
+          style={[
+            styles.stickySearchWrapper,
+            { paddingTop: insets.top + 10 },
+            isScrolled && styles.stickySearchWrapperScrolled,
+          ]}
+        >
           <View style={styles.stickySearchRow}>
             <TouchableOpacity
               style={styles.searchBarInner}
@@ -1253,6 +1262,14 @@ const styles = StyleSheet.create({
     backgroundColor: "transparent",
     paddingHorizontal: 16,
     paddingBottom: 10,
+  },
+  stickySearchWrapperScrolled: {
+    backgroundColor: "rgba(220,220,220,0.95)",
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.08,
+    shadowRadius: 6,
+    elevation: 5,
   },
   stickySearchRow: {
     flexDirection: "row",
