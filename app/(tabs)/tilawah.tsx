@@ -19,13 +19,22 @@ import { api } from "@/convex/_generated/api";
 import { Colors } from "@/lib/constants";
 import { getAllSurahs, Surah } from "@/lib/alquran-api";
 import { useAuthContext } from "@/lib/auth-context";
+import {
+  HadisData,
+  HadisSearchItem,
+  getRandomHadis,
+  getNextHadis,
+  getPrevHadis,
+  getHadisById,
+  searchHadis,
+} from "@/lib/hadis-api";
 
 const { width } = Dimensions.get("window");
 
 // Quick access surahs
 const POPULAR_SURAHS = [36, 67, 56, 18, 55, 1]; // Yasin, Al-Mulk, Al-Waqi'ah, Al-Kahf, Ar-Rahman, Al-Fatihah
 
-type ScreenMode = "home" | "surah-list";
+type ScreenMode = "home" | "surah-list" | "hadis-search";
 
 export default function TilawahScreen() {
   const router = useRouter();
@@ -37,9 +46,17 @@ export default function TilawahScreen() {
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
   const [mode, setMode] = useState<ScreenMode>("home");
+  const [hadis, setHadis] = useState<HadisData | null>(null);
+  const [hadisLoading, setHadisLoading] = useState(false);
+  const [hadisSearch, setHadisSearch] = useState("");
+  const [hadisSearchResults, setHadisSearchResults] = useState<HadisSearchItem[]>([]);
+  const [hadisSearchLoading, setHadisSearchLoading] = useState(false);
+  const [hadisSearchPage, setHadisSearchPage] = useState(1);
+  const [hadisSearchTotalPages, setHadisSearchTotalPages] = useState(1);
 
   useEffect(() => {
     loadSurahs();
+    loadRandomHadis();
   }, []);
 
   useEffect(() => {
@@ -70,6 +87,76 @@ export default function TilawahScreen() {
     }
   };
 
+  const loadRandomHadis = async () => {
+    setHadisLoading(true);
+    try {
+      const data = await getRandomHadis();
+      setHadis(data);
+    } catch (error) {
+      console.error("Failed to load hadis:", error);
+    } finally {
+      setHadisLoading(false);
+    }
+  };
+
+  const handleNextHadis = async () => {
+    if (!hadis) return;
+    setHadisLoading(true);
+    try {
+      const data = await getNextHadis(hadis.id);
+      setHadis(data);
+    } catch (error) {
+      console.error("Failed to load next hadis:", error);
+    } finally {
+      setHadisLoading(false);
+    }
+  };
+
+  const handlePrevHadis = async () => {
+    if (!hadis) return;
+    setHadisLoading(true);
+    try {
+      const data = await getPrevHadis(hadis.id);
+      setHadis(data);
+    } catch (error) {
+      console.error("Failed to load prev hadis:", error);
+    } finally {
+      setHadisLoading(false);
+    }
+  };
+
+  const handleHadisSearch = async (keyword: string, page = 1) => {
+    if (!keyword.trim()) return;
+    setHadisSearchLoading(true);
+    try {
+      const result = await searchHadis(keyword.trim(), page, 10);
+      if (page === 1) {
+        setHadisSearchResults(result.hadis);
+      } else {
+        setHadisSearchResults((prev) => [...prev, ...result.hadis]);
+      }
+      setHadisSearchPage(page);
+      setHadisSearchTotalPages(result.paging.total_pages);
+    } catch (error) {
+      console.error("Failed to search hadis:", error);
+    } finally {
+      setHadisSearchLoading(false);
+    }
+  };
+
+  const handleSelectSearchResult = async (item: HadisSearchItem) => {
+    setMode("home");
+    setHadisLoading(true);
+    try {
+      const data = await getHadisById(item.id);
+      setHadis(data);
+    } catch (error) {
+      console.error("Failed to load hadis by id:", error);
+    } finally {
+      setHadisLoading(false);
+    }
+  };
+
   const getPopularSurahs = () =>
     POPULAR_SURAHS.map((num) => surahs.find((s) => s.number === num)).filter(
       Boolean
@@ -83,6 +170,105 @@ export default function TilawahScreen() {
       <View style={styles.center}>
         <ActivityIndicator size="large" color={Colors.primary} />
         <Text style={styles.loadingText}>Memuat daftar surah...</Text>
+      </View>
+    );
+  }
+
+  if (mode === "hadis-search") {
+    return (
+      <View style={styles.container}>
+        {/* Header */}
+        <View style={[styles.listHeader, { paddingTop: insets.top + 12 }]}>
+          <TouchableOpacity onPress={() => setMode("home")}>
+            <FontAwesome name="arrow-left" size={20} color={Colors.textLight} />
+          </TouchableOpacity>
+          <Text style={styles.listHeaderTitle}>Cari Hadis</Text>
+          <View style={{ width: 20 }} />
+        </View>
+
+        {/* Search input */}
+        <View style={styles.searchContainerList}>
+          <FontAwesome
+            name="search"
+            size={16}
+            color={Colors.textSecondary}
+            style={{ marginRight: 10 }}
+          />
+          <TextInput
+            style={styles.searchInputList}
+            placeholder="Ketik kata kunci hadis..."
+            value={hadisSearch}
+            onChangeText={setHadisSearch}
+            placeholderTextColor={Colors.textSecondary}
+            returnKeyType="search"
+            onSubmitEditing={() => handleHadisSearch(hadisSearch)}
+            autoFocus
+          />
+          {hadisSearch.length > 0 && (
+            <TouchableOpacity
+              onPress={() => handleHadisSearch(hadisSearch)}
+              style={styles.hadisSearchBtn}
+            >
+              <Text style={styles.hadisSearchBtnText}>Cari</Text>
+            </TouchableOpacity>
+          )}
+        </View>
+
+        {/* Results */}
+        {hadisSearchLoading && hadisSearchPage === 1 ? (
+          <View style={styles.center}>
+            <ActivityIndicator size="large" color={Colors.primary} />
+          </View>
+        ) : hadisSearchResults.length === 0 && hadisSearch.trim() ? (
+          <View style={styles.center}>
+            <FontAwesome name="search" size={40} color={Colors.primaryLight} />
+            <Text style={[styles.loadingText, { marginTop: 16 }]}>
+              Tidak ada hasil untuk "{hadisSearch}"
+            </Text>
+          </View>
+        ) : (
+          <FlatList
+            data={hadisSearchResults}
+            style={{ backgroundColor: Colors.background }}
+            keyExtractor={(item) => item.id.toString()}
+            contentContainerStyle={styles.list}
+            showsVerticalScrollIndicator={false}
+            onEndReached={() => {
+              if (hadisSearchPage < hadisSearchTotalPages && !hadisSearchLoading) {
+                handleHadisSearch(hadisSearch, hadisSearchPage + 1);
+              }
+            }}
+            onEndReachedThreshold={0.3}
+            ListFooterComponent={
+              hadisSearchLoading ? (
+                <ActivityIndicator
+                  size="small"
+                  color={Colors.primary}
+                  style={{ paddingVertical: 16 }}
+                />
+              ) : null
+            }
+            renderItem={({ item }) => (
+              <TouchableOpacity
+                style={styles.hadisSearchResultCard}
+                onPress={() => handleSelectSearchResult(item)}
+              >
+                <View style={styles.hadisSearchResultBadge}>
+                  <Text style={styles.hadisSearchResultBadgeText}>#{item.id}</Text>
+                </View>
+                <Text style={styles.hadisSearchResultText} numberOfLines={3}>
+                  {item.text}
+                </Text>
+                <FontAwesome
+                  name="chevron-right"
+                  size={12}
+                  color={Colors.textSecondary}
+                  style={{ marginTop: 4 }}
+                />
+              </TouchableOpacity>
+            )}
+          />
+        )}
       </View>
     );
   }
@@ -250,6 +436,63 @@ export default function TilawahScreen() {
           <FontAwesome name="chevron-right" size={14} color={Colors.primary} />
         </TouchableOpacity>
 
+        {/* Hadis Harian */}
+        <View style={styles.sectionHeader}>
+          <Text style={styles.sectionTitle}>Hadis Harian</Text>
+          <View style={{ flexDirection: "row", gap: 12 }}>
+            <TouchableOpacity
+              onPress={() => {
+                setHadisSearch("");
+                setHadisSearchResults([]);
+                setMode("hadis-search");
+              }}
+            >
+              <FontAwesome name="search" size={16} color={Colors.primary} />
+            </TouchableOpacity>
+            <TouchableOpacity onPress={loadRandomHadis} disabled={hadisLoading}>
+              <FontAwesome name="refresh" size={16} color={Colors.primary} />
+            </TouchableOpacity>
+          </View>
+        </View>
+        <View style={styles.hadisCard}>
+          {hadisLoading ? (
+            <ActivityIndicator size="small" color={Colors.primary} style={{ paddingVertical: 24 }} />
+          ) : hadis ? (
+            <>
+              {hadis.grade || hadis.takhrij ? (
+                <View style={styles.hadisMetaRow}>
+                  {hadis.takhrij ? (
+                    <View style={styles.hadisMetaBadge}>
+                      <Text style={styles.hadisMetaText}>{hadis.takhrij}</Text>
+                    </View>
+                  ) : null}
+                  {hadis.grade ? (
+                    <View style={[styles.hadisMetaBadge, styles.hadisGradeBadge]}>
+                      <Text style={styles.hadisMetaText}>{hadis.grade}</Text>
+                    </View>
+                  ) : null}
+                </View>
+              ) : null}
+              <Text style={styles.hadisArab}>{hadis.text.ar}</Text>
+              <View style={styles.hadisDivider} />
+              <Text style={styles.hadisIndo}>{hadis.text.id}</Text>
+              <View style={styles.hadisNav}>
+                <TouchableOpacity style={styles.hadisNavBtn} onPress={handlePrevHadis}>
+                  <FontAwesome name="chevron-left" size={13} color={Colors.primary} />
+                  <Text style={styles.hadisNavText}>Sebelumnya</Text>
+                </TouchableOpacity>
+                <Text style={styles.hadisId}>#{hadis.id}</Text>
+                <TouchableOpacity style={styles.hadisNavBtn} onPress={handleNextHadis}>
+                  <Text style={styles.hadisNavText}>Berikutnya</Text>
+                  <FontAwesome name="chevron-right" size={13} color={Colors.primary} />
+                </TouchableOpacity>
+              </View>
+            </>
+          ) : (
+            <Text style={styles.hadisError}>Gagal memuat hadis</Text>
+          )}
+        </View>
+
         {/* Menu Categories */}
         <View style={styles.sectionHeader}>
           <Text style={styles.sectionTitle}>Menu Utama</Text>
@@ -308,6 +551,21 @@ export default function TilawahScreen() {
               <FontAwesome name="users" size={20} color="#C62828" />
             </View>
             <Text style={styles.categoryLabel}>Talaqi{"\n"}Online</Text>
+            <FontAwesome
+              name="chevron-right"
+              size={12}
+              color={Colors.textSecondary}
+            />
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={styles.categoryCard}
+            onPress={() => router.push("/hadis")}
+          >
+            <View style={[styles.categoryIcon, { backgroundColor: "#EDE7F6" }]}>
+              <FontAwesome name="book" size={20} color="#4527A0" />
+            </View>
+            <Text style={styles.categoryLabel}>Koleksi{"\n"}Hadis</Text>
             <FontAwesome
               name="chevron-right"
               size={12}
@@ -740,5 +998,130 @@ const styles = StyleSheet.create({
     fontFamily: "AmiriQuran",
     fontSize: 20,
     color: Colors.text,
+  },
+
+  // ===== Hadis Harian =====
+  hadisCard: {
+    marginHorizontal: 20,
+    backgroundColor: "#fff",
+    borderRadius: 16,
+    padding: 20,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.07,
+    shadowRadius: 6,
+    elevation: 3,
+    borderWidth: 1,
+    borderColor: Colors.primaryLight,
+  },
+  hadisArab: {
+    fontFamily: "AmiriQuran",
+    fontSize: 22,
+    color: Colors.text,
+    textAlign: "right",
+    lineHeight: 40,
+  },
+  hadisDivider: {
+    height: 1,
+    backgroundColor: Colors.border,
+    marginVertical: 12,
+  },
+  hadisIndo: {
+    fontSize: 13,
+    color: Colors.textSecondary,
+    lineHeight: 20,
+  },
+  hadisNav: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginTop: 16,
+  },
+  hadisNavBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    paddingVertical: 6,
+    paddingHorizontal: 10,
+    borderRadius: 8,
+    backgroundColor: Colors.primaryLight,
+  },
+  hadisNavText: {
+    fontSize: 12,
+    color: Colors.primary,
+    fontWeight: "600",
+  },
+  hadisId: {
+    fontSize: 12,
+    color: Colors.textSecondary,
+  },
+  hadisError: {
+    fontSize: 13,
+    color: Colors.textSecondary,
+    textAlign: "center",
+    paddingVertical: 16,
+  },
+  hadisMetaRow: {
+    flexDirection: "row",
+    gap: 8,
+    marginBottom: 12,
+  },
+  hadisMetaBadge: {
+    backgroundColor: Colors.primaryLight,
+    borderRadius: 6,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+  },
+  hadisGradeBadge: {
+    backgroundColor: "#FFF3E0",
+  },
+  hadisMetaText: {
+    fontSize: 11,
+    color: Colors.primaryDark,
+    fontWeight: "600",
+  },
+
+  // ===== Hadis Search Results =====
+  hadisSearchBtn: {
+    backgroundColor: Colors.primary,
+    borderRadius: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    marginLeft: 8,
+  },
+  hadisSearchBtnText: {
+    color: "#fff",
+    fontSize: 13,
+    fontWeight: "600",
+  },
+  hadisSearchResultCard: {
+    backgroundColor: "#fff",
+    borderRadius: 12,
+    padding: 14,
+    marginBottom: 8,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.05,
+    shadowRadius: 2,
+    elevation: 1,
+  },
+  hadisSearchResultBadge: {
+    backgroundColor: Colors.primaryLight,
+    borderRadius: 6,
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    alignSelf: "flex-start",
+    marginBottom: 8,
+  },
+  hadisSearchResultBadgeText: {
+    fontSize: 11,
+    color: Colors.primaryDark,
+    fontWeight: "bold",
+  },
+  hadisSearchResultText: {
+    fontSize: 13,
+    color: Colors.text,
+    lineHeight: 20,
+    flex: 1,
   },
 });
