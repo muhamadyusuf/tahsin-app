@@ -8,6 +8,7 @@ import {
   ActivityIndicator,
   TextInput,
   ScrollView,
+  Animated,
   Dimensions,
   Image,
   Modal,
@@ -87,7 +88,7 @@ export default function TilawahScreen() {
   const [kabkotaList, setKabkotaList] = useState<string[]>([]);
   const [pickerSelectedProvinsi, setPickerSelectedProvinsi] = useState("");
   const [pickerLoading, setPickerLoading] = useState(false);
-  const [isScrolled, setIsScrolled] = useState(false);
+  const scrollY = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
     loadSurahs();
@@ -324,6 +325,27 @@ export default function TilawahScreen() {
   const firstName = userData?.name?.split(" ")[0] || "Pengguna";
   const headerImageUrl = appConfig?.tilawahHeaderImageUrl;
 
+  const searchBgColor = scrollY.interpolate({
+    inputRange: [0, 60],
+    outputRange: ["transparent", "#ffffff"],
+    extrapolate: "clamp",
+  });
+  const searchBorderRadius = scrollY.interpolate({
+    inputRange: [0, 60],
+    outputRange: [0, 18],
+    extrapolate: "clamp",
+  });
+  const searchShadowOpacity = scrollY.interpolate({
+    inputRange: [0, 60],
+    outputRange: [0, 0.09],
+    extrapolate: "clamp",
+  });
+  const searchElevation = scrollY.interpolate({
+    inputRange: [0, 60],
+    outputRange: [0, 6],
+    extrapolate: "clamp",
+  });
+
   if (loading) {
     return (
       <View style={styles.center}>
@@ -513,19 +535,28 @@ export default function TilawahScreen() {
         <View style={[StyleSheet.absoluteFillObject, { backgroundColor: "rgba(0,0,0,0.28)" }]} />
       ) : null}
 
-      <ScrollView
+      <Animated.ScrollView
         stickyHeaderIndices={[0]}
         showsVerticalScrollIndicator={false}
-        contentContainerStyle={{ paddingBottom: 32 }}
-        onScroll={(e) => setIsScrolled(e.nativeEvent.contentOffset.y > 10)}
+        contentContainerStyle={{ paddingBottom: 0 }}
+        onScroll={Animated.event(
+          [{ nativeEvent: { contentOffset: { y: scrollY } } }],
+          { useNativeDriver: false }
+        )}
         scrollEventThrottle={16}
       >
         {/* ── child 0: sticky search bar (top) ── */}
-        <View
+        <Animated.View
           style={[
             styles.stickySearchWrapper,
-            { paddingTop: insets.top + 10 },
-            isScrolled && styles.stickySearchWrapperScrolled,
+            {
+              paddingTop: insets.top + 10,
+              backgroundColor: searchBgColor,
+              borderBottomLeftRadius: searchBorderRadius,
+              borderBottomRightRadius: searchBorderRadius,
+              shadowOpacity: searchShadowOpacity,
+              elevation: searchElevation,
+            },
           ]}
         >
           <View style={styles.stickySearchRow}>
@@ -547,7 +578,7 @@ export default function TilawahScreen() {
               )}
             </TouchableOpacity>
           </View>
-        </View>
+        </Animated.View>
 
         {/* ── child 1: scrollable header ── */}
         <View style={[styles.header, { paddingTop: 0 }]}>
@@ -614,7 +645,6 @@ export default function TilawahScreen() {
                   <Text style={styles.sholatTapHintText}>Lihat semua waktu sholat →</Text>
                 </View>
               )}
-              <br/>
             </TouchableOpacity>
           </View>
         </View>
@@ -924,7 +954,7 @@ export default function TilawahScreen() {
             />
           </TouchableOpacity>
 
-          <TouchableOpacity
+          {/* <TouchableOpacity
             style={styles.categoryCard}
             onPress={() => router.push("/(tabs)/tahsin")}
           >
@@ -952,7 +982,7 @@ export default function TilawahScreen() {
               size={12}
               color={Colors.textSecondary}
             />
-          </TouchableOpacity>
+          </TouchableOpacity> */}
 
           <TouchableOpacity
             style={styles.categoryCard}
@@ -1084,7 +1114,7 @@ export default function TilawahScreen() {
         </ScrollView>
         <br/>
         </View>
-      </ScrollView>
+      </Animated.ScrollView>
     </View>
   );
 }
@@ -1259,19 +1289,11 @@ const styles = StyleSheet.create({
 
   // ===== Sticky Search Bar =====
   stickySearchWrapper: {
-    backgroundColor: "transparent",
     paddingHorizontal: 16,
     paddingBottom: 15,
-  },
-  stickySearchWrapperScrolled: {
-    backgroundColor: "#FFF",
     shadowColor: "#000",
     shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.08,
     shadowRadius: 6,
-    elevation: 5,
-    borderBottomLeftRadius: 18,
-    borderBottomRightRadius: 18,
   },
   stickySearchRow: {
     flexDirection: "row",
