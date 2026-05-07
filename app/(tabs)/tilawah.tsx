@@ -1261,15 +1261,17 @@ const styles = StyleSheet.create({
   stickySearchWrapper: {
     backgroundColor: "transparent",
     paddingHorizontal: 16,
-    paddingBottom: 10,
+    paddingBottom: 15,
   },
   stickySearchWrapperScrolled: {
-    backgroundColor: "rgba(220,220,220,0.95)",
+    backgroundColor: "#FFF",
     shadowColor: "#000",
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.08,
     shadowRadius: 6,
     elevation: 5,
+    borderBottomLeftRadius: 18,
+    borderBottomRightRadius: 18,
   },
   stickySearchRow: {
     flexDirection: "row",
