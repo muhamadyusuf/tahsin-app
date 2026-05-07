@@ -504,7 +504,7 @@ export default function TilawahScreen() {
       {headerImageUrl ? (
         <Image
           source={{ uri: headerImageUrl }}
-          style={StyleSheet.absoluteFillObject}
+          style={[StyleSheet.absoluteFillObject, { height: 230 }]}
           resizeMode="cover"
         />
       ) : null}
@@ -515,7 +515,7 @@ export default function TilawahScreen() {
       <ScrollView
         stickyHeaderIndices={[0]}
         showsVerticalScrollIndicator={false}
-        contentContainerStyle={{ paddingBottom: 32 }}
+        // contentContainerStyle={{ paddingBottom: 32 }}
       >
         {/* ── child 0: sticky search bar (top) ── */}
         <View style={[styles.stickySearchWrapper, { paddingTop: insets.top + 10 }]}>
@@ -541,7 +541,7 @@ export default function TilawahScreen() {
         </View>
 
         {/* ── child 1: scrollable header ── */}
-        <View style={[styles.header, { paddingTop: 16 }]}>
+        <View style={[styles.header, { paddingTop: 0 }]}>
           <View style={styles.headerContent}>
             {/* Greeting row */}
             {/* <View style={styles.headerTopRow}>
@@ -1073,6 +1073,7 @@ export default function TilawahScreen() {
             </TouchableOpacity>
           ))}
         </ScrollView>
+        <br/>
         </View>
       </ScrollView>
     </View>
