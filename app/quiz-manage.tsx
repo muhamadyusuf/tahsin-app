@@ -19,6 +19,7 @@ import FontAwesome from "@expo/vector-icons/FontAwesome";
 import { api } from "@/convex/_generated/api";
 import { Id } from "@/convex/_generated/dataModel";
 import { Colors } from "@/lib/constants";
+import ConfirmModal from "@/components/ConfirmModal";
 
 type QuizItemProps = {
   quiz: {
@@ -96,6 +97,8 @@ export default function QuizManageScreen() {
   const [jsonModalVisible, setJsonModalVisible] = React.useState(false);
   const [jsonText, setJsonText] = React.useState("");
   const [bulkSubmitting, setBulkSubmitting] = React.useState(false);
+  const [deleteModalVisible, setDeleteModalVisible] = React.useState(false);
+  const [itemToDelete, setItemToDelete] = React.useState<{ id: Id<"quiz">; usage?: any } | null>(null);
 
   const materi = useQuery(
     api.materi.getById,
@@ -130,45 +133,16 @@ export default function QuizManageScreen() {
     quizId: Id<"quiz">,
     usage?: { answerCount: number; progressCount: number; isUsed: boolean }
   ) => {
-    const isUsed = usage?.isUsed === true;
+    setItemToDelete({ id: quizId, usage });
+    setDeleteModalVisible(true);
+  };
 
-    if (isUsed) {
-      if (Platform.OS === "web") {
-        if (window.confirm(`Quiz ini sudah dipakai santri (${usage!.answerCount} jawaban, ${usage!.progressCount} progres). Hapus quiz ini juga akan menghapus data terkait. Lanjut?`)) {
-          performDelete(quizId, true);
-          return;
-        } else {
-          Alert.alert(
-            "Quiz Sudah Dipakai",
-            `Quiz ini sudah dipakai santri (${usage!.answerCount} jawaban, ${usage!.progressCount} progres). Hapus quiz ini juga akan menghapus data terkait. Lanjut?`,
-            [
-              { text: "Batal", style: "cancel" },
-              {
-                text: "Ya, Hapus",
-                style: "destructive",
-                onPress: () => performDelete(quizId, true),
-              },
-            ]
-          );
-          return;
-        }
-      }
-    }
-
-    if (Platform.OS === "web") {
-        if (window.confirm("Yakin ingin menghapus data ini?")) {
-            performDelete(quizId, true);
-        }
-    } else {
-      Alert.alert("Hapus Quiz", "Quiz ini akan dihapus permanen.", [
-        { text: "Batal", style: "cancel" },
-        {
-          text: "Hapus",
-          style: "destructive",
-          onPress: () => performDelete(quizId, true),
-        },
-      ]);
-    }
+  const confirmDelete = async () => {
+    if (!itemToDelete) return;
+    const { id, usage } = itemToDelete;
+    setDeleteModalVisible(false);
+    setItemToDelete(null);
+    await performDelete(id, true);
   };
 
   const handleBulkImport = async () => {
@@ -358,6 +332,21 @@ export default function QuizManageScreen() {
           </View>
         </View>
       </Modal>
+
+      <ConfirmModal
+        visible={deleteModalVisible}
+        onClose={() => setDeleteModalVisible(false)}
+        onConfirm={confirmDelete}
+        title={itemToDelete?.usage?.isUsed ? "Quiz Sudah Dipakai" : "Hapus Quiz"}
+        message={
+          itemToDelete?.usage?.isUsed
+            ? `Quiz ini sudah dipakai santri (${itemToDelete.usage.answerCount} jawaban, ${itemToDelete.usage.progressCount} progres). Menghapus quiz ini juga akan menghapus seluruh data progres terkait. Lanjutkan?`
+            : "Apakah Anda yakin ingin menghapus quiz ini secara permanen?"
+        }
+        confirmText="Hapus Permanen"
+        type="danger"
+        icon="trash"
+      />
     </View>
   );
 }

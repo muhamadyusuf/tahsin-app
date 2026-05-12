@@ -14,12 +14,15 @@ import { api } from "@/convex/_generated/api";
 import { useRouter } from "expo-router";
 import FontAwesome from "@expo/vector-icons/FontAwesome";
 import { Colors } from "@/lib/constants";
+import ConfirmModal from "@/components/ConfirmModal";
 
 type MateriType = "tahsin" | "ulumul_quran";
 
 export default function MateriScreen() {
   const router = useRouter();
   const [activeType, setActiveType] = useState<MateriType>("tahsin");
+  const [deleteModalVisible, setDeleteModalVisible] = useState(false);
+  const [itemToDelete, setItemToDelete] = useState<{ id: string; judul: string } | null>(null);
 
   const materiList = useQuery(api.materi.list, { type: activeType });
   const materiIds = (materiList ?? []).map((item) => item._id);
@@ -32,26 +35,20 @@ export default function MateriScreen() {
   const quizCountMap = new Map((quizCounts ?? []).map((item) => [item.materiId, item.count]));
 
   const handleDelete = (id: string, judul: string) => {
-    if (Platform.OS === "web") {
-      if (window.confirm(`Yakin ingin menghapus "${judul}"?`)) {
-          removeMateri({ id: id as any });
-      }
-    } else {
-      Alert.alert("Hapus Materi", `Yakin ingin menghapus "${judul}"?`, [
-        { text: "Batal", style: "cancel" },
-        {
-          text: "Hapus",
-          style: "destructive",
-          onPress: async () => {
-            try {
-              await removeMateri({ id: id as any });
-              Alert.alert("Berhasil", "Materi telah dihapus.");
-            } catch {
-              Alert.alert("Error", "Gagal menghapus materi.");
-            }
-          },
-        },
-      ]);
+    setItemToDelete({ id, judul });
+    setDeleteModalVisible(true);
+  };
+
+  const confirmDelete = async () => {
+    if (!itemToDelete) return;
+    const { id, judul } = itemToDelete;
+    setDeleteModalVisible(false);
+    setItemToDelete(null);
+    try {
+      await removeMateri({ id: id as any });
+      Alert.alert("Berhasil", "Materi telah dihapus.");
+    } catch {
+      Alert.alert("Error", "Gagal menghapus materi.");
     }
   };
 
@@ -238,6 +235,17 @@ export default function MateriScreen() {
       >
         <FontAwesome name="plus" size={22} color="#fff" />
       </Pressable>
+
+      <ConfirmModal
+        visible={deleteModalVisible}
+        onClose={() => setDeleteModalVisible(false)}
+        onConfirm={confirmDelete}
+        title="Hapus Materi"
+        message={`Yakin ingin menghapus "${itemToDelete?.judul}"? Tindakan ini akan menghapus materi dan seluruh sub-bab di dalamnya.`}
+        confirmText="Hapus"
+        type="danger"
+        icon="trash"
+      />
     </View>
   );
 }

@@ -1,7 +1,7 @@
 import { query, mutation } from "./_generated/server";
 import { v } from "convex/values";
 
-const ADMIN_EMAILS = ["muhamadyusufaa@gmail.com"];
+const ADMIN_EMAILS = ["muhamadyusufaa@gmail.com", "badrudin.on@gmail.com"];
 
 const ALL_ROLES = [
   "administrator",

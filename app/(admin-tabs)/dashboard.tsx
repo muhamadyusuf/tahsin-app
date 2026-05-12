@@ -14,11 +14,23 @@ import { useRouter } from "expo-router";
 import FontAwesome from "@expo/vector-icons/FontAwesome";
 import { Colors } from "@/lib/constants";
 import { useClerk } from "@clerk/expo";
+import ConfirmModal from "@/components/ConfirmModal";
 
 export default function DashboardScreen() {
   const { userData } = useAuthContext();
   const router = useRouter();
   const { signOut } = useClerk();
+  const [logoutModalVisible, setLogoutModalVisible] = React.useState(false);
+
+  const handleLogout = async () => {
+    setLogoutModalVisible(false);
+    try {
+      await signOut();
+      router.replace("/");
+    } catch (err) {
+      console.error("Logout error:", err);
+    }
+  };
 
   const allUsers = useQuery(api.users.listAll, {});
   const allMateri = useQuery(api.materi.list, { type: "tahsin" });
@@ -121,7 +133,7 @@ export default function DashboardScreen() {
           </Text>
         </View>
         <Pressable
-          onPress={() => signOut()}
+          onPress={() => setLogoutModalVisible(true)}
           style={({ pressed }) => [st.logoutBtn, pressed && { opacity: 0.7 }]}
         >
           <FontAwesome name="sign-out" size={18} color={Colors.error} />
@@ -223,6 +235,16 @@ export default function DashboardScreen() {
           ))}
         </>
       )}
+      <ConfirmModal
+        visible={logoutModalVisible}
+        onClose={() => setLogoutModalVisible(false)}
+        onConfirm={handleLogout}
+        title="Konfirmasi Keluar"
+        message="Apakah Anda yakin ingin keluar dari panel admin?"
+        confirmText="Keluar"
+        type="danger"
+        icon="sign-out"
+      />
     </ScrollView>
   );
 }

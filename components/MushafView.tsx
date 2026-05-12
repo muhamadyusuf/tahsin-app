@@ -27,6 +27,7 @@ import {
   QURAN_EDITION_AUDIO,
   QURAN_EDITION_TRANSLATION,
   AUDIO_EDITIONS,
+  getDisplayWidth,
 } from "@/lib/constants";
 import { getPageData, PageData, PageAyah } from "@/lib/alquran-api";
 import { colorizeArabicText, TAJWID_RULES } from "@/lib/tajwid";
@@ -39,7 +40,7 @@ const TAFSIR_EDITION = "id.jalalayn";
 const REPEAT_OPTIONS = [1, 2, 3, 5, 10];
 const SWIPE_THRESHOLD = 70;
 const SWIPE_ANIM_MS = 180;
-const SCREEN_WIDTH = Dimensions.get("window").width;
+const SCREEN_WIDTH = getDisplayWidth();
 
 // Regex to match bismillah prefix with any diacritics ordering (quran-uthmani)
 // Matches: بسم الله الرحمن الرحيم — base consonants with any combining marks

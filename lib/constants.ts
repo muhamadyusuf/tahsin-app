@@ -1,3 +1,5 @@
+import { Platform, Dimensions } from "react-native";
+
 // App-wide constants
 export const APP_NAME = "Tahsin";
 export const APP_VERSION = "1.0.0";
@@ -65,3 +67,11 @@ export const TALAQI_TYPES = [
   { label: "Muroja'ah", value: "murojaah" },
   { label: "Tahfidz", value: "tahfidz" },
 ] as const;
+
+// Web Layout Constants
+export const WEB_MAX_WIDTH = 500;
+
+export const getDisplayWidth = () => {
+  const { width } = Dimensions.get("window");
+  return Platform.OS === "web" ? Math.min(width, WEB_MAX_WIDTH) : width;
+};

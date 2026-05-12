@@ -20,7 +20,7 @@ import { useRouter } from "expo-router";
 import FontAwesome from "@expo/vector-icons/FontAwesome";
 import FontAwesome5 from "@expo/vector-icons/FontAwesome5";
 import { api } from "@/convex/_generated/api";
-import { Colors } from "@/lib/constants";
+import { Colors, getDisplayWidth } from "@/lib/constants";
 import { getAllSurahs, Surah } from "@/lib/alquran-api";
 import { useAuthContext } from "@/lib/auth-context";
 import {
@@ -50,7 +50,7 @@ import * as Location from "expo-location";
 import Svg, { Circle, Line, Text as SvgText, G, Polygon } from "react-native-svg";
 import { getQiblaData, bearingToCardinal, QiblaData } from "@/lib/qibla-api";
 
-const { width } = Dimensions.get("window");
+const width = getDisplayWidth();
 
 // Quick access surahs
 const POPULAR_SURAHS = [36, 67, 56, 18, 55, 1]; // Yasin, Al-Mulk, Al-Waqi'ah, Al-Kahf, Ar-Rahman, Al-Fatihah

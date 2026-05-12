@@ -17,14 +17,15 @@ import {
 } from "react-native";
 import { useRouter } from "expo-router";
 import FontAwesome from "@expo/vector-icons/FontAwesome";
-import { Colors } from "@/lib/constants";
+import { Colors, getDisplayWidth } from "@/lib/constants";
 import { useAuthContext } from "@/lib/auth-context";
 import { useQuery, useMutation } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import { getAllSurahs, Surah } from "@/lib/alquran-api";
 import { getJuzForSurah } from "@/lib/surah-juz";
+import ConfirmModal from "@/components/ConfirmModal";
 
-const { width } = Dimensions.get("window");
+const width = getDisplayWidth();
 
 /* ── helpers ────────────────────────────────────────── */
 
@@ -93,6 +94,8 @@ export default function TilawahHarianScreen() {
   const [editHalaman, setEditHalaman] = useState("");
   const [editKhatam, setEditKhatam] = useState(false);
   const [editSubmitting, setEditSubmitting] = useState(false);
+  const [deleteModalVisible, setDeleteModalVisible] = useState(false);
+  const [itemToDelete, setItemToDelete] = useState<any>(null);
 
   // Auto-set juz when surah changes
   useEffect(() => {
@@ -206,26 +209,19 @@ export default function TilawahHarianScreen() {
     }
   };
 
-  const handleDelete = async (id: any) => {
-    if (Platform.OS === "web") {
-        if (window.confirm("Yakin ingin menghapus data ini?")) {
-            await removeTilawah({ id });
-        }
-    } else {
-        Alert.alert("Hapus Tilawah", "Yakin ingin menghapus data ini?", [
-        { text: "Batal", style: "cancel" },
-        {
-            text: "Hapus",
-            style: "destructive",
-            onPress: async () => {
-            try {
-                await removeTilawah({ id });
-            } catch (e) {
-                Alert.alert("Gagal", "Tidak bisa menghapus data.");
-            }
-            },
-        },
-        ]);
+  const handleDelete = (id: any) => {
+    setItemToDelete(id);
+    setDeleteModalVisible(true);
+  };
+
+  const confirmDelete = async () => {
+    if (!itemToDelete) return;
+    setDeleteModalVisible(false);
+    try {
+      await removeTilawah({ id: itemToDelete });
+      setItemToDelete(null);
+    } catch (e) {
+      Alert.alert("Gagal", "Tidak bisa menghapus data.");
     }
   };
 
@@ -713,6 +709,17 @@ export default function TilawahHarianScreen() {
           </Pressable>
         </Pressable>
       </Modal>
+
+      <ConfirmModal
+        visible={deleteModalVisible}
+        onClose={() => setDeleteModalVisible(false)}
+        onConfirm={confirmDelete}
+        title="Hapus Tilawah"
+        message="Yakin ingin menghapus data tilawah ini? Tindakan ini tidak dapat dibatalkan."
+        confirmText="Hapus"
+        type="danger"
+        icon="trash"
+      />
     </View>
   );
 }

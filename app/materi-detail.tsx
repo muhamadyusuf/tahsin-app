@@ -15,6 +15,7 @@ import { api } from "@/convex/_generated/api";
 import { Id } from "@/convex/_generated/dataModel";
 import FontAwesome from "@expo/vector-icons/FontAwesome";
 import { Colors } from "@/lib/constants";
+import ConfirmModal from "@/components/ConfirmModal";
 
 export default function MateriDetailScreen() {
   const { id, type } = useLocalSearchParams<{
@@ -22,6 +23,8 @@ export default function MateriDetailScreen() {
     type?: string;
   }>();
   const router = useRouter();
+  const [deleteModalVisible, setDeleteModalVisible] = useState(false);
+  const [itemToDelete, setItemToDelete] = useState<{ id: string; judul: string } | null>(null);
 
   const materi = useQuery(
     api.materi.getById,
@@ -36,26 +39,20 @@ export default function MateriDetailScreen() {
   const removeMateri = useMutation(api.materi.remove);
 
   const handleDelete = (subBabId: string, subBabJudul: string) => {
-    if (Platform.OS === "web") {
-        if (window.confirm(`Yakin ingin menghapus "${subBabJudul}"?`)) {
-            removeMateri({ id: subBabId as any });
-        }
-    } else {
-        Alert.alert("Hapus Sub-bab", `Yakin ingin menghapus "${subBabJudul}"?`, [
-        { text: "Batal", style: "cancel" },
-        {
-            text: "Hapus",
-            style: "destructive",
-            onPress: async () => {
-                try {
-                    await removeMateri({ id: subBabId as any });
-                    Alert.alert("Berhasil", "Sub-bab telah dihapus.");
-                } catch {
-                    Alert.alert("Error", "Gagal menghapus sub-bab.");
-                }
-            },
-        },
-        ]);
+    setItemToDelete({ id: subBabId, judul: subBabJudul });
+    setDeleteModalVisible(true);
+  };
+
+  const confirmDelete = async () => {
+    if (!itemToDelete) return;
+    const { id: subBabId, judul: subBabJudul } = itemToDelete;
+    setDeleteModalVisible(false);
+    setItemToDelete(null);
+    try {
+      await removeMateri({ id: subBabId as any });
+      Alert.alert("Berhasil", "Sub-bab telah dihapus.");
+    } catch {
+      Alert.alert("Error", "Gagal menghapus sub-bab.");
     }
   };
 
@@ -292,6 +289,17 @@ export default function MateriDetailScreen() {
           <Text style={st.floatingButtonText}>Tambah Sub-bab</Text>
         </Pressable>
       </View>
+
+      <ConfirmModal
+        visible={deleteModalVisible}
+        onClose={() => setDeleteModalVisible(false)}
+        onConfirm={confirmDelete}
+        title="Hapus Sub-bab"
+        message={`Yakin ingin menghapus "${itemToDelete?.judul}"? Tindakan ini akan menghapus materi terkait.`}
+        confirmText="Hapus"
+        type="danger"
+        icon="trash"
+      />
     </View>
   );
 }

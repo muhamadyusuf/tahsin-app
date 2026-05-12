@@ -14,6 +14,7 @@ import { useClerk } from "@clerk/expo";
 import { useRouter } from "expo-router";
 import { Colors, ROLES } from "@/lib/constants";
 import { useAuthContext } from "@/lib/auth-context";
+import ConfirmModal from "@/components/ConfirmModal";
 
 const ROLE_LABELS: Record<string, string> = {
   [ROLES.ADMINISTRATOR]: "Administrator",
@@ -27,7 +28,10 @@ export default function ProfilScreen() {
   const { signOut } = useClerk();
   const router = useRouter();
 
+  const [logoutModalVisible, setLogoutModalVisible] = React.useState(false);
+
   const doLogout = async () => {
+    setLogoutModalVisible(false);
     try {
       await signOut();
       router.replace("/");
@@ -37,16 +41,7 @@ export default function ProfilScreen() {
   };
 
   const handleLogout = () => {
-    if (Platform.OS === "web") {
-      if (window.confirm("Apakah Anda yakin ingin keluar?")) {
-        doLogout();
-      }
-    } else {
-      Alert.alert("Keluar", "Apakah Anda yakin ingin keluar?", [
-        { text: "Batal", style: "cancel" },
-        { text: "Keluar", style: "destructive", onPress: doLogout },
-      ]);
-    }
+    setLogoutModalVisible(true);
   };
 
   return (
@@ -179,6 +174,17 @@ export default function ProfilScreen() {
 
       {/* Version */}
       <Text style={styles.version}>Tahsin v1.0.0</Text>
+
+      <ConfirmModal
+        visible={logoutModalVisible}
+        onClose={() => setLogoutModalVisible(false)}
+        onConfirm={doLogout}
+        title="Konfirmasi Keluar"
+        message="Apakah Anda yakin ingin keluar dari aplikasi?"
+        confirmText="Keluar"
+        type="danger"
+        icon="sign-out"
+      />
     </ScrollView>
   );
 }

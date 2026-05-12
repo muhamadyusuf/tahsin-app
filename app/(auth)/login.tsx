@@ -14,7 +14,7 @@ import {
 import { useClerk, useAuth } from "@clerk/expo";
 import { Redirect, useRouter } from "expo-router";
 import FontAwesome from "@expo/vector-icons/FontAwesome";
-import { Colors } from "@/lib/constants";
+import { Colors, getDisplayWidth } from "@/lib/constants";
 import { useAuthContext } from "@/lib/auth-context";
 import GoogleIcon from "@/components/GoogleIcon";
 
@@ -24,7 +24,8 @@ if (Platform.OS !== "web") {
     require("@clerk/expo/google").useSignInWithGoogle;
 }
 
-const { width, height } = Dimensions.get("window");
+const { height } = Dimensions.get("window");
+const width = getDisplayWidth();
 
 export default function LoginScreen() {
   const nativeGoogle = Platform.OS !== "web" ? useSignInWithGoogle() : null;
