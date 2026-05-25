@@ -2,11 +2,13 @@ import { Tabs } from "expo-router";
 import { Redirect } from "expo-router";
 import FontAwesome from "@expo/vector-icons/FontAwesome";
 import { ActivityIndicator, View } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Colors } from "@/lib/constants";
 import { useAuthContext } from "@/lib/auth-context";
 
 export default function TabsLayout() {
   const { isLoading, isAuthenticated, isAdmin } = useAuthContext();
+  const insets = useSafeAreaInsets();
 
   if (isLoading) {
     return (
@@ -32,8 +34,8 @@ export default function TabsLayout() {
         tabBarStyle: {
           backgroundColor: "#fff",
           borderTopColor: Colors.border,
-          height: 60,
-          paddingBottom: 8,
+          height: 60 + insets.bottom,
+          paddingBottom: Math.max(8, insets.bottom),
           paddingTop: 4,
         },
         tabBarLabelStyle: { fontSize: 11, fontWeight: "600" },

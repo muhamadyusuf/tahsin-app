@@ -17,6 +17,7 @@ import {
   Dimensions,
 } from "react-native";
 import { useRouter } from "expo-router";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import FontAwesome from "@expo/vector-icons/FontAwesome";
 import Slider from "@react-native-community/slider";
 import AsyncStorage from "@react-native-async-storage/async-storage";
@@ -316,6 +317,7 @@ const JUZ_START_SURAH: Record<number, number> = {
 
 export default function MushafView({ initialPage = 0 }: Props) {
   const router = useRouter();
+  const insets = useSafeAreaInsets();
   const [page, setPage] = useState(
     Math.max(COVER_PAGE, Math.min(TOTAL_PAGES, initialPage))
   );
@@ -880,7 +882,7 @@ export default function MushafView({ initialPage = 0 }: Props) {
           </View>
 
           {/* Minimal bottom bar for cover */}
-          <View style={[s.toolbar, { backgroundColor: "#1B5E20" }]}>
+          <View style={[s.toolbar, { backgroundColor: "#1B5E20", paddingBottom: insets.bottom + 8 }]}>
             <TouchableOpacity
               style={s.navBtn}
               onPress={() => setPage(1)}
@@ -904,7 +906,7 @@ export default function MushafView({ initialPage = 0 }: Props) {
         <>
           {/* Top bar — shown on tap */}
           {showBars && (
-          <View style={s.topBar}>
+          <View style={[s.topBar, { paddingTop: insets.top || TOP_INSET }]}>
             <TouchableOpacity
               style={s.backBtn}
               onPress={() => router.back()}
@@ -994,7 +996,7 @@ export default function MushafView({ initialPage = 0 }: Props) {
 
       {/* Audio floating bar */}
       {(playingAyahIdx !== null || audioLoading) && (
-        <View style={s.audioBar}>
+        <View style={[s.audioBar, !showBars && { paddingBottom: insets.bottom + 10 }]}>
           {audioLoading && (
             <ActivityIndicator size="small" color="#fff" />
           )}
@@ -1011,7 +1013,7 @@ export default function MushafView({ initialPage = 0 }: Props) {
 
       {/* Bottom navigation bar — RTL: left=next, right=prev */}
       {showBars && (
-      <View style={s.toolbar}>
+      <View style={[s.toolbar, { paddingBottom: insets.bottom + 8 }]}>
         <TouchableOpacity
           style={s.navBtn}
           onPress={() => setPage((p) => Math.min(TOTAL_PAGES, p + 1))}

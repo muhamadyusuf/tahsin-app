@@ -11,24 +11,18 @@ import {
   StatusBar,
   Image,
 } from "react-native";
-import { useClerk, useAuth } from "@clerk/expo";
+import { useClerk, useAuth, useSSO } from "@clerk/expo";
 import { Redirect, useRouter } from "expo-router";
 import FontAwesome from "@expo/vector-icons/FontAwesome";
 import { Colors, getDisplayWidth } from "@/lib/constants";
 import { useAuthContext } from "@/lib/auth-context";
 import GoogleIcon from "@/components/GoogleIcon";
 
-let useSignInWithGoogle: any;
-if (Platform.OS !== "web") {
-  useSignInWithGoogle =
-    require("@clerk/expo/google").useSignInWithGoogle;
-}
-
 const { height } = Dimensions.get("window");
 const width = getDisplayWidth();
 
 export default function LoginScreen() {
-  const nativeGoogle = Platform.OS !== "web" ? useSignInWithGoogle() : null;
+  const { startSSOFlow } = useSSO();
   const clerk = useClerk();
   const { isSignedIn } = useAuth();
   const { isLoading: authLoading, isAuthenticated } = useAuthContext();
@@ -65,8 +59,9 @@ export default function LoginScreen() {
             externalVerificationRedirectURL.toString();
         }
       } else {
-        const { createdSessionId, setActive } =
-          await nativeGoogle.startGoogleAuthenticationFlow();
+        const { createdSessionId, setActive } = await startSSOFlow({
+          strategy: "oauth_google",
+        });
 
         if (createdSessionId && setActive) {
           await setActive({ session: createdSessionId });
@@ -74,7 +69,12 @@ export default function LoginScreen() {
         }
       }
     } catch (err: any) {
-      if (err.code === "SIGN_IN_CANCELLED" || err.code === "-5") {
+      if (
+        err.code === "SIGN_IN_CANCELLED" ||
+        err.code === "-5" ||
+        err.message?.includes("cancelled") ||
+        err.message?.includes("dismissed")
+      ) {
         return;
       }
       Alert.alert(

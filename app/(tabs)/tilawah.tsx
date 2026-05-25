@@ -1385,7 +1385,7 @@ export default function TilawahScreen() {
             <View style={[styles.categoryIcon, { backgroundColor: "#E8F5E9" }]}>
               <FontAwesome5 name="praying-hands" size={20} color="#2E7D32" />
             </View>
-            <Text style={styles.categoryLabel}>Kumpulan{"\n"}Do'a</Text>
+            <Text style={styles.categoryLabel}>Untaian{"\n"}Do'a</Text>
           </TouchableOpacity>
 
           <TouchableOpacity
@@ -1527,7 +1527,7 @@ export default function TilawahScreen() {
             </TouchableOpacity>
           ))}
         </ScrollView>
-        <br/>
+        <View style={{ height: 16 }} />
         </View>
       </Animated.ScrollView>
     </View>
