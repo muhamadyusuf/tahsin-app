@@ -15,6 +15,7 @@ import {
   Animated,
   PanResponder,
   Dimensions,
+  useWindowDimensions,
 } from "react-native";
 import { useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -34,6 +35,7 @@ import { getPageData, PageData, PageAyah } from "@/lib/alquran-api";
 import { colorizeArabicText, TAJWID_RULES } from "@/lib/tajwid";
 
 const COVER_PAGE = 0;
+const DESKTOP_BREAKPOINT = 900;
 
 const TOTAL_PAGES = 604;
 const BOOKMARKS_KEY = "mushaf_bookmarks";
@@ -169,6 +171,14 @@ interface Bookmark {
 interface SelectedAyah {
   ayah: PageAyah;
   idx: number; // index in page's ayah array for audio
+}
+
+interface PageTranslation {
+  number: number;
+  surahNumber: number;
+  surahName: string;
+  numberInSurah: number;
+  text: string;
 }
 
 interface Props {
@@ -318,6 +328,8 @@ const JUZ_START_SURAH: Record<number, number> = {
 export default function MushafView({ initialPage = 0 }: Props) {
   const router = useRouter();
   const insets = useSafeAreaInsets();
+  const { width: windowWidth } = useWindowDimensions();
+  const isDesktop = Platform.OS === "web" && windowWidth >= DESKTOP_BREAKPOINT;
   const [page, setPage] = useState(
     Math.max(COVER_PAGE, Math.min(TOTAL_PAGES, initialPage))
   );
@@ -369,7 +381,16 @@ export default function MushafView({ initialPage = 0 }: Props) {
   const [infoLoading, setInfoLoading] = useState(false);
   const [infoAyahLabel, setInfoAyahLabel] = useState("");
 
+  // Desktop side panel translations
+  const [pageTranslations, setPageTranslations] = useState<PageTranslation[]>([]);
+  const [translationsLoading, setTranslationsLoading] = useState(false);
+
+  // Desktop panel visibility
+  const [leftPanelOpen, setLeftPanelOpen] = useState(true);
+  const [rightPanelOpen, setRightPanelOpen] = useState(true);
+
   const cache = useRef<Record<number, PageData>>({});
+  const translationCache = useRef<Record<number, PageTranslation[]>>({});
 
   const animateToPage = useCallback(
     (targetPage: number, direction: 1 | -1) => {
@@ -506,6 +527,45 @@ export default function MushafView({ initialPage = 0 }: Props) {
   useEffect(() => {
     repeatCountRef.current = repeatCount;
   }, [repeatCount]);
+
+  // Fetch page-level translations for desktop side panel
+  useEffect(() => {
+    if (!isDesktop || page < 1) {
+      setPageTranslations([]);
+      return;
+    }
+    if (translationCache.current[page]) {
+      setPageTranslations(translationCache.current[page]);
+      return;
+    }
+    setPageTranslations([]);
+    setTranslationsLoading(true);
+    (async () => {
+      try {
+        const resp = await fetch(
+          `${QURAN_API_BASE}/page/${page}/${QURAN_EDITION_TRANSLATION}`
+        );
+        const json = await resp.json();
+        if (json.code === 200 && json.data?.ayahs) {
+          const translations: PageTranslation[] = json.data.ayahs.map(
+            (a: { number: number; text: string; surah: { number: number; name: string }; numberInSurah: number }) => ({
+              number: a.number,
+              surahNumber: a.surah.number,
+              surahName: a.surah.name,
+              numberInSurah: a.numberInSurah,
+              text: a.text,
+            })
+          );
+          translationCache.current[page] = translations;
+          setPageTranslations(translations);
+        }
+      } catch {
+        // silent fail
+      } finally {
+        setTranslationsLoading(false);
+      }
+    })();
+  }, [isDesktop, page]);
 
   // Fetch audio URLs when page or edition changes
   useEffect(() => {
@@ -732,6 +792,33 @@ export default function MushafView({ initialPage = 0 }: Props) {
     }
   };
 
+  // ===== Render desktop translation panel =====
+  const renderTranslationPanel = () => {
+    if (!data) return null;
+    const transMap = new Map(pageTranslations.map((t) => [t.number, t]));
+    const groups = groupBySurah(data.ayahs);
+    return groups.map((g, gi) => (
+      <View key={`tg-${gi}`}>
+        {g.startsNewSurah && (
+          <View style={s.desktopSurahHeader}>
+            <Text style={s.desktopSurahHeaderText}>{g.surahName}</Text>
+          </View>
+        )}
+        {g.ayahs.map((a) => {
+          const t = transMap.get(a.number);
+          return (
+            <View key={a.number} style={s.desktopTranslationAyah}>
+              <View style={s.desktopTranslationNum}>
+                <Text style={s.desktopTranslationNumText}>{a.numberInSurah}</Text>
+              </View>
+              <Text style={s.desktopTranslationText}>{t?.text ?? ""}</Text>
+            </View>
+          );
+        })}
+      </View>
+    ));
+  };
+
   // ===== Render page content =====
   const renderContent = () => {
     if (!data) return null;
@@ -909,7 +996,7 @@ export default function MushafView({ initialPage = 0 }: Props) {
           <View style={[s.topBar, { paddingTop: insets.top || TOP_INSET }]}>
             <TouchableOpacity
               style={s.backBtn}
-              onPress={() => router.back()}
+              onPress={() => router.push("/")}
             >
               <FontAwesome name="arrow-left" size={18} color={M.toolbarText} />
             </TouchableOpacity>
@@ -947,51 +1034,104 @@ export default function MushafView({ initialPage = 0 }: Props) {
               <Text style={s.loadingText}>Memuat halaman {page}...</Text>
             </View>
           ) : (
-            <Pressable
-              style={s.pageOuter}
-              onPress={() => setShowBars((v) => !v)}
-              {...panResponder.panHandlers}
-            >
-              <View style={s.pageTurnStage}>
-                <Animated.View
-                  pointerEvents="none"
-                  style={[
-                    s.pageTurnShadow,
-                    {
-                      opacity: swipeX.interpolate({
-                        inputRange: [-SCREEN_WIDTH, 0, SCREEN_WIDTH],
-                        outputRange: [0.25, 0, 0.25],
-                      }),
-                    },
-                  ]}
-                />
-                <Animated.View
-                  style={[
-                    s.pageBorder,
-                    {
-                      transform: [
-                        { perspective: 1200 },
-                        { translateX: swipeX },
-                        {
-                          rotateY: swipeX.interpolate({
-                            inputRange: [-SCREEN_WIDTH, 0, SCREEN_WIDTH],
-                            outputRange: ["-14deg", "0deg", "14deg"],
-                          }),
-                        },
-                      ],
-                    },
-                  ]}
-                >
-                  <ScrollView
-                    contentContainerStyle={s.pageContent}
-                    showsVerticalScrollIndicator={false}
+            <View style={isDesktop ? s.desktopLayout : { flex: 1 }}>
+              {/* Left: Translation Panel with toggle */}
+              {isDesktop && (
+                <View style={s.desktopLeftContainer}>
+                  {leftPanelOpen && (
+                    <ScrollView
+                      style={s.desktopTranslationPanel}
+                      contentContainerStyle={s.desktopTranslationContent}
+                      showsVerticalScrollIndicator={false}
+                    >
+                      <Text style={s.desktopTranslationTitle}>Terjemahan</Text>
+                      {translationsLoading ? (
+                        <View style={s.desktopTranslationLoading}>
+                          <ActivityIndicator size="small" color={M.border} />
+                        </View>
+                      ) : (
+                        renderTranslationPanel()
+                      )}
+                    </ScrollView>
+                  )}
+                  <TouchableOpacity
+                    style={s.desktopLeftToggle}
+                    onPress={() => setLeftPanelOpen((v) => !v)}
                   >
-                    {renderContent()}
-                  </ScrollView>
-                </Animated.View>
-              </View>
-              {/* <Text style={s.swipeHint}>Geser kiri/kanan untuk pindah halaman</Text> */}
-            </Pressable>
+                    <FontAwesome
+                      name={leftPanelOpen ? "chevron-left" : "chevron-right"}
+                      size={11}
+                      color={M.toolbarText}
+                    />
+                  </TouchableOpacity>
+                </View>
+              )}
+
+              {/* Center: Mushaf Page */}
+              <Pressable
+                style={[s.pageOuter, isDesktop && s.desktopPageArea]}
+                onPress={() => setShowBars((v) => !v)}
+                {...panResponder.panHandlers}
+              >
+                <View style={isDesktop ? s.desktopPageTurnStage : s.pageTurnStage}>
+                  <Animated.View
+                    pointerEvents="none"
+                    style={[
+                      s.pageTurnShadow,
+                      {
+                        opacity: swipeX.interpolate({
+                          inputRange: [-SCREEN_WIDTH, 0, SCREEN_WIDTH],
+                          outputRange: [0.25, 0, 0.25],
+                        }),
+                      },
+                    ]}
+                  />
+                  <Animated.View
+                    style={[
+                      s.pageBorder,
+                      isDesktop && s.desktopPageBorder,
+                      {
+                        transform: [
+                          { perspective: 1200 },
+                          { translateX: swipeX },
+                          {
+                            rotateY: swipeX.interpolate({
+                              inputRange: [-SCREEN_WIDTH, 0, SCREEN_WIDTH],
+                              outputRange: ["-14deg", "0deg", "14deg"],
+                            }),
+                          },
+                        ],
+                      },
+                    ]}
+                  >
+                    <ScrollView
+                      contentContainerStyle={s.pageContent}
+                      showsVerticalScrollIndicator={false}
+                    >
+                      {renderContent()}
+                    </ScrollView>
+                  </Animated.View>
+                </View>
+                {/* <Text style={s.swipeHint}>Geser kiri/kanan untuk pindah halaman</Text> */}
+              </Pressable>
+
+              {/* Right: Reserved panel with toggle */}
+              {isDesktop && (
+                <View style={s.desktopRightContainer}>
+                  <TouchableOpacity
+                    style={s.desktopRightToggle}
+                    onPress={() => setRightPanelOpen((v) => !v)}
+                  >
+                    <FontAwesome
+                      name={rightPanelOpen ? "chevron-right" : "chevron-left"}
+                      size={11}
+                      color={M.toolbarText}
+                    />
+                  </TouchableOpacity>
+                  {rightPanelOpen && <View style={s.desktopRightPanel} />}
+                </View>
+              )}
+            </View>
           )}
 
       {/* Audio floating bar */}
@@ -1750,6 +1890,139 @@ const s = StyleSheet.create({
     textAlign: "center",
     fontSize: 11,
     color: Colors.textSecondary,
+  },
+
+  // ===== Desktop Layout =====
+  desktopLayout: {
+    flex: 1,
+  },
+  // Panels are absolute so they overlay the mushaf — mushaf never shifts
+  desktopLeftContainer: {
+    position: "absolute" as const,
+    left: 0,
+    top: 0,
+    bottom: 0,
+    flexDirection: "row" as const,
+    zIndex: 10,
+  },
+  desktopTranslationPanel: {
+    width: 250,
+    backgroundColor: "#F8FFF8",
+  },
+  desktopLeftToggle: {
+    width: 20,
+    justifyContent: "center",
+    alignItems: "center",
+    backgroundColor: M.surahBg,
+    borderRightWidth: 1,
+    borderRightColor: M.border + "40",
+  },
+  desktopTranslationContent: {
+    padding: 16,
+    paddingBottom: 32,
+  },
+  desktopTranslationTitle: {
+    fontSize: 13,
+    fontWeight: "700" as const,
+    color: M.toolbarText,
+    textAlign: "center",
+    paddingBottom: 10,
+    marginBottom: 4,
+    borderBottomWidth: 1,
+    borderBottomColor: M.border + "30",
+  },
+  desktopTranslationLoading: {
+    paddingVertical: 40,
+    alignItems: "center" as const,
+  },
+  desktopSurahHeader: {
+    backgroundColor: M.surahBg,
+    borderRadius: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    marginTop: 12,
+    marginBottom: 6,
+    alignItems: "center" as const,
+  },
+  desktopSurahHeaderText: {
+    fontFamily: "AmiriQuran",
+    fontSize: 13,
+    fontWeight: "600" as const,
+    color: M.surahDecor,
+  },
+  desktopTranslationAyah: {
+    flexDirection: "row" as const,
+    gap: 8,
+    paddingVertical: 8,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: M.border + "50",
+    alignItems: "flex-start" as const,
+  },
+  desktopTranslationNum: {
+    width: 22,
+    height: 22,
+    borderRadius: 11,
+    backgroundColor: M.surahDecor + "18",
+    justifyContent: "center" as const,
+    alignItems: "center" as const,
+    marginTop: 1,
+    flexShrink: 0,
+  },
+  desktopTranslationNumText: {
+    fontSize: 9,
+    fontWeight: "700" as const,
+    color: M.surahDecor,
+  },
+  desktopTranslationText: {
+    flex: 1,
+    fontSize: 13,
+    lineHeight: 20,
+    color: M.text,
+  },
+
+  // Desktop: center mushaf page — fixed 480px width, book-page proportions
+  desktopPageArea: {
+    flex: 1,
+    padding: 8,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: M.headerBg,
+  },
+  desktopPageTurnStage: {
+    width: 480,
+    flex: 1,
+    maxHeight: 680,
+    justifyContent: "center",
+  },
+  // Physical mushaf page shadow (book-page lift effect)
+  desktopPageBorder: {
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.18,
+    shadowRadius: 12,
+    elevation: 8,
+  },
+  // Desktop: right panel container with toggle
+  desktopRightContainer: {
+    position: "absolute" as const,
+    right: 0,
+    top: 0,
+    bottom: 0,
+    flexDirection: "row" as const,
+    zIndex: 10,
+  },
+  desktopRightToggle: {
+    width: 20,
+    justifyContent: "center",
+    alignItems: "center",
+    backgroundColor: M.surahBg,
+    borderLeftWidth: 1,
+    borderLeftColor: M.border + "40",
+  },
+  // Desktop: empty right area reserved for future video/zoom
+  desktopRightPanel: {
+    width: 250,
+    backgroundColor: M.headerBg,
   },
   pageContent: {
     padding: 16,

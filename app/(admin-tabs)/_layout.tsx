@@ -96,6 +96,15 @@ export default function TabsLayout() {
           ),
         }}
       />
+      <Tabs.Screen
+        name="ceramah"
+        options={{
+          title: "Ceramah",
+          tabBarIcon: ({ color, size }) => (
+            <FontAwesome name="youtube-play" size={size} color={color} />
+          ),
+        }}
+      />
     </Tabs>
   );
 }

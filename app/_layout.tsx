@@ -1,10 +1,10 @@
 import FontAwesome from "@expo/vector-icons/FontAwesome";
 import { useFonts } from "expo-font";
-import { Stack } from "expo-router";
+import { Stack, usePathname } from "expo-router";
 import * as SplashScreen from "expo-splash-screen";
 import { StatusBar } from "expo-status-bar";
 import { useEffect } from "react";
-import { Platform, View, StyleSheet } from "react-native";
+import { Platform, View, StyleSheet, useWindowDimensions } from "react-native";
 import "react-native-reanimated";
 
 import { Providers } from "@/lib/providers";
@@ -15,7 +15,14 @@ export { ErrorBoundary } from "expo-router";
 
 SplashScreen.preventAutoHideAsync();
 
+const DESKTOP_BREAKPOINT = 900;
+
 export default function RootLayout() {
+  const { width: windowWidth } = useWindowDimensions();
+  const isDesktop = Platform.OS === "web" && windowWidth >= DESKTOP_BREAKPOINT;
+  const pathname = usePathname();
+  // Full-width desktop layout only for the mushaf reader
+  const useDesktopLayout = isDesktop && pathname.startsWith("/mushaf");
   const [loaded, error] = useFonts({
     SpaceMono: require("../assets/fonts/SpaceMono-Regular.ttf"),
     AmiriQuran: require("../assets/fonts/AmiriQuran-Regular.ttf"),
@@ -42,7 +49,7 @@ export default function RootLayout() {
       <AuthProvider>
         <StatusBar style="light" backgroundColor="#2E7D32" />
         <View style={styles.rootContainer}>
-          <View style={styles.contentContainer}>
+          <View style={[styles.contentContainer, useDesktopLayout && styles.contentContainerDesktop]}>
             <Stack>
               <Stack.Screen name="index" options={{ headerShown: false }} />
               <Stack.Screen name="(auth)" options={{ headerShown: false }} />
@@ -54,6 +61,7 @@ export default function RootLayout() {
               <Stack.Screen name="mushaf" options={{ headerShown: false }} />
               <Stack.Screen name="edit-profil" options={{ title: "Edit Profil", headerTintColor: Colors.primary }} />
               <Stack.Screen name="lembaga-pengajian" options={{ title: "Lembaga Pengajian", headerTintColor: Colors.primary }} />
+              <Stack.Screen name="info-api" options={{ title: "Informasi API", headerTintColor: Colors.primary }} />
               <Stack.Screen name="statistik" options={{ title: "Statistik", headerTintColor: Colors.primary }} />
               <Stack.Screen name="pengaturan" options={{ title: "Pengaturan", headerTintColor: Colors.primary }} />
               <Stack.Screen name="bantuan" options={{ title: "Bantuan", headerTintColor: Colors.primary }} />
@@ -100,5 +108,12 @@ const styles = StyleSheet.create({
           overflow: "hidden",
         }
       : {}),
+  },
+  // Desktop: full-width, no phone-frame shadow
+  contentContainerDesktop: {
+    maxWidth: "100%" as unknown as number,
+    shadowOpacity: 0,
+    shadowRadius: 0,
+    elevation: 0,
   },
 });

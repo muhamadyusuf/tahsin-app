@@ -151,6 +151,16 @@ export default function ProfilScreen() {
           </TouchableOpacity>
         )}
 
+        <TouchableOpacity style={styles.menuItem} onPress={() => router.push("/info-api")}>
+          <FontAwesome name="plug" size={18} color={Colors.primary} />
+          <Text style={styles.menuText}>Informasi API</Text>
+          <FontAwesome
+            name="chevron-right"
+            size={14}
+            color={Colors.textSecondary}
+          />
+        </TouchableOpacity>
+
         <TouchableOpacity style={styles.menuItem} onPress={() => router.push("/bantuan")}>
           <FontAwesome
             name="question-circle"

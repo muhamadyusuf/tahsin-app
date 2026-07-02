@@ -15,6 +15,7 @@ import {
   Platform,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import YouTubePlayer from "@/components/YouTubePlayer";
 import { useQuery } from "convex/react";
 import { useRouter } from "expo-router";
 import FontAwesome from "@expo/vector-icons/FontAwesome";
@@ -54,6 +55,19 @@ const width = getDisplayWidth();
 
 // Quick access surahs
 const POPULAR_SURAHS = [36, 67, 56, 18, 55, 1]; // Yasin, Al-Mulk, Al-Waqi'ah, Al-Kahf, Ar-Rahman, Al-Fatihah
+
+function extractYouTubeId(url: string): string | null {
+  const patterns = [
+    /(?:youtube\.com\/watch\?v=|youtu\.be\/|youtube\.com\/embed\/)([^&?#\s]+)/,
+    /youtube\.com\/shorts\/([^&?#\s]+)/,
+    /youtube\.com\/live\/([^&?#\s]+)/,
+  ];
+  for (const pattern of patterns) {
+    const match = url.match(pattern);
+    if (match?.[1]) return match[1];
+  }
+  return null;
+}
 
 function QiblaCompassLive({
   bearing,
@@ -237,6 +251,7 @@ export default function TilawahScreen() {
   const { userData } = useAuthContext();
   const insets = useSafeAreaInsets();
   const appConfig = useQuery(api.appConfig.getPublicConfig, {});
+  const ceramahVideos = useQuery(api.ceramahVideo.listActiveVideos, {});
   const [surahs, setSurahs] = useState<Surah[]>([]);
   const [filtered, setFiltered] = useState<Surah[]>([]);
   const [loading, setLoading] = useState(true);
@@ -279,6 +294,11 @@ export default function TilawahScreen() {
   const headingSubRef = useRef<{ remove: () => void } | null>(null);
   const webOrientationHandlerRef = useRef<((e: Event) => void) | null>(null);
   const webCompassReceivedRef = useRef(false);
+
+  // Ceramah video player state
+  const [videoModalVisible, setVideoModalVisible] = useState(false);
+  const [selectedVideo, setSelectedVideo] = useState<{ youtubeUrl: string; judul: string; isLive: boolean } | null>(null);
+  const [isFullscreen, setIsFullscreen] = useState(false);
 
   const scrollY = useRef(new Animated.Value(0)).current;
 
@@ -1402,7 +1422,116 @@ export default function TilawahScreen() {
           </TouchableOpacity>
         </View>
 
+        {/* ===== Ceramah Video Section ===== */}
+        {ceramahVideos && ceramahVideos.length > 0 && (() => {
+          const liveVideos = ceramahVideos.filter((v) => v.isLive);
+          const regularVideos = ceramahVideos.filter((v) => !v.isLive);
+          const featuredLive = liveVideos[0] ?? null;
+          return (
+            <>
+              {/* Featured Live Video */}
+              {featuredLive && (() => {
+                const videoId = extractYouTubeId(featuredLive.youtubeUrl);
+                const thumbUri = videoId
+                  ? `https://img.youtube.com/vi/${videoId}/hqdefault.jpg`
+                  : null;
+                return (
+                  <View style={styles.ceramahSection}>
+                    <View style={styles.sectionHeader}>
+                      <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+                        <View style={styles.liveDot} />
+                        <Text style={styles.sectionTitle}>Siaran Langsung</Text>
+                      </View>
+                    </View>
+                    <TouchableOpacity
+                      style={styles.featuredLiveCard}
+                      activeOpacity={0.9}
+                      onPress={() => {
+                        setSelectedVideo({ youtubeUrl: featuredLive.youtubeUrl, judul: featuredLive.judul, isLive: true });
+                        setIsFullscreen(false);
+                        setVideoModalVisible(true);
+                      }}
+                    >
+                      {thumbUri ? (
+                        <Image source={{ uri: thumbUri }} style={styles.featuredLiveThumb} resizeMode="cover" />
+                      ) : (
+                        <View style={[styles.featuredLiveThumb, { backgroundColor: "#1a1a1a" }]} />
+                      )}
+                      <View style={styles.featuredLiveOverlay}>
+                        <View style={styles.liveBadgeRow}>
+                          <View style={styles.liveBadge}>
+                            <View style={styles.liveBadgeDot} />
+                            <Text style={styles.liveBadgeText}>LIVE</Text>
+                          </View>
+                        </View>
+                        <View style={styles.featuredLivePlayBtn}>
+                          <FontAwesome name="play-circle" size={56} color="rgba(255,255,255,0.92)" />
+                        </View>
+                        <View style={styles.featuredLiveInfo}>
+                          <Text style={styles.featuredLiveTitle} numberOfLines={2}>
+                            {featuredLive.judul}
+                          </Text>
+                          {featuredLive.deskripsi ? (
+                            <Text style={styles.featuredLiveDesc} numberOfLines={1}>
+                              {featuredLive.deskripsi}
+                            </Text>
+                          ) : null}
+                        </View>
+                      </View>
+                    </TouchableOpacity>
+                  </View>
+                );
+              })()}
 
+              {/* Regular Videos List */}
+              {regularVideos.length > 0 && (
+                <View>
+                  <View style={styles.sectionHeader}>
+                    <Text style={styles.sectionTitle}>Video Ceramah</Text>
+                  </View>
+                  <ScrollView
+                    horizontal
+                    showsHorizontalScrollIndicator={false}
+                    contentContainerStyle={styles.ceramahScroll}
+                  >
+                    {regularVideos.map((item) => {
+                      const videoId = extractYouTubeId(item.youtubeUrl);
+                      const thumbUri = videoId
+                        ? `https://img.youtube.com/vi/${videoId}/mqdefault.jpg`
+                        : null;
+                      return (
+                        <TouchableOpacity
+                          key={item._id}
+                          style={styles.ceramahCard}
+                          activeOpacity={0.85}
+                          onPress={() => {
+                            setSelectedVideo({ youtubeUrl: item.youtubeUrl, judul: item.judul, isLive: false });
+                            setIsFullscreen(false);
+                            setVideoModalVisible(true);
+                          }}
+                        >
+                          <View style={styles.ceramahThumbWrap}>
+                            {thumbUri ? (
+                              <Image source={{ uri: thumbUri }} style={styles.ceramahThumb} resizeMode="cover" />
+                            ) : (
+                              <View style={[styles.ceramahThumb, { backgroundColor: "#1a1a1a" }]} />
+                            )}
+                            <View style={styles.ceramahPlayOverlay}>
+                              <FontAwesome name="play-circle" size={30} color="rgba(255,255,255,0.88)" />
+                            </View>
+                          </View>
+                          <Text style={styles.ceramahCardTitle} numberOfLines={2}>
+                            {item.judul}
+                          </Text>
+                        </TouchableOpacity>
+                      );
+                    })}
+                  </ScrollView>
+                </View>
+              )}
+            </>
+          );
+        })()}
 
         {/* Hero Banner */}
         <View style={styles.heroBanner}>
@@ -1435,11 +1564,7 @@ export default function TilawahScreen() {
           <Text style={styles.sectionTitle}>Hadis Harian</Text>
           <View style={{ flexDirection: "row", gap: 12 }}>
             <TouchableOpacity
-              onPress={() => {
-                setHadisSearch("");
-                setHadisSearchResults([]);
-                setMode("hadis-search");
-              }}
+              onPress={() => router.push("/hadis")}
             >
               <FontAwesome name="search" size={16} color={Colors.primary} />
             </TouchableOpacity>
@@ -1530,6 +1655,78 @@ export default function TilawahScreen() {
         <View style={{ height: 16 }} />
         </View>
       </Animated.ScrollView>
+
+      {/* ===== YouTube Video Player Modal ===== */}
+      <Modal
+        visible={videoModalVisible}
+        animationType="slide"
+        transparent={false}
+        onRequestClose={() => {
+          setVideoModalVisible(false);
+          setIsFullscreen(false);
+        }}
+        supportedOrientations={["portrait", "landscape"]}
+      >
+        <View style={[styles.videoModalContainer, isFullscreen && styles.videoModalFullscreen]}>
+          {/* Header bar */}
+          {!isFullscreen && (
+            <View style={[styles.videoModalHeader, { paddingTop: 48 }]}>
+              <TouchableOpacity
+                style={styles.videoModalCloseBtn}
+                onPress={() => { setVideoModalVisible(false); setIsFullscreen(false); }}
+              >
+                <FontAwesome name="arrow-left" size={18} color="#fff" />
+              </TouchableOpacity>
+              <Text style={styles.videoModalTitle} numberOfLines={1}>
+                {selectedVideo?.judul ?? ""}
+              </Text>
+              {selectedVideo?.isLive && (
+                <View style={styles.liveBadge}>
+                  <View style={styles.liveBadgeDot} />
+                  <Text style={styles.liveBadgeText}>LIVE</Text>
+                </View>
+              )}
+              <TouchableOpacity
+                style={styles.videoModalFullscreenBtn}
+                onPress={() => setIsFullscreen(true)}
+              >
+                <FontAwesome name="expand" size={16} color="#fff" />
+              </TouchableOpacity>
+            </View>
+          )}
+
+          {/* Player */}
+          <View style={isFullscreen ? styles.videoPlayerFullscreen : styles.videoPlayer}>
+            {selectedVideo && (() => {
+              const videoId = extractYouTubeId(selectedVideo.youtubeUrl);
+              if (!videoId) return (
+                <View style={styles.videoPlayerError}>
+                  <FontAwesome name="exclamation-circle" size={32} color="#aaa" />
+                  <Text style={{ color: "#aaa", marginTop: 8 }}>URL YouTube tidak valid</Text>
+                </View>
+              );
+              return <YouTubePlayer videoId={videoId} style={{ flex: 1 }} />;
+            })()}
+          </View>
+
+          {/* Fullscreen exit button */}
+          {isFullscreen && (
+            <TouchableOpacity
+              style={styles.videoExitFullscreenBtn}
+              onPress={() => setIsFullscreen(false)}
+            >
+              <FontAwesome name="compress" size={18} color="#fff" />
+            </TouchableOpacity>
+          )}
+
+          {/* Video info (non-fullscreen) */}
+          {!isFullscreen && selectedVideo && (
+            <View style={styles.videoInfoArea}>
+              <Text style={styles.videoInfoTitle}>{selectedVideo.judul}</Text>
+            </View>
+          )}
+        </View>
+      </Modal>
     </View>
   );
 }
@@ -2494,5 +2691,173 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: Colors.textSecondary,
     flex: 1,
+  },
+
+  // ===== Ceramah Video Section =====
+  ceramahSection: {
+    marginBottom: 4,
+  },
+  liveDot: {
+    width: 10,
+    height: 10,
+    borderRadius: 5,
+    backgroundColor: "#E53935",
+  },
+  // Featured live card
+  featuredLiveCard: {
+    marginHorizontal: 20,
+    borderRadius: 16,
+    overflow: "hidden",
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.18,
+    shadowRadius: 8,
+    elevation: 5,
+    backgroundColor: "#000",
+  },
+  featuredLiveThumb: {
+    width: "100%",
+    height: 200,
+  },
+  featuredLiveOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: "rgba(0,0,0,0.38)",
+    justifyContent: "space-between",
+    padding: 14,
+  },
+  liveBadgeRow: {
+    flexDirection: "row",
+  },
+  liveBadge: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "#E53935",
+    borderRadius: 8,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    gap: 5,
+    alignSelf: "flex-start",
+  },
+  liveBadgeDot: {
+    width: 7,
+    height: 7,
+    borderRadius: 4,
+    backgroundColor: "#fff",
+  },
+  liveBadgeText: {
+    color: "#fff",
+    fontSize: 11,
+    fontWeight: "800",
+    letterSpacing: 1,
+  },
+  featuredLivePlayBtn: {
+    alignSelf: "center",
+    marginTop: -20,
+  },
+  featuredLiveInfo: {
+    gap: 3,
+  },
+  featuredLiveTitle: {
+    fontSize: 15,
+    fontWeight: "700",
+    color: "#fff",
+    lineHeight: 20,
+  },
+  featuredLiveDesc: {
+    fontSize: 12,
+    color: "rgba(255,255,255,0.8)",
+  },
+  // Regular video horizontal list
+  ceramahScroll: {
+    paddingHorizontal: 20,
+    gap: 12,
+    paddingBottom: 4,
+  },
+  ceramahCard: {
+    width: 170,
+    gap: 8,
+  },
+  ceramahThumbWrap: {
+    borderRadius: 12,
+    overflow: "hidden",
+    backgroundColor: "#000",
+  },
+  ceramahThumb: {
+    width: 170,
+    height: 96,
+  },
+  ceramahPlayOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    justifyContent: "center",
+    alignItems: "center",
+    backgroundColor: "rgba(0,0,0,0.25)",
+  },
+  ceramahCardTitle: {
+    fontSize: 13,
+    fontWeight: "600",
+    color: Colors.text,
+    lineHeight: 18,
+  },
+
+  // ===== Video Player Modal =====
+  videoModalContainer: {
+    flex: 1,
+    backgroundColor: "#000",
+  },
+  videoModalFullscreen: {
+    flex: 1,
+  },
+  videoModalHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingHorizontal: 16,
+    paddingBottom: 12,
+    backgroundColor: "#111",
+    gap: 10,
+  },
+  videoModalCloseBtn: {
+    padding: 4,
+  },
+  videoModalTitle: {
+    flex: 1,
+    fontSize: 15,
+    fontWeight: "600",
+    color: "#fff",
+  },
+  videoModalFullscreenBtn: {
+    padding: 4,
+  },
+  videoPlayer: {
+    width: "100%",
+    aspectRatio: 16 / 9,
+    backgroundColor: "#000",
+  },
+  videoPlayerFullscreen: {
+    flex: 1,
+    backgroundColor: "#000",
+  },
+  videoPlayerError: {
+    flex: 1,
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  videoExitFullscreenBtn: {
+    position: "absolute",
+    top: 20,
+    right: 20,
+    backgroundColor: "rgba(0,0,0,0.6)",
+    borderRadius: 20,
+    padding: 10,
+  },
+  videoInfoArea: {
+    padding: 16,
+    backgroundColor: "#111",
+    flex: 1,
+  },
+  videoInfoTitle: {
+    fontSize: 16,
+    fontWeight: "700",
+    color: "#fff",
+    lineHeight: 22,
   },
 });

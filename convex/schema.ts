@@ -178,4 +178,17 @@ export default defineSchema({
     tilawahHeaderImageUrl: v.optional(v.string()),
     updatedAt: v.string(),
   }).index("by_key", ["key"]),
+
+  // Ceramah video posts (YouTube links) managed by admin
+  ceramah_video: defineTable({
+    judul: v.string(),
+    deskripsi: v.optional(v.string()),
+    youtubeUrl: v.string(),
+    isLive: v.boolean(),
+    postedBy: v.id("users"),
+    isActive: v.boolean(),
+    createdAt: v.string(),
+  })
+    .index("by_isActive", ["isActive"])
+    .index("by_postedBy", ["postedBy"]),
 });
