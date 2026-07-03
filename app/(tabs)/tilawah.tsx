@@ -1235,7 +1235,7 @@ export default function TilawahScreen() {
       </Modal>
 
       {/* ===== Qibla Modal ===== */}
-      <Modal
+      {Platform.OS !== "web" && <Modal
         visible={qiblaModalVisible}
         transparent
         animationType="slide"
@@ -1324,7 +1324,7 @@ export default function TilawahScreen() {
             ) : null}
           </View>
         </View>
-      </Modal>
+      </Modal>}
 
       {/* Tilawah Harian Card */}
         <TouchableOpacity
@@ -1408,18 +1408,20 @@ export default function TilawahScreen() {
             <Text style={styles.categoryLabel}>Untaian{"\n"}Do'a</Text>
           </TouchableOpacity>
 
-          <TouchableOpacity
-            style={styles.categoryCard}
-            onPress={() => {
-              setQiblaModalVisible(true);
-              if (!qiblaData && !qiblaLoading) loadQiblaData();
-            }}
-          >
-            <View style={[styles.categoryIcon, { backgroundColor: "#E8EAF6" }]}>
-              <FontAwesome name="compass" size={22} color="#283593" />
-            </View>
-            <Text style={styles.categoryLabel}>Arah{"\n"}Kiblat</Text>
-          </TouchableOpacity>
+          {Platform.OS !== "web" && (
+            <TouchableOpacity
+              style={styles.categoryCard}
+              onPress={() => {
+                setQiblaModalVisible(true);
+                if (!qiblaData && !qiblaLoading) loadQiblaData();
+              }}
+            >
+              <View style={[styles.categoryIcon, { backgroundColor: "#E8EAF6" }]}>
+                <FontAwesome name="compass" size={22} color="#283593" />
+              </View>
+              <Text style={styles.categoryLabel}>Arah{"\n"}Kiblat</Text>
+            </TouchableOpacity>
+          )}
         </View>
 
         {/* ===== Ceramah Video Section ===== */}
@@ -2143,7 +2145,7 @@ const styles = StyleSheet.create({
   // ===== Hero Banner =====
   heroBanner: {
     marginHorizontal: 20,
-    marginTop: 0,
+    marginTop: 20,
     backgroundColor: Colors.primaryDark,
     borderRadius: 20,
     padding: 24,
@@ -2235,7 +2237,7 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
     alignItems: "center",
     marginHorizontal: 20,
-    marginTop: 24,
+    marginTop: 20,
     marginBottom: 12,
   },
   sectionTitle: {
