@@ -349,7 +349,7 @@ export default function MushafView({ initialPage = 0 }: Props) {
   const isCover = page === COVER_PAGE;
   const [data, setData] = useState<PageData | null>(null);
   const [loading, setLoading] = useState(true);
-  const [showTajwid, setShowTajwid] = useState(true);
+  const [showTajwid, setShowTajwid] = useState(false);
   const [legendVisible, setLegendVisible] = useState(false);
   const [showBars, setShowBars] = useState(true);
   const swipeX = useRef(new Animated.Value(0)).current;
@@ -1272,12 +1272,12 @@ export default function MushafView({ initialPage = 0 }: Props) {
 
           {/* Minimal bottom bar for cover */}
           <View style={[s.toolbar, { backgroundColor: "#1B5E20", paddingBottom: insets.bottom + 8 }]}>
-            <TouchableOpacity
+            {/* <TouchableOpacity
               style={s.navBtn}
               onPress={() => setPage(1)}
             >
               <FontAwesome name="chevron-left" size={16} color="#E8F5E9" />
-            </TouchableOpacity>
+            </TouchableOpacity> */}
             <View style={s.topBarCenter}>
               <Text style={[s.toolLabel, { color: "#E8F5E9", fontSize: 12 }]}>
                 Sampul
@@ -1564,7 +1564,7 @@ export default function MushafView({ initialPage = 0 }: Props) {
                           </Text>
                         </TouchableOpacity>
 
-                        <TouchableOpacity
+                        {/* <TouchableOpacity
                           style={s.desktopSidebarToolBtn}
                           onPress={() => {
                             setSliderValue(page);
@@ -1575,7 +1575,7 @@ export default function MushafView({ initialPage = 0 }: Props) {
                             <FontAwesome name="sliders" size={16} color={M.toolbarText} />
                           </View>
                           <Text style={s.desktopSidebarToolText}>Lompat Halaman</Text>
-                        </TouchableOpacity>
+                        </TouchableOpacity> */}
                       </View>
 
                       {/* Page Navigation */}
