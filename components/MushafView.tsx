@@ -20,6 +20,7 @@ import {
 import { useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import FontAwesome from "@expo/vector-icons/FontAwesome";
+import { BlurView } from "expo-blur";
 import Slider from "@react-native-community/slider";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { Audio } from "expo-av";
@@ -43,6 +44,7 @@ const TAFSIR_EDITION = "id.jalalayn";
 const REPEAT_OPTIONS = [1, 2, 3, 5, 10];
 const SWIPE_THRESHOLD = 70;
 const SWIPE_ANIM_MS = 180;
+const FLOATING_TOOLBAR_H = 64; // approx height of the floating glass toolbar pill
 const SCREEN_WIDTH = getDisplayWidth();
 
 // Regex to match bismillah prefix with any diacritics ordering (quran-uthmani)
@@ -351,7 +353,6 @@ export default function MushafView({ initialPage = 0 }: Props) {
   const [loading, setLoading] = useState(true);
   const [showTajwid, setShowTajwid] = useState(false);
   const [legendVisible, setLegendVisible] = useState(false);
-  const [showBars, setShowBars] = useState(true);
   const swipeX = useRef(new Animated.Value(0)).current;
 
   // Slider
@@ -638,11 +639,15 @@ export default function MushafView({ initialPage = 0 }: Props) {
    */
   const mushafFontSize = useMemo(() => {
     if (isDesktop) return 20;
+    // Header/footer no longer take layout space (they float over the page),
+    // so we only reserve room for the safe-area insets plus enough clearance
+    // so the floating close button / info pill (top) and glass toolbar
+    // (bottom) never overlap the first/last line of text.
     const reservedH =
       (insets.top || TOP_INSET) +
-      60 + // top bar
+      58 + // clearance for floating top row
       (insets.bottom || 0) +
-      56 + // bottom bar
+      FLOATING_TOOLBAR_H + 24 + // clearance for floating bottom toolbar
       52;  // page header inside border
     const availH = windowHeight - reservedH;
     const lineH = availH / 15;
@@ -980,7 +985,7 @@ export default function MushafView({ initialPage = 0 }: Props) {
         );
         if (sNum !== 1 && sNum !== 9 && minLine > 2) {
           content.push(
-            <Text key="top-bismillah" style={s.bismillah}>
+            <Text key="top-bismillah" style={[s.bismillah, {fontSize: mushafFontSize}]}>
               بِسْمِ ٱللَّهِ ٱلرَّحْمَـٰنِ ٱلرَّحِيمِ
             </Text>
           );
@@ -1006,14 +1011,16 @@ export default function MushafView({ initialPage = 0 }: Props) {
             <View key={`mid-surah-${firstWordSurah}`} style={s.surahBlock}>
               <View style={s.surahDecorLine} />
               <View style={s.surahNameBox}>
-                <Text style={s.surahNameText}>{sInfo.name}</Text>
+                <Text style={[s.surahNameText, {fontSize: mushafFontSize}]}>
+                  {sInfo.name}
+                </Text>
               </View>
               <View style={s.surahDecorLine} />
             </View>
           );
           if (firstWordSurah !== 1 && firstWordSurah !== 9) {
             content.push(
-              <Text key={`mid-bismillah-${firstWordSurah}`} style={s.bismillah}>
+              <Text key={`mid-bismillah-${firstWordSurah}`} style={[s.bismillah, {fontSize: mushafFontSize}]}>
                 بِسْمِ ٱللَّهِ ٱلرَّحْمَـٰنِ ٱلرَّحِيمِ
               </Text>
             );
@@ -1054,7 +1061,7 @@ export default function MushafView({ initialPage = 0 }: Props) {
                   key={w.id}
                   style={[
                     s.mushafLineEndMarker,
-                    { fontSize: mushafFontSize * 0.78 },
+                    { fontSize: mushafFontSize * 0.35 },
                     isActive && s.activeMarker,
                   ]}
                   onPress={() => {
@@ -1164,13 +1171,15 @@ export default function MushafView({ initialPage = 0 }: Props) {
           <View style={s.surahBlock}>
             <View style={s.surahDecorLine} />
             <View style={s.surahNameBox}>
-              <Text style={s.surahNameText}>{g.surahName}</Text>
+              <Text style={[s.mushafLineText, { fontSize: mushafFontSize }]}>
+                {g.surahName}
+              </Text>
             </View>
             <View style={s.surahDecorLine} />
           </View>
         )}
         {g.startsNewSurah && g.surahNumber !== 9 && g.surahNumber !== 1 && (
-          <Text style={s.bismillah}>
+          <Text style={[s.bismillah, {fontSize: mushafFontSize}]}>
             بِسْمِ ٱللَّهِ ٱلرَّحْمَـٰنِ ٱلرَّحِيمِ
           </Text>
         )}
@@ -1293,37 +1302,59 @@ export default function MushafView({ initialPage = 0 }: Props) {
         </>
       ) : (
         <>
-          {/* Top bar — shown on tap (mobile only) */}
-          {showBars && !isDesktop && (
-          <View style={[s.topBar, { paddingTop: insets.top || TOP_INSET }]}>
-            <TouchableOpacity
-              style={s.backBtn}
-              onPress={() => router.push("/")}
-            >
-              <FontAwesome name="arrow-left" size={18} color={M.toolbarText} />
-            </TouchableOpacity>
-            <View style={s.topBarCenter}>
-              <Text style={s.topBarSurah} numberOfLines={1}>
-                {surahNames.join(" · ")}
-              </Text>
-              <Text style={s.topBarMeta}>
-                Hal. {page} · Juz {juz}
-                {hizbInfo ? ` · ${hizbInfo.label}` : ""}
-              </Text>
-            </View>
-            <TouchableOpacity style={s.backBtn} onPress={toggleBookmark}>
-              <FontAwesome
-                name={isBookmarked ? "bookmark" : "bookmark-o"}
-                size={18}
-                color={isBookmarked ? M.bookmark : M.toolbarText}
-              />
-            </TouchableOpacity>
-          </View>
+          {/* Floating close button — replaces the old full-width header (mobile only).
+              Placed top-left so it never sits under the reading thumb/swipe zone,
+              and stays visible at all times (not tied to showBars) so the mushaf
+              can always be closed. */}
+          {!isDesktop && (
+            ""
+            // <View
+            //   pointerEvents="box-none"
+            //   style={[s.floatingTopRow, { top: (insets.top || TOP_INSET) + 8 }]}
+            // >
+            //   <TouchableOpacity
+            //     style={s.floatingGlassBtn}
+            //     onPress={() => router.push("/")}
+            //     hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+            //   >
+            //     <BlurView intensity={45} tint="light" style={s.floatingGlassBlur} />
+            //     <FontAwesome name="times" size={18} color={M.toolbarText} />
+            //   </TouchableOpacity>
+
+            //   {/* Floating page/surah info pill — replaces the info that used to
+            //       live in the header. Tap to bookmark this page. */}
+            //   <TouchableOpacity
+            //     style={s.floatingInfoPill}
+            //     onPress={toggleBookmark}
+            //     hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+            //   >
+            //     <BlurView intensity={45} tint="light" style={s.floatingGlassBlur} />
+            //     <View style={s.floatingInfoTextWrap}>
+            //       <Text style={s.floatingInfoSurah} numberOfLines={1}>
+            //         {surahNames.join(" · ")}
+            //       </Text>
+            //       <Text style={s.floatingInfoMeta} numberOfLines={1}>
+            //         Hal. {page} · Juz {juz}
+            //         {hizbInfo ? ` · ${hizbInfo.label}` : ""}
+            //       </Text>
+            //     </View>
+            //     <FontAwesome
+            //       name={isBookmarked ? "bookmark" : "bookmark-o"}
+            //       size={15}
+            //       color={isBookmarked ? M.bookmark : M.toolbarText}
+            //     />
+            //   </TouchableOpacity>
+            // </View>
           )}
 
-          {/* Bookmark ribbon indicator */}
+          {/* Bookmark ribbon indicator — pushed below the floating top row on mobile */}
           {isBookmarked && (
-            <View style={s.bookmarkRibbon}>
+            <View
+              style={[
+                s.bookmarkRibbon,
+                !isDesktop && { marginTop: (insets.top || TOP_INSET) + 58 },
+              ]}
+            >
               <FontAwesome name="bookmark" size={16} color={M.bookmark} />
               <Text style={s.bookmarkRibbonText}>Batas Baca</Text>
             </View>
@@ -1365,8 +1396,16 @@ export default function MushafView({ initialPage = 0 }: Props) {
 
               {/* Center: Mushaf Page */}
               <Pressable
-                style={[s.pageOuter, isDesktop && s.desktopPageArea]}
-                onPress={() => setShowBars((v) => !v)}
+                style={[
+                  s.pageOuter,
+                  isDesktop && s.desktopPageArea,
+                  !isDesktop && {
+                    // paddingTop: (insets.top || TOP_INSET) + 58,
+                    // paddingBottom: insets.bottom + FLOATING_TOOLBAR_H + 24,
+                    paddingTop: 10,
+                    paddingBottom: insets.bottom + FLOATING_TOOLBAR_H + 10,
+                  },
+                ]}
                 {...panResponder.panHandlers}
               >
                 <View style={isDesktop ? s.desktopPageTurnStage : s.pageTurnStage}>
@@ -1625,9 +1664,9 @@ export default function MushafView({ initialPage = 0 }: Props) {
               )}
             </View>
 
-      {/* Audio floating bar (mobile only) */}
+      {/* Audio floating bar (mobile only) — floats just above the glass toolbar */}
       {!isDesktop && (playingAyahIdx !== null || audioLoading) && (
-        <View style={[s.audioBar, !showBars && { paddingBottom: insets.bottom + 10 }]}>
+        <View style={[s.audioBar, { bottom: insets.bottom + FLOATING_TOOLBAR_H + 22 }]}>
           {audioLoading && (
             <ActivityIndicator size="small" color="#fff" />
           )}
@@ -1642,92 +1681,86 @@ export default function MushafView({ initialPage = 0 }: Props) {
         </View>
       )}
 
-      {/* Bottom navigation bar — RTL: left=next, right=prev (mobile only) */}
-      {showBars && !isDesktop && (
-      <View style={[s.toolbar, { paddingBottom: insets.bottom + 8 }]}>
-        <TouchableOpacity
-          style={s.navBtn}
-          onPress={() => { if (page < TOTAL_PAGES) animateToPage(page + 1, 1); }}
-          disabled={page >= TOTAL_PAGES}
-        >
-          <FontAwesome
-            name="chevron-left"
-            size={16}
-            color={page >= TOTAL_PAGES ? "#ccc" : M.toolbarText}
-          />
-        </TouchableOpacity>
+      {/* Bottom toolbar — floating glass pill, ALWAYS visible on mobile
+          (no longer tied to showBars), like an iPhone control-center pill.
+          RTL layout: left=next, right=prev. */}
+      {!isDesktop && (
+      <View style={[s.toolbarFloatingWrap, { bottom: insets.bottom + 12 }]}>
+        <View style={s.toolbarFloating}>
+          <BlurView intensity={55} tint="light" style={s.floatingGlassBlur} />
+          <TouchableOpacity
+            style={s.navBtn}
+            onPress={() => { if (page < TOTAL_PAGES) animateToPage(page + 1, 1); }}
+            disabled={page >= TOTAL_PAGES}
+          >
+            <FontAwesome
+              name="chevron-left"
+              size={16}
+              color={page >= TOTAL_PAGES ? "#ccc" : M.toolbarText}
+            />
+          </TouchableOpacity>
 
-        {/* <TouchableOpacity
-          style={s.toolBtn}
-          onPress={() => {
-            setSliderValue(page);
-            setSliderVisible(true);
-          }}
-        >
-          <FontAwesome name="sliders" size={15} color={M.toolbarText} />
-          <Text style={s.toolLabel}>Halaman</Text>
-        </TouchableOpacity> */}
+          <TouchableOpacity
+            style={s.toolBtn}
+            onPress={() => setIndexVisible(true)}
+          >
+            <FontAwesome name="list-ol" size={15} color={M.toolbarText} />
+            <Text style={s.toolLabel}>Indeks</Text>
+          </TouchableOpacity>
 
-        <TouchableOpacity
-          style={s.toolBtn}
-          onPress={() => setIndexVisible(true)}
-        >
-          <FontAwesome name="list-ol" size={15} color={M.toolbarText} />
-          <Text style={s.toolLabel}>Indeks</Text>
-        </TouchableOpacity>
+          <TouchableOpacity
+            style={s.toolBtn}
+            onPress={() => setAudioSettingsVisible(true)}
+          >
+            <FontAwesome name="cog" size={15} color={M.toolbarText} />
+            <Text style={s.toolLabel}>Qari</Text>
+          </TouchableOpacity>
 
-        <TouchableOpacity
-          style={s.toolBtn}
-          onPress={() => setAudioSettingsVisible(true)}
-        >
-          <FontAwesome name="cog" size={15} color={M.toolbarText} />
-          <Text style={s.toolLabel}>Qari</Text>
-        </TouchableOpacity>
+          <TouchableOpacity style={s.toolBtn} onPress={playAll}>
+            <FontAwesome
+              name={isPlayingAll ? "stop-circle" : "play-circle"}
+              size={17}
+              color={isPlayingAll ? M.bookmark : M.toolbarText}
+            />
+            <Text style={s.toolLabel}>Audio</Text>
+          </TouchableOpacity>
 
-        <TouchableOpacity style={s.toolBtn} onPress={playAll}>
-          <FontAwesome
-            name={isPlayingAll ? "stop-circle" : "play-circle"}
-            size={17}
-            color={isPlayingAll ? M.bookmark : M.toolbarText}
-          />
-          <Text style={s.toolLabel}>Audio</Text>
-        </TouchableOpacity>
+          <TouchableOpacity
+            style={s.toolBtn}
+            onPress={() => setBookmarksVisible(true)}
+          >
+            <FontAwesome
+              name="bookmark"
+              size={15}
+              color={isBookmarked ? M.bookmark : M.toolbarText}
+            />
+            <Text style={s.toolLabel}>Bookmark</Text>
+          </TouchableOpacity>
 
-        <TouchableOpacity
-          style={s.toolBtn}
-          onPress={() => setBookmarksVisible(true)}
-        >
-          <FontAwesome
-            name="bookmark"
-            size={15}
-            color={isBookmarked ? M.bookmark : M.toolbarText}
-          />
-          <Text style={s.toolLabel}>Bookmark</Text>
-        </TouchableOpacity>
+          <TouchableOpacity
+            style={s.toolBtn}
+            onPress={() => setLegendVisible(true)}
+          >
+            <FontAwesome
+              name="paint-brush"
+              size={15}
+              color={showTajwid ? "#FF8F00" : M.toolbarText}
+            />
+            <Text style={s.toolLabel}>Tajwid</Text>
+          </TouchableOpacity>
 
-        <TouchableOpacity
-          style={s.toolBtn}
-          onPress={() => setLegendVisible(true)}
-        >
-          <FontAwesome
-            name="paint-brush"
-            size={15}
-            color={showTajwid ? "#FF8F00" : M.toolbarText}
-          />
-          <Text style={s.toolLabel}>Tajwid</Text>
-        </TouchableOpacity>
-
-        <TouchableOpacity
-          style={s.navBtn}
-          onPress={() => { if (page > COVER_PAGE) animateToPage(page - 1, -1); }}
-          disabled={page <= COVER_PAGE}
-        >
-          <FontAwesome
-            name="chevron-right"
-            size={16}
-            color={page <= COVER_PAGE ? "#ccc" : M.toolbarText}
-          />
-        </TouchableOpacity>
+          <TouchableOpacity
+            style={s.navBtn}
+            onPress={() => { if (page > COVER_PAGE) animateToPage(page - 1, -1); }}
+            disabled={page <= COVER_PAGE}
+          >
+            <FontAwesome
+              name="chevron-right"
+              size={16}
+              color={page <= COVER_PAGE ? "#ccc" : M.toolbarText}
+            />
+          </TouchableOpacity>
+        </View>
       </View>
       )}
         </>
@@ -2665,7 +2698,7 @@ const s = StyleSheet.create({
     marginTop: 1,
   },
   pageContent: {
-    padding: 13,
+    padding: 5,
     paddingTop: 8,
     paddingBottom: 24,
   },
@@ -2685,6 +2718,7 @@ const s = StyleSheet.create({
     fontFamily: "AmiriQuran",
     color: M.ayahMarker,
     fontWeight: "600" as const,
+    bottom: 2
   },
   mushafLineWord: {
     fontFamily: "AmiriQuran",
@@ -2748,35 +2782,35 @@ const s = StyleSheet.create({
   surahBlock: {
     flexDirection: "row",
     alignItems: "center",
-    marginVertical: 14,
+    marginVertical: 3,
     gap: 8,
   },
   surahDecorLine: {
     flex: 1,
-    height: 2,
+    height: 1,
     backgroundColor: M.surahDecor,
     borderRadius: 1,
   },
   surahNameBox: {
     backgroundColor: M.surahBg,
-    borderWidth: 1.5,
+    borderWidth: 1,
     borderColor: M.surahDecor,
     borderRadius: 8,
     paddingHorizontal: 16,
-    paddingVertical: 6,
+    paddingVertical: 0,
   },
   surahNameText: {
     fontFamily: "AmiriQuran",
-    fontSize: 16,
+    // fontSize: 16,
     color: M.surahDecor,
     textAlign: "center",
   },
   bismillah: {
     fontFamily: "AmiriQuran",
-    fontSize: 20,
+    // fontSize: 20,
     color: M.text,
     textAlign: "center",
-    marginBottom: 12,
+    marginBottom: 5,
     lineHeight: 36,
   },
 
@@ -2810,14 +2844,24 @@ const s = StyleSheet.create({
     color: M.text,
   },
 
-  // Audio floating bar
+  // Audio floating bar — floats as its own pill just above the glass toolbar
   audioBar: {
+    position: "absolute",
+    left: 16,
+    right: 16,
     flexDirection: "row",
     alignItems: "center",
     backgroundColor: M.border,
     paddingHorizontal: 16,
     paddingVertical: 10,
     gap: 10,
+    borderRadius: 20,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.2,
+    shadowRadius: 10,
+    elevation: 8,
+    zIndex: 20,
   },
   audioBarText: {
     flex: 1,
@@ -2834,7 +2878,7 @@ const s = StyleSheet.create({
     alignItems: "center",
   },
 
-  // Bottom toolbar
+  // Bottom toolbar (cover page — kept as a solid full-width bar)
   toolbar: {
     flexDirection: "row",
     alignItems: "center",
@@ -2863,6 +2907,96 @@ const s = StyleSheet.create({
     color: M.toolbarText,
     marginTop: 2,
     fontWeight: "500",
+  },
+
+  // ===== Floating "glass" chrome (mobile reading view) =====
+  // Reusable frosted-glass fill that sits behind icons/pills
+  floatingGlassBlur: {
+    ...StyleSheet.absoluteFillObject,
+    borderRadius: 999,
+    overflow: "hidden",
+    backgroundColor: Platform.OS === "android" ? "rgba(232,245,233,0.88)" : "rgba(232,245,233,0.55)",
+  },
+
+  // Top row holding the floating close button + info pill
+  floatingTopRow: {
+    position: "absolute",
+    left: 12,
+    right: 12,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    zIndex: 30,
+  },
+  floatingGlassBtn: {
+    width: 42,
+    height: 42,
+    borderRadius: 21,
+    overflow: "hidden",
+    justifyContent: "center",
+    alignItems: "center",
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.5)",
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.15,
+    shadowRadius: 8,
+    elevation: 6,
+  },
+  floatingInfoPill: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    maxWidth: "72%",
+    height: 42,
+    paddingHorizontal: 14,
+    borderRadius: 21,
+    overflow: "hidden",
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.5)",
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.15,
+    shadowRadius: 8,
+    elevation: 6,
+  },
+  floatingInfoTextWrap: {
+    flexShrink: 1,
+  },
+  floatingInfoSurah: {
+    fontFamily: "AmiriQuran",
+    fontSize: 13,
+    fontWeight: "700",
+    color: M.toolbarText,
+  },
+  floatingInfoMeta: {
+    fontSize: 10,
+    color: M.toolbarText + "CC",
+    marginTop: 1,
+  },
+
+  // Bottom floating glass toolbar wrapper (positions the pill above safe area)
+  toolbarFloatingWrap: {
+    position: "absolute",
+    left: 12,
+    right: 12,
+    zIndex: 20,
+  },
+  toolbarFloating: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    paddingHorizontal: 6,
+    paddingVertical: 6,
+    borderRadius: 30,
+    overflow: "hidden",
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.5)",
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.18,
+    shadowRadius: 14,
+    elevation: 10,
   },
 
   // ===== Ayah Context Menu =====
