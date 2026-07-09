@@ -17,7 +17,7 @@ import {
   Dimensions,
   useWindowDimensions,
 } from "react-native";
-import { useRouter } from "expo-router";
+import { useRouter, useNavigation } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import FontAwesome from "@expo/vector-icons/FontAwesome";
 import { BlurView } from "expo-blur";
@@ -379,18 +379,29 @@ function todayISO(): string {
 
 export default function MushafView({ initialPage = 0 }: Props) {
   const router = useRouter();
+  const navigation = useNavigation();
   const insets = useSafeAreaInsets();
   const { userData } = useAuthContext();
-  const recordPageRead = useMutation(api.mushafProgress.recordPageRead);
+  const updateReadingPosition = useMutation(api.mushafProgress.updateReadingPosition);
+  const finishReadingSession = useMutation(api.mushafProgress.finishReadingSession);
   const savedPosition = useQuery(
     api.mushafProgress.getReadingPosition,
     userData?._id ? { userId: userData._id } : "skip"
   );
-  // Whether the user has agreed to auto-track this reading session into
-  // Tilawah Harian — asked once per Mushaf visit via readingConsentVisible.
+  // Whether the user has agreed to track this reading session — asked once
+  // per Mushaf visit via readingConsentVisible. Pages visited during the
+  // session are only accumulated locally (sessionPagesRef); they're only
+  // written to Tilawah Harian once the user confirms "sudah selesai membaca"
+  // when leaving (see the beforeRemove listener below).
   const [trackingConsent, setTrackingConsent] = useState(false);
   const [readingConsentVisible, setReadingConsentVisible] = useState(false);
   const hasPromptedRef = useRef(false);
+  const sessionPagesRef = useRef(
+    new Map<number, { page: number; surahNumber: number; surahName: string; juz: number }>()
+  );
+  const [finishConfirmVisible, setFinishConfirmVisible] = useState(false);
+  const pendingNavActionRef = useRef<any>(null);
+  const sessionSavedRef = useRef(false);
   const { width: windowWidth, height: windowHeight } = useWindowDimensions();
   const isDesktop = Platform.OS === "web" && windowWidth >= DESKTOP_BREAKPOINT;
   const [page, setPage] = useState(
@@ -563,6 +574,8 @@ export default function MushafView({ initialPage = 0 }: Props) {
     if (savedPosition) {
       setPage(savedPosition.page);
     }
+    sessionPagesRef.current.clear();
+    sessionSavedRef.current = false;
     setTrackingConsent(true);
     setReadingConsentVisible(false);
   };
@@ -570,6 +583,49 @@ export default function MushafView({ initialPage = 0 }: Props) {
   const handleDeclineReading = () => {
     setTrackingConsent(false);
     setReadingConsentVisible(false);
+  };
+
+  // ===== Session finish confirmation (leaving the Mushaf) =====
+  // Intercept back navigation while a tracked session has unsaved pages and
+  // ask "sudah selesai membaca?" — only once confirmed do those pages get
+  // written to Tilawah Harian.
+  useEffect(() => {
+    const unsubscribe = navigation.addListener("beforeRemove", (e: any) => {
+      if (!trackingConsent || sessionPagesRef.current.size === 0 || sessionSavedRef.current) {
+        return;
+      }
+      e.preventDefault();
+      pendingNavActionRef.current = e.data.action;
+      setFinishConfirmVisible(true);
+    });
+    return unsubscribe;
+  }, [navigation, trackingConsent]);
+
+  const leaveMushaf = () => {
+    if (pendingNavActionRef.current) {
+      navigation.dispatch(pendingNavActionRef.current);
+      pendingNavActionRef.current = null;
+    }
+  };
+
+  const handleConfirmFinish = async () => {
+    sessionSavedRef.current = true;
+    setFinishConfirmVisible(false);
+    if (userData?._id && sessionPagesRef.current.size > 0) {
+      const pages = Array.from(sessionPagesRef.current.values());
+      try {
+        await finishReadingSession({ userId: userData._id, tanggal: todayISO(), pages });
+      } catch {}
+    }
+    sessionPagesRef.current.clear();
+    leaveMushaf();
+  };
+
+  const handleSkipFinish = () => {
+    sessionSavedRef.current = true;
+    setFinishConfirmVisible(false);
+    sessionPagesRef.current.clear();
+    leaveMushaf();
   };
 
   // ===== Page loading =====
@@ -637,27 +693,29 @@ export default function MushafView({ initialPage = 0 }: Props) {
     if (page >= 1) load(page);
   }, [page, load]);
 
-  // Auto-track tilawah: once the user has stayed on a page for a couple of
-  // seconds (so scrubbing through the slider/index doesn't count), log it as
-  // read. Server-side dedupes by (user, date, page) so revisits are no-ops.
-  // Only runs once the user has confirmed they want this session tracked.
+  // Track reading progress: once the user has stayed on a page for a couple
+  // of seconds (so scrubbing through the slider/index doesn't count), (a)
+  // push the live position so a paired IoT device can see it, and (b)
+  // remember the page locally for this session. Nothing is written to
+  // Tilawah Harian yet — that only happens when the session is confirmed
+  // finished (see the beforeRemove listener below). Only runs once the user
+  // has confirmed they want this session tracked.
   useEffect(() => {
     if (page < 1 || !userData?._id || !data || !trackingConsent) return;
     const firstAyah = data.ayahs[0];
     if (!firstAyah) return;
     const timer = setTimeout(() => {
-      recordPageRead({
-        userId: userData._id,
+      const entry = {
         page,
         surahNumber: firstAyah.surah.number,
         surahName: firstAyah.surah.englishName,
         juz: firstAyah.juz,
-        tanggal: todayISO(),
-        source: "app",
-      }).catch(() => {});
+      };
+      sessionPagesRef.current.set(page, entry);
+      updateReadingPosition({ userId: userData._id, ...entry }).catch(() => {});
     }, READ_TRACK_DELAY_MS);
     return () => clearTimeout(timer);
-  }, [page, data, userData?._id, trackingConsent, recordPageRead]);
+  }, [page, data, userData?._id, trackingConsent, updateReadingPosition]);
 
   // Fetch word-level data from quran.com API for exact mushaf line breaks
   useEffect(() => {
@@ -2415,11 +2473,23 @@ export default function MushafView({ initialPage = 0 }: Props) {
         title={savedPosition ? "Lanjutkan Membaca?" : "Mulai Membaca?"}
         message={
           savedPosition
-            ? `Terakhir Anda membaca ${savedPosition.surahName} halaman ${savedPosition.page}. Lanjutkan dari sana? Halaman yang dibaca akan otomatis dicatat ke Tilawah Harian.`
-            : "Halaman yang Anda baca akan otomatis dicatat ke Tilawah Harian."
+            ? `Terakhir Anda membaca ${savedPosition.surahName} halaman ${savedPosition.page}. Lanjutkan dari sana? Halaman yang dibaca akan dicatat ke Tilawah Harian setelah sesi membaca selesai.`
+            : "Halaman yang Anda baca akan dicatat ke Tilawah Harian setelah Anda selesai membaca."
         }
         confirmText={savedPosition ? "Lanjutkan" : "Mulai Membaca"}
         cancelText="Nanti"
+      />
+
+      <ConfirmModal
+        visible={finishConfirmVisible}
+        onClose={handleSkipFinish}
+        onConfirm={handleConfirmFinish}
+        icon="check-circle"
+        type="primary"
+        title="Sudah Selesai Membaca?"
+        message={`Anda membaca ${sessionPagesRef.current.size} halaman pada sesi ini. Simpan ke Tilawah Harian?`}
+        confirmText="Ya, Selesai"
+        cancelText="Belum"
       />
     </View>
   );

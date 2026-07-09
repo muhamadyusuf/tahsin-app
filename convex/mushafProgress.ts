@@ -4,27 +4,37 @@ import { Doc, Id } from "./_generated/dataModel";
 
 const sourceValidator = v.union(v.literal("app"), v.literal("iot"));
 
-const recordPageReadArgs = {
+const positionArgs = {
   userId: v.id("users"),
   page: v.float64(),
   surahNumber: v.float64(),
   surahName: v.string(),
   juz: v.float64(),
-  tanggal: v.string(),
-  source: sourceValidator,
 };
 
-type RecordPageReadArgs = {
+type PositionArgs = {
   userId: Id<"users">;
   page: number;
   surahNumber: number;
   surahName: string;
   juz: number;
+};
+
+const recordPageReadArgs = {
+  ...positionArgs,
+  tanggal: v.string(),
+  source: sourceValidator,
+};
+
+type RecordPageReadArgs = PositionArgs & {
   tanggal: string;
   source: "app" | "iot";
 };
 
-async function upsertReadingPosition(ctx: MutationCtx, args: RecordPageReadArgs) {
+async function upsertReadingPosition(
+  ctx: MutationCtx,
+  args: PositionArgs & { source: "app" | "iot" }
+) {
   const existing = await ctx.db
     .query("reading_position")
     .withIndex("by_userId", (q) => q.eq("userId", args.userId))
@@ -109,6 +119,8 @@ async function recordPageReadImpl(
   return { duplicate: false };
 }
 
+/** Immediate single-page commit — used by the IoT HTTP endpoints, where a
+ * physical device reports a page turn in real time (no "session" concept). */
 export const recordPageRead = mutation({
   args: recordPageReadArgs,
   handler: async (ctx, args) => recordPageReadImpl(ctx, args),
@@ -118,6 +130,58 @@ export const recordPageRead = mutation({
 export const recordPageReadInternal = internalMutation({
   args: recordPageReadArgs,
   handler: async (ctx, args) => recordPageReadImpl(ctx, args),
+});
+
+/**
+ * Lightweight, history-free position update. Called continuously while the
+ * user reads in the app so a paired IoT device can poll "where is this user
+ * reading right now" without every page turn being committed to Tilawah
+ * Harian — that only happens when the reading session is confirmed finished
+ * via finishReadingSession.
+ */
+export const updateReadingPosition = mutation({
+  args: positionArgs,
+  handler: async (ctx, args) => {
+    await upsertReadingPosition(ctx, { ...args, source: "app" });
+  },
+});
+
+/**
+ * Commit an entire reading session to Tilawah Harian at once — called after
+ * the user confirms "sudah selesai membaca" when leaving the Mushaf. Each
+ * distinct page is deduped per (user, date, page) exactly like
+ * recordPageRead, so re-finishing a session that overlaps an already-saved
+ * page (e.g. resumed and re-read) never double-counts it.
+ */
+export const finishReadingSession = mutation({
+  args: {
+    userId: v.id("users"),
+    tanggal: v.string(),
+    pages: v.array(
+      v.object({
+        page: v.float64(),
+        surahNumber: v.float64(),
+        surahName: v.string(),
+        juz: v.float64(),
+      })
+    ),
+  },
+  handler: async (ctx, args) => {
+    let saved = 0;
+    for (const p of args.pages) {
+      const result = await recordPageReadImpl(ctx, {
+        userId: args.userId,
+        page: p.page,
+        surahNumber: p.surahNumber,
+        surahName: p.surahName,
+        juz: p.juz,
+        tanggal: args.tanggal,
+        source: "app",
+      });
+      if (!result.duplicate) saved++;
+    }
+    return { saved, total: args.pages.length };
+  },
 });
 
 export const getReadingPosition = query({
