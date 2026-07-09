@@ -35,9 +35,10 @@ import {
 } from "@/lib/constants";
 import { getPageData, PageData, PageAyah } from "@/lib/alquran-api";
 import { colorizeArabicText, TAJWID_RULES } from "@/lib/tajwid";
-import { useMutation } from "convex/react";
+import { useMutation, useQuery } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import { useAuthContext } from "@/lib/auth-context";
+import ConfirmModal from "@/components/ConfirmModal";
 
 const COVER_PAGE = 0;
 const DESKTOP_BREAKPOINT = 900;
@@ -140,6 +141,31 @@ function getJuzArabicLabel(juzNum: number): string {
     30: "الجُزْءُ الثَّلَاثُونَ",
   };
   return ordinals[juzNum] ?? `الجُزْءُ ${toArabicNumeral(juzNum)}`;
+}
+
+/** Ornamental surah-divider banner — double border + corner jewels + double
+ * hairline side rules, echoing the decorative surah headers of a printed
+ * Uthmani mushaf. */
+function SurahHeaderBanner({ name, fontSize }: { name: string; fontSize: number }) {
+  return (
+    <View style={s.surahBannerRow}>
+      <View style={s.surahBannerSide}>
+        <View style={s.surahBannerSideLine} />
+      </View>
+      <View style={s.surahBannerBoxOuter}>
+        <View style={s.surahBannerBoxInner}>
+          <Text style={[s.surahNameText, { fontSize }]}>{name}</Text>
+        </View>
+        <View style={[s.surahBannerCorner, s.surahBannerCornerTL]} />
+        <View style={[s.surahBannerCorner, s.surahBannerCornerTR]} />
+        <View style={[s.surahBannerCorner, s.surahBannerCornerBL]} />
+        <View style={[s.surahBannerCorner, s.surahBannerCornerBR]} />
+      </View>
+      <View style={s.surahBannerSide}>
+        <View style={s.surahBannerSideLine} />
+      </View>
+    </View>
+  );
 }
 
 interface SurahGroup {
@@ -356,6 +382,15 @@ export default function MushafView({ initialPage = 0 }: Props) {
   const insets = useSafeAreaInsets();
   const { userData } = useAuthContext();
   const recordPageRead = useMutation(api.mushafProgress.recordPageRead);
+  const savedPosition = useQuery(
+    api.mushafProgress.getReadingPosition,
+    userData?._id ? { userId: userData._id } : "skip"
+  );
+  // Whether the user has agreed to auto-track this reading session into
+  // Tilawah Harian — asked once per Mushaf visit via readingConsentVisible.
+  const [trackingConsent, setTrackingConsent] = useState(false);
+  const [readingConsentVisible, setReadingConsentVisible] = useState(false);
+  const hasPromptedRef = useRef(false);
   const { width: windowWidth, height: windowHeight } = useWindowDimensions();
   const isDesktop = Platform.OS === "web" && windowWidth >= DESKTOP_BREAKPOINT;
   const [page, setPage] = useState(
@@ -515,6 +550,28 @@ export default function MushafView({ initialPage = 0 }: Props) {
     await saveBookmarks(bookmarks.filter((b) => b.page !== pg));
   };
 
+  // ===== Reading-session consent (synced with Tilawah Harian) =====
+  // Ask once per visit whether to auto-track this session, offering to
+  // resume from the last known reading position if one exists.
+  useEffect(() => {
+    if (!userData?._id || savedPosition === undefined || hasPromptedRef.current) return;
+    hasPromptedRef.current = true;
+    setReadingConsentVisible(true);
+  }, [userData?._id, savedPosition]);
+
+  const handleStartReading = () => {
+    if (savedPosition) {
+      setPage(savedPosition.page);
+    }
+    setTrackingConsent(true);
+    setReadingConsentVisible(false);
+  };
+
+  const handleDeclineReading = () => {
+    setTrackingConsent(false);
+    setReadingConsentVisible(false);
+  };
+
   // ===== Page loading =====
   const load = useCallback(async (p: number) => {
     if (p === COVER_PAGE) return; // cover page has no API data
@@ -583,8 +640,9 @@ export default function MushafView({ initialPage = 0 }: Props) {
   // Auto-track tilawah: once the user has stayed on a page for a couple of
   // seconds (so scrubbing through the slider/index doesn't count), log it as
   // read. Server-side dedupes by (user, date, page) so revisits are no-ops.
+  // Only runs once the user has confirmed they want this session tracked.
   useEffect(() => {
-    if (page < 1 || !userData?._id || !data) return;
+    if (page < 1 || !userData?._id || !data || !trackingConsent) return;
     const firstAyah = data.ayahs[0];
     if (!firstAyah) return;
     const timer = setTimeout(() => {
@@ -599,7 +657,7 @@ export default function MushafView({ initialPage = 0 }: Props) {
       }).catch(() => {});
     }, READ_TRACK_DELAY_MS);
     return () => clearTimeout(timer);
-  }, [page, data, userData?._id, recordPageRead]);
+  }, [page, data, userData?._id, trackingConsent, recordPageRead]);
 
   // Fetch word-level data from quran.com API for exact mushaf line breaks
   useEffect(() => {
@@ -1025,13 +1083,7 @@ export default function MushafView({ initialPage = 0 }: Props) {
       const sInfo = SURAH_META.find((sm) => sm.num === sNum);
       if (sInfo) {
         content.push(
-          <View key="top-surah-hdr" style={s.surahBlock}>
-            <View style={s.surahDecorLine} />
-            <View style={s.surahNameBox}>
-              <Text style={s.surahNameText}>{sInfo.name}</Text>
-            </View>
-            <View style={s.surahDecorLine} />
-          </View>
+          <SurahHeaderBanner key="top-surah-hdr" name={sInfo.name} fontSize={mushafFontSize} />
         );
         if (sNum !== 1 && sNum !== 9) {
           content.push(
@@ -1058,15 +1110,11 @@ export default function MushafView({ initialPage = 0 }: Props) {
         const sInfo = SURAH_META.find((sm) => sm.num === firstWordSurah);
         if (sInfo) {
           content.push(
-            <View key={`mid-surah-${firstWordSurah}`} style={s.surahBlock}>
-              <View style={s.surahDecorLine} />
-              <View style={s.surahNameBox}>
-                <Text style={[s.surahNameText, {fontSize: mushafFontSize}]}>
-                  {sInfo.name}
-                </Text>
-              </View>
-              <View style={s.surahDecorLine} />
-            </View>
+            <SurahHeaderBanner
+              key={`mid-surah-${firstWordSurah}`}
+              name={sInfo.name}
+              fontSize={mushafFontSize}
+            />
           );
           if (firstWordSurah !== 1 && firstWordSurah !== 9) {
             content.push(
@@ -1227,15 +1275,7 @@ export default function MushafView({ initialPage = 0 }: Props) {
         {groups.map((g, gi) => (
       <View key={`g-${gi}`}>
         {g.startsNewSurah && (
-          <View style={s.surahBlock}>
-            <View style={s.surahDecorLine} />
-            <View style={s.surahNameBox}>
-              <Text style={[s.mushafLineText, { fontSize: mushafFontSize }]}>
-                {g.surahName}
-              </Text>
-            </View>
-            <View style={s.surahDecorLine} />
-          </View>
+          <SurahHeaderBanner name={g.surahName} fontSize={mushafFontSize} />
         )}
         {g.startsNewSurah && g.surahNumber !== 9 && g.surahNumber !== 1 && (
           <Text style={[s.bismillah, {fontSize: mushafFontSize}]}>
@@ -2365,6 +2405,22 @@ export default function MushafView({ initialPage = 0 }: Props) {
           </View>
         </View>
       </Modal>
+
+      <ConfirmModal
+        visible={readingConsentVisible}
+        onClose={handleDeclineReading}
+        onConfirm={handleStartReading}
+        icon="book"
+        type="primary"
+        title={savedPosition ? "Lanjutkan Membaca?" : "Mulai Membaca?"}
+        message={
+          savedPosition
+            ? `Terakhir Anda membaca ${savedPosition.surahName} halaman ${savedPosition.page}. Lanjutkan dari sana? Halaman yang dibaca akan otomatis dicatat ke Tilawah Harian.`
+            : "Halaman yang Anda baca akan otomatis dicatat ke Tilawah Harian."
+        }
+        confirmText={savedPosition ? "Lanjutkan" : "Mulai Membaca"}
+        cancelText="Nanti"
+      />
     </View>
   );
 }
@@ -2838,32 +2894,58 @@ const s = StyleSheet.create({
   },
 
   // Surah header within page
-  surahBlock: {
-    flexDirection: "row",
-    alignItems: "center",
-    marginVertical: 3,
-    gap: 8,
-  },
-  surahDecorLine: {
-    flex: 1,
-    height: 1,
-    backgroundColor: M.surahDecor,
-    borderRadius: 1,
-  },
-  surahNameBox: {
-    backgroundColor: M.surahBg,
-    borderWidth: 1,
-    borderColor: M.surahDecor,
-    borderRadius: 8,
-    paddingHorizontal: 16,
-    paddingVertical: 0,
-  },
   surahNameText: {
     fontFamily: "AmiriQuran",
     // fontSize: 16,
     color: M.surahDecor,
     textAlign: "center",
   },
+
+  // Ornamental surah banner (double border + corner jewels + double hairline sides)
+  surahBannerRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginVertical: 6,
+    gap: 8,
+  },
+  surahBannerSide: {
+    flex: 1,
+    height: 10,
+    justifyContent: "center",
+  },
+  surahBannerSideLine: {
+    height: 4,
+    borderTopWidth: 1,
+    borderBottomWidth: 1,
+    borderColor: M.surahDecor,
+  },
+  surahBannerBoxOuter: {
+    borderWidth: 1.5,
+    borderColor: M.surahDecor,
+    borderRadius: 9,
+    backgroundColor: M.surahBg,
+    padding: 3,
+  },
+  surahBannerBoxInner: {
+    borderWidth: 1,
+    borderColor: M.surahDecor,
+    borderRadius: 6,
+    paddingHorizontal: 16,
+    paddingVertical: 1,
+  },
+  surahBannerCorner: {
+    position: "absolute",
+    width: 7,
+    height: 7,
+    backgroundColor: M.bookmark,
+    borderRadius: 1.5,
+    transform: [{ rotate: "45deg" }],
+  },
+  surahBannerCornerTL: { top: -4, left: -4 },
+  surahBannerCornerTR: { top: -4, right: -4 },
+  surahBannerCornerBL: { bottom: -4, left: -4 },
+  surahBannerCornerBR: { bottom: -4, right: -4 },
+
   bismillah: {
     fontFamily: "AmiriQuran",
     // fontSize: 20,
