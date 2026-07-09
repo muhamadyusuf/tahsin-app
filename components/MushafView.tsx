@@ -31,6 +31,7 @@ import {
   QURAN_EDITION_TRANSLATION,
   AUDIO_EDITIONS,
   getDisplayWidth,
+  WEB_MAX_WIDTH,
 } from "@/lib/constants";
 import { getPageData, PageData, PageAyah } from "@/lib/alquran-api";
 import { colorizeArabicText, TAJWID_RULES } from "@/lib/tajwid";
@@ -684,8 +685,24 @@ export default function MushafView({ initialPage = 0 }: Props) {
       52;  // page header inside border
     const availH = windowHeight - reservedH;
     const lineH = availH / 15;
-    return Math.round(Math.min(Math.max(lineH * 0.54, 16), 26));
-  }, [isDesktop, windowHeight, insets]);
+    const heightBasedSize = Math.min(Math.max(lineH * 0.54, 16), 26);
+
+    // The formula above only looks at height, so on narrower/taller screens
+    // it can pick a font size wide enough to make a real mushaf line wrap
+    // onto two rows — breaking the 1:1 line-for-line mapping to the printed
+    // Uthmani mushaf (and making textAlign:"justify" look broken, since the
+    // wrapped remainder never reaches the margins). Cap it by the page's
+    // actual content width too. Calibrated from the natural (AmiriQuran)
+    // width of ~2,200 sampled mushaf lines across all 604 pages: at a
+    // reference size of 20px, the 75th-percentile line is ~392px wide.
+    const PAGE_CHROME_W = 30; // pageOuter + pageBorder + pageContent horizontal padding/border
+    const effectiveWidth =
+      Platform.OS === "web" ? Math.min(windowWidth, WEB_MAX_WIDTH) : windowWidth;
+    const contentWidth = effectiveWidth - PAGE_CHROME_W;
+    const widthBasedCeiling = (contentWidth * 20) / 392;
+
+    return Math.round(Math.min(heightBasedSize, Math.max(widthBasedCeiling, 12)));
+  }, [isDesktop, windowHeight, windowWidth, insets]);
 
   // Fetch page-level translations for desktop side panel
   useEffect(() => {
@@ -1070,6 +1087,15 @@ export default function MushafView({ initialPage = 0 }: Props) {
       content.push(
         <Text
           key={`line-${lineNum}`}
+          // Safety net for the rare mushaf line still wider than the
+          // width-aware ceiling above (e.g. several short ayahs packed onto
+          // one line) — shrink just that line instead of wrapping it, which
+          // would break the 1:1 mapping to the printed mushaf. Native-only:
+          // react-native-web doesn't implement font auto-shrinking, and
+          // numberOfLines alone would truncate (hide) ayah text instead.
+          {...(Platform.OS !== "web"
+            ? { numberOfLines: 1, adjustsFontSizeToFit: true, minimumFontScale: 0.55 }
+            : {})}
           style={[
             s.mushafLineText,
             {
