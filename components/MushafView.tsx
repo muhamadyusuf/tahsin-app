@@ -34,6 +34,9 @@ import {
 } from "@/lib/constants";
 import { getPageData, PageData, PageAyah } from "@/lib/alquran-api";
 import { colorizeArabicText, TAJWID_RULES } from "@/lib/tajwid";
+import { useMutation } from "convex/react";
+import { api } from "@/convex/_generated/api";
+import { useAuthContext } from "@/lib/auth-context";
 
 const COVER_PAGE = 0;
 const DESKTOP_BREAKPOINT = 900;
@@ -340,9 +343,18 @@ const JUZ_START_SURAH: Record<number, number> = {
   28:58,29:67,30:78,
 };
 
+const READ_TRACK_DELAY_MS = 2000;
+
+function todayISO(): string {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
+
 export default function MushafView({ initialPage = 0 }: Props) {
   const router = useRouter();
   const insets = useSafeAreaInsets();
+  const { userData } = useAuthContext();
+  const recordPageRead = useMutation(api.mushafProgress.recordPageRead);
   const { width: windowWidth, height: windowHeight } = useWindowDimensions();
   const isDesktop = Platform.OS === "web" && windowWidth >= DESKTOP_BREAKPOINT;
   const [page, setPage] = useState(
@@ -566,6 +578,27 @@ export default function MushafView({ initialPage = 0 }: Props) {
   useEffect(() => {
     if (page >= 1) load(page);
   }, [page, load]);
+
+  // Auto-track tilawah: once the user has stayed on a page for a couple of
+  // seconds (so scrubbing through the slider/index doesn't count), log it as
+  // read. Server-side dedupes by (user, date, page) so revisits are no-ops.
+  useEffect(() => {
+    if (page < 1 || !userData?._id || !data) return;
+    const firstAyah = data.ayahs[0];
+    if (!firstAyah) return;
+    const timer = setTimeout(() => {
+      recordPageRead({
+        userId: userData._id,
+        page,
+        surahNumber: firstAyah.surah.number,
+        surahName: firstAyah.surah.englishName,
+        juz: firstAyah.juz,
+        tanggal: todayISO(),
+        source: "app",
+      }).catch(() => {});
+    }, READ_TRACK_DELAY_MS);
+    return () => clearTimeout(timer);
+  }, [page, data, userData?._id, recordPageRead]);
 
   // Fetch word-level data from quran.com API for exact mushaf line breaks
   useEffect(() => {
@@ -983,7 +1016,7 @@ export default function MushafView({ initialPage = 0 }: Props) {
             <View style={s.surahDecorLine} />
           </View>
         );
-        if (sNum !== 1 && sNum !== 9 && minLine > 2) {
+        if (sNum !== 1 && sNum !== 9) {
           content.push(
             <Text key="top-bismillah" style={[s.bismillah, {fontSize: mushafFontSize}]}>
               بِسْمِ ٱللَّهِ ٱلرَّحْمَـٰنِ ٱلرَّحِيمِ
@@ -1044,7 +1077,7 @@ export default function MushafView({ initialPage = 0 }: Props) {
               lineHeight: Math.round(mushafFontSize * 1.95),
               // Pages 1-2 are decorative (Al-Fatihah / Al-Baqarah opening) — centre-align
               // All other pages use full justification to match the printed mushaf
-              textAlign: page <= 2 ? ("center" as const) : ("center" as const),
+              textAlign: page <= 2 ? ("center" as const) : ("justify" as const),
             },
             isActiveLine && s.mushafLineActive,
           ]}

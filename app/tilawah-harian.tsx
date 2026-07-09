@@ -492,6 +492,23 @@ export default function TilawahHarianScreen() {
           </TouchableOpacity>
         </View>
 
+        {/* ── IoT sync entry point ─────────────────── */}
+        <TouchableOpacity
+          style={st.iotLinkCard}
+          onPress={() => router.push("/iot-devices" as any)}
+        >
+          <View style={st.iotLinkIcon}>
+            <FontAwesome name="microchip" size={18} color="#1565C0" />
+          </View>
+          <View style={{ flex: 1 }}>
+            <Text style={st.iotLinkTitle}>Sinkronisasi Perangkat IoT</Text>
+            <Text style={st.iotLinkSub}>
+              Hubungkan alat pelacak halaman fisik Anda
+            </Text>
+          </View>
+          <FontAwesome name="chevron-right" size={14} color={Colors.textSecondary} />
+        </TouchableOpacity>
+
         {/* ── History ─────────────────────────────── */}
         <View style={st.historyHeader}>
           <FontAwesome name="history" size={16} color={Colors.text} />
@@ -527,7 +544,15 @@ export default function TilawahHarianScreen() {
                   <View key={item._id} style={st.historyCard}>
                     <View style={st.historyIcon}>
                       <FontAwesome
-                        name={item.isKhatam ? "star" : "book"}
+                        name={
+                          item.isKhatam
+                            ? "star"
+                            : item.source === "iot"
+                              ? "microchip"
+                              : item.source === "mushaf"
+                                ? "refresh"
+                                : "book"
+                        }
                         size={16}
                         color={item.isKhatam ? "#FF8F00" : Colors.primary}
                       />
@@ -538,6 +563,16 @@ export default function TilawahHarianScreen() {
                         {item.isKhatam && (
                           <View style={st.khatamMiniTag}>
                             <Text style={st.khatamMiniTagText}>Khatam</Text>
+                          </View>
+                        )}
+                        {item.source === "mushaf" && (
+                          <View style={st.autoMiniTag}>
+                            <Text style={st.autoMiniTagText}>Otomatis · Mushaf</Text>
+                          </View>
+                        )}
+                        {item.source === "iot" && (
+                          <View style={st.iotMiniTag}>
+                            <Text style={st.iotMiniTagText}>IoT</Text>
                           </View>
                         )}
                       </View>
@@ -845,6 +880,39 @@ const st = StyleSheet.create({
     color: "#fff",
     fontSize: 15,
     fontWeight: "bold",
+  },
+
+  // IoT link card
+  iotLinkCard: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+    marginHorizontal: 16,
+    marginTop: 8,
+    marginBottom: 16,
+    backgroundColor: "#E3F2FD",
+    borderRadius: 14,
+    padding: 14,
+    borderWidth: 1,
+    borderColor: "#90CAF9",
+  },
+  iotLinkIcon: {
+    width: 38,
+    height: 38,
+    borderRadius: 10,
+    backgroundColor: "#fff",
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  iotLinkTitle: {
+    fontSize: 14,
+    fontWeight: "700",
+    color: Colors.text,
+  },
+  iotLinkSub: {
+    fontSize: 11,
+    color: Colors.textSecondary,
+    marginTop: 2,
   },
 
   // History
@@ -1239,5 +1307,35 @@ const st = StyleSheet.create({
     fontSize: 10,
     fontWeight: "bold",
     color: "#FF8F00",
+  },
+
+  // Auto-tracked (Mushaf) mini tag
+  autoMiniTag: {
+    backgroundColor: "#E8F5E9",
+    borderRadius: 4,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderWidth: 1,
+    borderColor: Colors.primaryLight,
+  },
+  autoMiniTagText: {
+    fontSize: 10,
+    fontWeight: "bold",
+    color: Colors.primaryDark,
+  },
+
+  // IoT-reported mini tag
+  iotMiniTag: {
+    backgroundColor: "#E3F2FD",
+    borderRadius: 4,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderWidth: 1,
+    borderColor: "#90CAF9",
+  },
+  iotMiniTagText: {
+    fontSize: 10,
+    fontWeight: "bold",
+    color: "#1565C0",
   },
 });

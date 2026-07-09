@@ -70,6 +70,7 @@ export default function RootLayout() {
               <Stack.Screen name="quiz/[materiId]" options={{ title: "Kuis", headerTintColor: Colors.primary }} />
               <Stack.Screen name="tilawah-harian" options={{ title: "Tilawah Harian", headerTintColor: Colors.primary }} />
               <Stack.Screen name="tilawah-header-form" options={{ title: "Header Tilawah", headerTintColor: Colors.primary }} />
+              <Stack.Screen name="iot-devices" options={{ title: "Perangkat IoT", headerTintColor: Colors.primary }} />
               <Stack.Screen name="materi-form" options={{ title: "Form Materi", headerTintColor: Colors.primary }} />
               <Stack.Screen name="quiz-form" options={{ title: "Form Kuis", headerTintColor: Colors.primary }} />
               <Stack.Screen name="quiz-manage" options={{ title: "Kelola Quiz", headerTintColor: Colors.primary }} />

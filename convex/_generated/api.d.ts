@@ -11,9 +11,13 @@
 import type * as adminPengajian from "../adminPengajian.js";
 import type * as appConfig from "../appConfig.js";
 import type * as ceramahVideo from "../ceramahVideo.js";
+import type * as http from "../http.js";
+import type * as iotDevices from "../iotDevices.js";
 import type * as materi from "../materi.js";
+import type * as mushafProgress from "../mushafProgress.js";
 import type * as ngajiAi from "../ngajiAi.js";
 import type * as quiz from "../quiz.js";
+import type * as quranPages from "../quranPages.js";
 import type * as talaqi from "../talaqi.js";
 import type * as tilawah from "../tilawah.js";
 import type * as users from "../users.js";
@@ -29,9 +33,13 @@ declare const fullApi: ApiFromModules<{
   adminPengajian: typeof adminPengajian;
   appConfig: typeof appConfig;
   ceramahVideo: typeof ceramahVideo;
+  http: typeof http;
+  iotDevices: typeof iotDevices;
   materi: typeof materi;
+  mushafProgress: typeof mushafProgress;
   ngajiAi: typeof ngajiAi;
   quiz: typeof quiz;
+  quranPages: typeof quranPages;
   talaqi: typeof talaqi;
   tilawah: typeof tilawah;
   users: typeof users;

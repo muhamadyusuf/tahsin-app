@@ -101,9 +101,56 @@ export default defineSchema({
     juz: v.float64(),
     jumlahHalaman: v.float64(),
     isKhatam: v.optional(v.boolean()), // user-declared khatam marker
+    // Where this entry came from — manual form entry, auto-tracked from the
+    // Mushaf reader, or reported by a synced IoT device. Defaults to manual
+    // for legacy rows (field didn't exist before).
+    source: v.optional(
+      v.union(v.literal("manual"), v.literal("mushaf"), v.literal("iot"))
+    ),
   })
     .index("by_userId", ["userId"])
     .index("by_userId_tanggal", ["userId", "tanggal"]),
+
+  // Distinct (user, date, page) reads from the Mushaf reader — used to dedupe
+  // auto-tracking so revisiting the same page the same day doesn't inflate
+  // tilawah_harian counts.
+  mushaf_read_log: defineTable({
+    userId: v.id("users"),
+    tanggal: v.string(), // ISO date string YYYY-MM-DD
+    page: v.float64(), // 1-604
+    surahNumber: v.float64(),
+    surahName: v.string(),
+    juz: v.float64(),
+    source: v.union(v.literal("app"), v.literal("iot")),
+  })
+    .index("by_userId_tanggal_page", ["userId", "tanggal", "page"])
+    .index("by_userId_tanggal", ["userId", "tanggal"]),
+
+  // Latest known Mushaf reading position per user — written by the app as the
+  // user reads, and by IoT devices when they report a page turn. Lets an IoT
+  // device poll "where is this user currently reading" and lets the app show
+  // the last page an IoT device reported.
+  reading_position: defineTable({
+    userId: v.id("users"),
+    page: v.float64(),
+    surahNumber: v.float64(),
+    surahName: v.string(),
+    juz: v.float64(),
+    updatedAt: v.string(), // ISO datetime
+    updatedBy: v.union(v.literal("app"), v.literal("iot")),
+  }).index("by_userId", ["userId"]),
+
+  // IoT devices paired to a user account, authenticated via apiKey when
+  // calling the public HTTP endpoints in convex/http.ts.
+  iot_devices: defineTable({
+    userId: v.id("users"),
+    deviceName: v.string(),
+    apiKey: v.string(),
+    isActive: v.boolean(),
+    lastSeenAt: v.optional(v.string()), // ISO datetime
+  })
+    .index("by_userId", ["userId"])
+    .index("by_apiKey", ["apiKey"]),
 
   // Talaqi session records
   talaqi: defineTable({
