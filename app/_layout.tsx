@@ -9,6 +9,7 @@ import "react-native-reanimated";
 
 import { Providers } from "@/lib/providers";
 import { AuthProvider } from "@/lib/auth-context";
+import { MeetingProvider } from "@/lib/meeting-context";
 import { Colors, WEB_MAX_WIDTH } from "@/lib/constants";
 
 export { ErrorBoundary } from "expo-router";
@@ -50,6 +51,9 @@ export default function RootLayout() {
         <StatusBar style="light" backgroundColor="#2E7D32" />
         <View style={styles.rootContainer}>
           <View style={[styles.contentContainer, useDesktopLayout && styles.contentContainerDesktop]}>
+            {/* MeetingProvider di sini agar video meeting tetap tersambung
+                saat berpindah layar (jendela mini melayang di atas Stack). */}
+            <MeetingProvider>
             <Stack>
               <Stack.Screen name="index" options={{ headerShown: false }} />
               <Stack.Screen name="(auth)" options={{ headerShown: false }} />
@@ -88,6 +92,7 @@ export default function RootLayout() {
               <Stack.Screen name="kelas-detail/[kelasId]" options={{ headerShown: false }} />
               <Stack.Screen name="pertemuan/[pertemuanId]" options={{ headerShown: false }} />
             </Stack>
+            </MeetingProvider>
           </View>
         </View>
       </AuthProvider>

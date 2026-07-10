@@ -417,6 +417,77 @@ export default defineSchema({
     .index("by_userId_surah", ["userId", "surahNumber"])
     .index("by_userId", ["userId"]),
 
+  // Peserta yang sedang berada di dalam video meeting internal (WebRTC mesh).
+  // Baris dibuat saat join, di-refresh lewat heartbeat, dan dihapus saat leave
+  // atau saat heartbeat berhenti (dianggap terputus).
+  meeting_participants: defineTable({
+    pertemuanId: v.id("kelas_pertemuan"),
+    sessionId: v.string(), // id unik per perangkat/tab, dibuat di client
+    userId: v.id("users"),
+    name: v.string(),
+    micOn: v.boolean(),
+    camOn: v.boolean(),
+    // Host (ustadz pengampu) — boleh mem-mute / meminta unmute peserta lain.
+    isHost: v.optional(v.boolean()),
+    // Sedang share layar (video track kamera diganti track layar).
+    screenOn: v.optional(v.boolean()),
+    // Sedang merekam sesi — ditampilkan sebagai badge REC ke semua peserta.
+    recOn: v.optional(v.boolean()),
+    lastSeen: v.float64(), // epoch ms heartbeat terakhir
+  })
+    .index("by_pertemuanId", ["pertemuanId"])
+    .index("by_pertemuanId_sessionId", ["pertemuanId", "sessionId"]),
+
+  // Pesan signaling WebRTC (SDP offer/answer & ICE candidate) antar peserta,
+  // plus perintah moderasi host ("ctrl": mute / minta-unmute).
+  // Dikonsumsi (dihapus) oleh penerima setelah diproses.
+  meeting_signals: defineTable({
+    pertemuanId: v.id("kelas_pertemuan"),
+    fromSession: v.string(),
+    toSession: v.string(),
+    kind: v.union(
+      v.literal("offer"),
+      v.literal("answer"),
+      v.literal("ice"),
+      v.literal("ctrl")
+    ),
+    payload: v.string(), // JSON SDP / ICE candidate / perintah ctrl
+  })
+    .index("by_pertemuanId_toSession", ["pertemuanId", "toSession"])
+    .index("by_pertemuanId", ["pertemuanId"]),
+
+  // Chat teks di dalam video meeting. Dipertahankan setelah meeting selesai
+  // sehingga diskusi tetap bisa dibaca dari halaman pertemuan.
+  meeting_messages: defineTable({
+    pertemuanId: v.id("kelas_pertemuan"),
+    userId: v.id("users"),
+    name: v.string(),
+    text: v.string(),
+  }).index("by_pertemuanId", ["pertemuanId"]),
+
+  // Rekaman sesi video meeting. File direkam di client (web) lalu diunggah ke
+  // Convex storage; action Node kemudian memindahkannya ke Google Drive bila
+  // kredensial Drive dikonfigurasi (lihat convex/recordingsNode.ts).
+  meeting_recordings: defineTable({
+    pertemuanId: v.id("kelas_pertemuan"),
+    kelasId: v.id("kelas"),
+    byUserId: v.id("users"),
+    byName: v.string(),
+    storageId: v.optional(v.id("_storage")), // dihapus setelah pindah ke Drive
+    driveFileId: v.optional(v.string()),
+    driveLink: v.optional(v.string()), // webViewLink Google Drive
+    status: v.union(
+      v.literal("processing"), // baru diunggah, menunggu transfer Drive
+      v.literal("ready"),
+      v.literal("failed")
+    ),
+    error: v.optional(v.string()),
+    mimeType: v.string(),
+    sizeBytes: v.float64(),
+    durationSec: v.float64(),
+    createdAt: v.string(), // ISO datetime
+  }).index("by_pertemuanId", ["pertemuanId"]),
+
   // Ringkasan Ngaji AI per surah (denormalisasi) — dipakai daftar surah agar
   // tidak perlu membaca seluruh ngaji_ai_results milik user.
   ngaji_ai_surah_summary: defineTable({

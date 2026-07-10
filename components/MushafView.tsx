@@ -13,6 +13,7 @@ import {
   TextInput,
   Pressable,
   Animated,
+  Easing,
   PanResponder,
   Dimensions,
   useWindowDimensions,
@@ -21,6 +22,7 @@ import { useRouter, useNavigation } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import FontAwesome from "@expo/vector-icons/FontAwesome";
 import { BlurView } from "expo-blur";
+import { LinearGradient } from "expo-linear-gradient";
 import Slider from "@react-native-community/slider";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { Audio } from "expo-av";
@@ -49,6 +51,7 @@ const TAFSIR_EDITION = "id.jalalayn";
 const REPEAT_OPTIONS = [1, 2, 3, 5, 10];
 const SWIPE_THRESHOLD = 70;
 const SWIPE_ANIM_MS = 180;
+const PAGE_TURN_MS = 340; // outgoing-leaf turn duration (feel of a real page)
 const FLOATING_TOOLBAR_H = 64; // approx height of the floating glass toolbar pill
 const SCREEN_WIDTH = getDisplayWidth();
 
@@ -147,6 +150,9 @@ function getJuzArabicLabel(juzNum: number): string {
  * hairline side rules, echoing the decorative surah headers of a printed
  * Uthmani mushaf. */
 function SurahHeaderBanner({ name, fontSize }: { name: string; fontSize: number }) {
+  // Scaled down from the body font size — the banner is a divider, not
+  // another line of ayah text, so it reads better smaller and tighter.
+  const bannerFontSize = Math.round(fontSize * 0.72);
   return (
     <View style={s.surahBannerRow}>
       <View style={s.surahBannerSide}>
@@ -154,7 +160,7 @@ function SurahHeaderBanner({ name, fontSize }: { name: string; fontSize: number 
       </View>
       <View style={s.surahBannerBoxOuter}>
         <View style={s.surahBannerBoxInner}>
-          <Text style={[s.surahNameText, { fontSize }]}>{name}</Text>
+          <Text style={[s.surahNameText, { fontSize: bannerFontSize }]}>{name}</Text>
         </View>
         <View style={[s.surahBannerCorner, s.surahBannerCornerTL]} />
         <View style={[s.surahBannerCorner, s.surahBannerCornerTR]} />
@@ -227,6 +233,9 @@ interface MushafWord {
 interface Props {
   initialPage?: number;
 }
+
+// Lines per printed mushaf page (Madinah 15-line layout)
+const MUSHAF_LINES_PER_PAGE = 15;
 
 // Standard Uthmani mushaf: surah number → starting page
 const SURAH_PAGE: Record<number, number> = {
@@ -428,6 +437,9 @@ export default function MushafView({ initialPage = 0 }: Props) {
 
   // Audio
   const soundRef = useRef<Audio.Sound | null>(null);
+  // Page-turn sound effect — a separate Audio.Sound instance so it never
+  // interferes with ayah recitation playback (soundRef above).
+  const pageTurnSoundRef = useRef<Audio.Sound | null>(null);
   const [audioUrls, setAudioUrls] = useState<string[]>([]);
   const [playingAyahIdx, setPlayingAyahIdx] = useState<number | null>(null);
   const [isPlayingAll, setIsPlayingAll] = useState(false);
@@ -470,23 +482,95 @@ export default function MushafView({ initialPage = 0 }: Props) {
   const cache = useRef<Record<number, PageData>>({});
   const translationCache = useRef<Record<number, PageTranslation[]>>({});
 
+  // ===== Page-turn sound effect =====
+  useEffect(() => {
+    let mounted = true;
+    Audio.Sound.createAsync(
+      require("../assets/sounds/floraphonic-newspaper.mp3"),
+      { volume: 0.55 }
+    )
+      .then(({ sound }) => {
+        if (mounted) pageTurnSoundRef.current = sound;
+        else sound.unloadAsync().catch(() => {});
+      })
+      .catch(() => {});
+    return () => {
+      mounted = false;
+      pageTurnSoundRef.current?.unloadAsync().catch(() => {});
+      pageTurnSoundRef.current = null;
+    };
+  }, []);
+
+  const playPageTurnSound = useCallback(() => {
+    pageTurnSoundRef.current?.replayAsync().catch(() => {});
+  }, []);
+
+  // ===== Two-layer page turn =====
+  // Like a physical book: the target page is committed immediately and
+  // renders fully laid-out and MOTIONLESS underneath, while a static copy of
+  // the page being left (the "leaf") turns away on top of it. The incoming
+  // ayah text therefore never slides, settles, or re-flows after the turn —
+  // the only thing that ever moves is the outgoing leaf.
+  const turnX = useRef(new Animated.Value(0)).current;
+  const [turningPage, setTurningPage] = useState<number | null>(null);
+  // While the finger is down, the neighbor being revealed behind the dragged
+  // page — so the user sees the next page's text through the gap mid-drag,
+  // exactly like lifting a paper page.
+  const [dragRevealPage, setDragRevealPage] = useState<number | null>(null);
+  const dragRevealRef = useRef<number | null>(null);
+
   const animateToPage = useCallback(
-    (targetPage: number, direction: 1 | -1) => {
-      Animated.timing(swipeX, {
-        toValue: direction === 1 ? SCREEN_WIDTH : -SCREEN_WIDTH,
-        duration: SWIPE_ANIM_MS,
+    (targetPage: number, direction: 1 | -1, fromDx = 0) => {
+      playPageTurnSound();
+      // Snapshot the page we're leaving as the turning leaf, starting from
+      // wherever the finger released it (0 for button taps).
+      turnX.setValue(fromDx);
+      setTurningPage(page);
+      setPage(targetPage);
+      setDragRevealPage(null);
+      dragRevealRef.current = null;
+      swipeX.setValue(0);
+      Animated.timing(turnX, {
+        // Continue in the direction of travel: next page (dir 1) exits left,
+        // previous page exits right — matching the drag gesture.
+        toValue: direction === 1 ? SCREEN_WIDTH * 1.05 : -SCREEN_WIDTH * 1.05,
+        duration: PAGE_TURN_MS,
+        easing: Easing.out(Easing.cubic),
+        useNativeDriver: true,
+      }).start(({ finished }) => {
+        // finished=false means another turn interrupted this one and now
+        // owns the leaf — don't clear its overlay.
+        if (finished) setTurningPage(null);
+      });
+    },
+    [page, swipeX, turnX, playPageTurnSound]
+  );
+
+  // Fade transition for non-adjacent jumps (juz/surah index, slider,
+  // bookmarks) — sliding the whole screen width for a 500-page jump doesn't
+  // read as a page turn, so instead the current page fades out, the target
+  // page loads in behind it, then fades back in. Removes the hard instant
+  // cut that made the ayah text visibly "jump" on juz changes.
+  const pageFade = useRef(new Animated.Value(1)).current;
+
+  const jumpToPage = useCallback(
+    (targetPage: number) => {
+      if (targetPage === page) return;
+      playPageTurnSound();
+      Animated.timing(pageFade, {
+        toValue: 0,
+        duration: 150,
         useNativeDriver: true,
       }).start(() => {
         setPage(targetPage);
-        swipeX.setValue(direction === 1 ? -SCREEN_WIDTH * 0.18 : SCREEN_WIDTH * 0.18);
-        Animated.timing(swipeX, {
-          toValue: 0,
-          duration: SWIPE_ANIM_MS,
+        Animated.timing(pageFade, {
+          toValue: 1,
+          duration: 260,
           useNativeDriver: true,
         }).start();
       });
     },
-    [swipeX]
+    [page, pageFade, playPageTurnSound]
   );
 
   const panResponder = useMemo(
@@ -502,18 +586,25 @@ export default function MushafView({ initialPage = 0 }: Props) {
           const canMoveNext = page < TOTAL_PAGES && dx < 0;
           if (canMovePrev || canMoveNext) {
             swipeX.setValue(dx);
+            // Reveal the neighbor being uncovered behind the dragged page.
+            // Only page >= 1 has mushaf content to show (0 is the cover).
+            const reveal = dx < 0 ? page + 1 : page - 1;
+            if (reveal >= 1 && dragRevealRef.current !== reveal) {
+              dragRevealRef.current = reveal;
+              setDragRevealPage(reveal);
+            }
           }
         },
         onPanResponderRelease: (_, gestureState) => {
           const { dx } = gestureState;
 
           if (dx < -SWIPE_THRESHOLD && page < TOTAL_PAGES) {
-            animateToPage(page + 1, 1);
+            animateToPage(page + 1, 1, dx);
             return;
           }
 
           if (dx > SWIPE_THRESHOLD && page > COVER_PAGE) {
-            animateToPage(page - 1, -1);
+            animateToPage(page - 1, -1, dx);
             return;
           }
 
@@ -521,7 +612,12 @@ export default function MushafView({ initialPage = 0 }: Props) {
             toValue: 0,
             useNativeDriver: true,
             bounciness: 6,
-          }).start();
+          }).start(({ finished }) => {
+            if (finished) {
+              dragRevealRef.current = null;
+              setDragRevealPage(null);
+            }
+          });
         },
       }),
     [animateToPage, page, swipeX]
@@ -657,15 +753,18 @@ export default function MushafView({ initialPage = 0 }: Props) {
     } catch {}
   }, []);
 
-  /** Pre-cache word data for adjacent pages so transitions feel instant */
-  const preloadWords = useCallback(async (p: number) => {
-    if (p < 1 || p > TOTAL_PAGES || wordsCache.current[p]) return;
+  /** Fetch (or return cached) word-level data for a page. Shared by the
+   * current-page loader, adjacent-page preloader, and the neighbor-line-info
+   * lookup used to detect surah headers pushed onto the previous page. */
+  const fetchWordsForPage = useCallback(async (p: number): Promise<MushafWord[]> => {
+    if (p < 1 || p > TOTAL_PAGES) return [];
+    if (wordsCache.current[p]) return wordsCache.current[p];
     try {
       const resp = await fetch(
         `https://api.quran.com/api/v4/verses/by_page/${p}?words=true&word_fields=text_uthmani,line_number,char_type_name&per_page=50`
       );
       const json = await resp.json();
-      if (!json.verses) return;
+      if (!json.verses) return [];
       const words: MushafWord[] = [];
       for (const verse of json.verses) {
         const parts = verse.verse_key.split(':');
@@ -686,8 +785,16 @@ export default function MushafView({ initialPage = 0 }: Props) {
         }
       }
       wordsCache.current[p] = words;
-    } catch {}
-  }, [])
+      return words;
+    } catch {
+      return [];
+    }
+  }, []);
+
+  /** Pre-cache word data for adjacent pages so transitions feel instant */
+  const preloadWords = useCallback(async (p: number) => {
+    await fetchWordsForPage(p);
+  }, [fetchWordsForPage]);
 
   useEffect(() => {
     if (page >= 1) load(page);
@@ -728,38 +835,41 @@ export default function MushafView({ initialPage = 0 }: Props) {
     // Clear stale content immediately so the old page never flashes on the new one
     setPageWords([]);
     setWordsLoading(true);
+    fetchWordsForPage(page)
+      .then(setPageWords)
+      .finally(() => setWordsLoading(false));
+  }, [page, fetchWordsForPage]);
+
+  // Neighbor line info: the printed Madinah mushaf occasionally has no room
+  // on a surah's own starting page for both its ornamental header AND its
+  // Bismillah (e.g. p.585's Surah 'Abasa) — in that case the header is
+  // printed on the last free line of the *previous* page instead. Track each
+  // neighbor's used line range/first surah so renderMushafLines can detect
+  // and reproduce that placement instead of always drawing the header at the
+  // top of the surah's nominal starting page.
+  const [neighborLineInfo, setNeighborLineInfo] = useState<{
+    prevMaxLine: number | null;
+    nextMinLine: number | null;
+    nextFirstSurah: number | null;
+  }>({ prevMaxLine: null, nextMinLine: null, nextFirstSurah: null });
+
+  useEffect(() => {
+    if (page < 1) { setNeighborLineInfo({ prevMaxLine: null, nextMinLine: null, nextFirstSurah: null }); return; }
+    let cancelled = false;
     (async () => {
-      try {
-        const resp = await fetch(
-          `https://api.quran.com/api/v4/verses/by_page/${page}?words=true&word_fields=text_uthmani,line_number,char_type_name&per_page=50`
-        );
-        const json = await resp.json();
-        if (!json.verses) return;
-        const words: MushafWord[] = [];
-        for (const verse of json.verses) {
-          const parts = verse.verse_key.split(':');
-          const sNum = parseInt(parts[0]);
-          const vNum = parseInt(parts[1]);
-          for (const w of verse.words) {
-            if (w.char_type_name === 'word' || w.char_type_name === 'end') {
-              words.push({
-                id: w.id,
-                charType: w.char_type_name as 'word' | 'end',
-                textUthmani: w.text_uthmani,
-                lineNumber: w.line_number,
-                verseKey: verse.verse_key,
-                surahNumber: sNum,
-                verseNumber: vNum,
-              });
-            }
-          }
-        }
-        wordsCache.current[page] = words;
-        setPageWords(words);
-      } catch {}
-      finally { setWordsLoading(false); }
+      const [prevWords, nextWords] = await Promise.all([
+        fetchWordsForPage(page - 1),
+        fetchWordsForPage(page + 1),
+      ]);
+      if (cancelled) return;
+      setNeighborLineInfo({
+        prevMaxLine: prevWords.length ? Math.max(...prevWords.map((w) => w.lineNumber)) : null,
+        nextMinLine: nextWords.length ? Math.min(...nextWords.map((w) => w.lineNumber)) : null,
+        nextFirstSurah: nextWords.length ? nextWords[0].surahNumber : null,
+      });
     })();
-  }, [page]);
+    return () => { cancelled = true; };
+  }, [page, fetchWordsForPage]);
 
   useEffect(() => {
     if (page >= 1 && page > 1) { preload(page - 1); preloadWords(page - 1); }
@@ -782,6 +892,15 @@ export default function MushafView({ initialPage = 0 }: Props) {
     }
     return map;
   }, [data]);
+
+  // Available width (px) for a single mushaf line's text, shared by the
+  // coarse font-size ceiling below and the exact per-line measurer below.
+  const PAGE_CHROME_W = 30; // pageOuter + pageBorder + pageContent horizontal padding/border
+  const mushafContentWidthPx = useMemo(() => {
+    const effectiveWidth =
+      Platform.OS === "web" ? Math.min(windowWidth, WEB_MAX_WIDTH) : windowWidth;
+    return effectiveWidth - PAGE_CHROME_W;
+  }, [windowWidth]);
 
   /**
    * Dynamic font size: target 15 lines fitting in the available page height.
@@ -811,14 +930,80 @@ export default function MushafView({ initialPage = 0 }: Props) {
     // actual content width too. Calibrated from the natural (AmiriQuran)
     // width of ~2,200 sampled mushaf lines across all 604 pages: at a
     // reference size of 20px, the 75th-percentile line is ~392px wide.
-    const PAGE_CHROME_W = 30; // pageOuter + pageBorder + pageContent horizontal padding/border
-    const effectiveWidth =
-      Platform.OS === "web" ? Math.min(windowWidth, WEB_MAX_WIDTH) : windowWidth;
-    const contentWidth = effectiveWidth - PAGE_CHROME_W;
+    const contentWidth = mushafContentWidthPx;
     const widthBasedCeiling = (contentWidth * 20) / 392;
 
     return Math.round(Math.min(heightBasedSize, Math.max(widthBasedCeiling, 12)));
   }, [isDesktop, windowHeight, windowWidth, insets]);
+
+  // Offscreen canvas for measuring exact rendered line widths on web, where
+  // RN's adjustsFontSizeToFit/numberOfLines safety net (see below) doesn't
+  // exist. Lazily created once.
+  const measureCtxRef = useRef<CanvasRenderingContext2D | null | undefined>(undefined);
+  const getMeasureCtx = () => {
+    if (measureCtxRef.current !== undefined) return measureCtxRef.current;
+    if (Platform.OS !== "web" || typeof document === "undefined") {
+      measureCtxRef.current = null;
+      return null;
+    }
+    const canvas = document.createElement("canvas");
+    measureCtxRef.current = canvas.getContext("2d");
+    return measureCtxRef.current;
+  };
+
+  /**
+   * Per-line font scale (web only): some mushaf lines pack more glyphs than
+   * the global 75th-percentile-calibrated font size can fit (e.g. p.90's
+   * line with يَكَادُونَ, p.127 ayah 119, p.130's هَـٰذَا line), so they
+   * silently wrap onto a second row — breaking the 1:1 line mapping to the
+   * printed mushaf. Native gets a real safety net via
+   * adjustsFontSizeToFit/numberOfLines=1, which react-native-web doesn't
+   * implement, so on web we measure each line's actual pixel width with a
+   * canvas (same font/size actually used) and shrink only the lines that
+   * would overflow — same floor (0.55) as the native safety net.
+   */
+  const computeLineFontScale = useCallback((words: MushafWord[]) => {
+    const map = new Map<number, number>();
+    if (Platform.OS !== "web" || words.length === 0) return map;
+    const ctx = getMeasureCtx();
+    if (!ctx) return map;
+
+    const lineMap = new Map<number, MushafWord[]>();
+    for (const w of words) {
+      const arr = lineMap.get(w.lineNumber) ?? [];
+      arr.push(w);
+      lineMap.set(w.lineNumber, arr);
+    }
+
+    for (const [lineNum, lineWords] of lineMap) {
+      let total = 0;
+      ctx.font = `${mushafFontSize}px AmiriQuran`;
+      for (let i = 0; i < lineWords.length; i++) {
+        const w = lineWords[i];
+        const isLast = i === lineWords.length - 1;
+        const nextIsEnd = !isLast && lineWords[i + 1].charType === "end";
+        if (w.charType === "end") {
+          ctx.font = `600 ${Math.round(mushafFontSize * 0.35)}px AmiriQuran`;
+          total += ctx.measureText(` ﴿${toArabicNumeral(w.verseNumber)}﴾ `).width;
+          ctx.font = `${mushafFontSize}px AmiriQuran`;
+        } else {
+          total += ctx.measureText(w.textUthmani + (!isLast && !nextIsEnd ? " " : "")).width;
+        }
+      }
+      // Small safety margin: canvas text shaping can slightly underestimate
+      // RN's native text engine for complex Arabic ligatures.
+      const measured = total * 1.04;
+      if (measured > mushafContentWidthPx) {
+        map.set(lineNum, Math.max(mushafContentWidthPx / measured, 0.55));
+      }
+    }
+    return map;
+  }, [mushafFontSize, mushafContentWidthPx]);
+
+  const lineFontScale = useMemo(
+    () => computeLineFontScale(pageWords),
+    [pageWords, computeLineFontScale]
+  );
 
   // Fetch page-level translations for desktop side panel
   useEffect(() => {
@@ -1084,9 +1269,36 @@ export default function MushafView({ initialPage = 0 }: Props) {
     }
   };
 
+  /** Neighbor line info for any page, straight from the words cache (the
+   * state-based effect above keeps the cache warm and re-renders when the
+   * neighbors arrive). Used so the turning leaf / drag-reveal underlay can
+   * render pages other than the current one with correct banner placement. */
+  const getNeighborLineInfo = (pg: number) => {
+    const prevWords = wordsCache.current[pg - 1];
+    const nextWords = wordsCache.current[pg + 1];
+    return {
+      prevMaxLine: prevWords?.length
+        ? Math.max(...prevWords.map((w) => w.lineNumber))
+        : null,
+      nextMinLine: nextWords?.length
+        ? Math.min(...nextWords.map((w) => w.lineNumber))
+        : null,
+      nextFirstSurah: nextWords?.length ? nextWords[0].surahNumber : null,
+    };
+  };
+
   // ===== Render Madinah Mushaf lines (word-by-word, exact line breaks) =====
-  const renderMushafLines = () => {
-    if (wordsLoading && pageWords.length === 0) {
+  // Generalized over the page number so the same renderer draws (a) the live
+  // interactive page, (b) the static outgoing leaf during a turn, and (c)
+  // the neighbor revealed behind the page mid-drag. Non-interactive copies
+  // skip press handlers and audio highlights but are otherwise pixel-equal.
+  const renderMushafLinesFor = (
+    pg: number,
+    words: MushafWord[],
+    pgData: PageData | null,
+    interactive: boolean
+  ) => {
+    if (interactive && wordsLoading && words.length === 0) {
       return (
         <View style={s.loading}>
           <ActivityIndicator size="large" color={M.border} />
@@ -1095,9 +1307,12 @@ export default function MushafView({ initialPage = 0 }: Props) {
       );
     }
 
+    const nInfo = pg === page ? neighborLineInfo : getNeighborLineInfo(pg);
+    const scaleMap = pg === page ? lineFontScale : computeLineFontScale(words);
+
     // Group words by line number
     const lineMap = new Map<number, MushafWord[]>();
-    for (const w of pageWords) {
+    for (const w of words) {
       const arr = lineMap.get(w.lineNumber) ?? [];
       arr.push(w);
       lineMap.set(w.lineNumber, arr);
@@ -1109,7 +1324,7 @@ export default function MushafView({ initialPage = 0 }: Props) {
 
     // Surahs whose first page is this page (for top-of-page headers)
     const surahsAtTop = Object.entries(SURAH_PAGE)
-      .filter(([, pg]) => Number(pg) === page)
+      .filter(([, startPg]) => Number(startPg) === pg)
       .map(([num]) => Number(num))
       .sort((a, b) => a - b);
 
@@ -1121,15 +1336,15 @@ export default function MushafView({ initialPage = 0 }: Props) {
     const content: React.ReactNode[] = [];
 
     // ── Page header (juz | page number | surah name) ──
-    const pageJuz = data?.ayahs[0]?.juz ?? 0;
+    const pageJuz = pgData?.ayahs[0]?.juz ?? 0;
     content.push(
       <View key="pg-hdr" style={s.mushafPageHeader}>
         <Text style={s.mushafPageHeaderJuz} numberOfLines={1}>
           {pageJuz > 0 ? getJuzArabicLabel(pageJuz) : ""}
         </Text>
-        <Text style={s.mushafPageHeaderPage}>{toArabicNumeral(page)}</Text>
+        <Text style={s.mushafPageHeaderPage}>{toArabicNumeral(pg)}</Text>
         <Text style={s.mushafPageHeaderSurah} numberOfLines={1}>
-          {surahNames[0] ?? ""}
+          {pgData?.ayahs[0]?.surah.name ?? ""}
         </Text>
       </View>
     );
@@ -1140,10 +1355,23 @@ export default function MushafView({ initialPage = 0 }: Props) {
       const sNum = surahsAtTop[0];
       const sInfo = SURAH_META.find((sm) => sm.num === sNum);
       if (sInfo) {
-        content.push(
-          <SurahHeaderBanner key="top-surah-hdr" name={sInfo.name} fontSize={mushafFontSize} />
-        );
-        if (sNum !== 1 && sNum !== 9) {
+        const needsBismillah = sNum !== 1 && sNum !== 9;
+        const requiredReserved = needsBismillah ? 2 : 1;
+        const actualReserved = minLine - 1;
+        // The printed Madinah mushaf sometimes has room at the top of this
+        // page for only the Bismillah, not the ornamental header too (e.g.
+        // p.585's Surah 'Abasa) — in that case the header was printed on
+        // the previous page's last free line instead (see the trailing
+        // banner block below, rendered while iterating that page).
+        const bannerPushedToPrevPage =
+          actualReserved === requiredReserved - 1 &&
+          nInfo.prevMaxLine === MUSHAF_LINES_PER_PAGE - 1;
+        if (!bannerPushedToPrevPage) {
+          content.push(
+            <SurahHeaderBanner key="top-surah-hdr" name={sInfo.name} fontSize={mushafFontSize} />
+          );
+        }
+        if (needsBismillah) {
           content.push(
             <Text key="top-bismillah" style={[s.bismillah, {fontSize: mushafFontSize}]}>
               بِسْمِ ٱللَّهِ ٱلرَّحْمَـٰنِ ٱلرَّحِيمِ
@@ -1154,7 +1382,7 @@ export default function MushafView({ initialPage = 0 }: Props) {
     }
 
     // ── Text lines ──
-    let prevSurahNum = pageWords[0]?.surahNumber ?? 0;
+    let prevSurahNum = words[0]?.surahNumber ?? 0;
 
     for (const lineNum of sortedLineNums) {
       const lineWords = lineMap.get(lineNum)!;
@@ -1187,8 +1415,15 @@ export default function MushafView({ initialPage = 0 }: Props) {
 
       // Highlight if any word on this line is the active audio ayah
       const isActiveLine =
+        interactive &&
         playingAyahIdx !== null &&
         lineWords.some((w) => verseKeyToAyahIdx.get(w.verseKey) === playingAyahIdx);
+
+      // Shrink only the lines that actually need it (see lineFontScale above
+      // for why — web measures exactly, native falls back to
+      // adjustsFontSizeToFit which measures at render time).
+      const lineScale = scaleMap.get(lineNum) ?? 1;
+      const lineFontSize = Math.round(mushafFontSize * lineScale);
 
       content.push(
         <Text
@@ -1199,24 +1434,25 @@ export default function MushafView({ initialPage = 0 }: Props) {
           // would break the 1:1 mapping to the printed mushaf. Native-only:
           // react-native-web doesn't implement font auto-shrinking, and
           // numberOfLines alone would truncate (hide) ayah text instead.
+          // Web instead uses the canvas-measured lineFontScale above.
           {...(Platform.OS !== "web"
             ? { numberOfLines: 1, adjustsFontSizeToFit: true, minimumFontScale: 0.55 }
             : {})}
           style={[
             s.mushafLineText,
             {
-              fontSize: mushafFontSize,
-              lineHeight: Math.round(mushafFontSize * 1.95),
+              fontSize: lineFontSize,
+              lineHeight: Math.round(lineFontSize * 1.95),
               // Pages 1-2 are decorative (Al-Fatihah / Al-Baqarah opening) — centre-align
               // All other pages use full justification to match the printed mushaf
-              textAlign: page <= 2 ? ("center" as const) : ("center" as const),
+              textAlign: pg <= 2 ? ("center" as const) : ("center" as const),
             },
             isActiveLine && s.mushafLineActive,
           ]}
         >
           {lineWords.map((w, wi) => {
             const audioIdx = verseKeyToAyahIdx.get(w.verseKey) ?? 0;
-            const isActive = playingAyahIdx === audioIdx;
+            const isActive = interactive && playingAyahIdx === audioIdx;
             const isLast = wi === lineWords.length - 1;
             const nextIsEnd = !isLast && lineWords[wi + 1].charType === "end";
 
@@ -1226,14 +1462,18 @@ export default function MushafView({ initialPage = 0 }: Props) {
                   key={w.id}
                   style={[
                     s.mushafLineEndMarker,
-                    { fontSize: mushafFontSize * 0.35 },
+                    { fontSize: lineFontSize * 0.35 },
                     isActive && s.activeMarker,
                   ]}
-                  onPress={() => {
-                    isPlayingAllRef.current = false;
-                    setIsPlayingAll(false);
-                    playAyah(audioIdx);
-                  }}
+                  onPress={
+                    interactive
+                      ? () => {
+                          isPlayingAllRef.current = false;
+                          setIsPlayingAll(false);
+                          playAyah(audioIdx);
+                        }
+                      : undefined
+                  }
                 >
                   {" ﴿"}{toArabicNumeral(w.verseNumber)}{"﴾ "}
                 </Text>
@@ -1248,11 +1488,15 @@ export default function MushafView({ initialPage = 0 }: Props) {
                   isActive && s.mushafWordActive,
                   showTajwid && { color: colorizeArabicText(w.textUthmani)[0]?.color ?? M.text },
                 ]}
-                onPress={() => {
-                  if (!data) return;
-                  const ayah = data.ayahs[audioIdx];
-                  if (ayah) onAyahPress(ayah, audioIdx);
-                }}
+                onPress={
+                  interactive
+                    ? () => {
+                        if (!pgData) return;
+                        const ayah = pgData.ayahs[audioIdx];
+                        if (ayah) onAyahPress(ayah, audioIdx);
+                      }
+                    : undefined
+                }
               >
                 {w.textUthmani}
                 {!isLast && !nextIsEnd ? " " : ""}
@@ -1263,8 +1507,51 @@ export default function MushafView({ initialPage = 0 }: Props) {
       );
     }
 
+    // ── Trailing header for a surah whose own page has no room for it ──
+    // Forward-looking mirror of the bannerPushedToPrevPage check above: if
+    // this page's last line is fully used and the next page starts a new
+    // surah with only enough reserved space for its Bismillah, the header
+    // belongs on this page's now-free trailing line instead.
+    const lastLineOnPage = sortedLineNums[sortedLineNums.length - 1];
+    if (
+      lastLineOnPage === MUSHAF_LINES_PER_PAGE - 1 &&
+      nInfo.nextFirstSurah !== null &&
+      nInfo.nextMinLine !== null &&
+      nInfo.nextMinLine > 1
+    ) {
+      const nextSurah = nInfo.nextFirstSurah;
+      const needsBismillah = nextSurah !== 1 && nextSurah !== 9;
+      const requiredReserved = needsBismillah ? 2 : 1;
+      const actualReserved = nInfo.nextMinLine - 1;
+      if (actualReserved === requiredReserved - 1) {
+        const sInfo = SURAH_META.find((sm) => sm.num === nextSurah);
+        if (sInfo) {
+          content.push(
+            <SurahHeaderBanner
+              key={`trailing-surah-hdr-${nextSurah}`}
+              name={sInfo.name}
+              fontSize={mushafFontSize}
+            />
+          );
+        }
+      }
+    }
+
     return <>{content}</>;
   };
+
+  /** The live, interactive page currently being read */
+  const renderMushafLines = () => renderMushafLinesFor(page, pageWords, data, true);
+
+  /** Static, non-interactive copy of an arbitrary cached page — used for the
+   * outgoing turning leaf and the neighbor revealed behind a drag. */
+  const renderStaticMushafPage = (pg: number) =>
+    renderMushafLinesFor(
+      pg,
+      wordsCache.current[pg] ?? [],
+      cache.current[pg] ?? null,
+      false
+    );
 
   // ===== Render desktop translation panel =====
   const renderTranslationPanel = () => {
@@ -1396,40 +1683,76 @@ export default function MushafView({ initialPage = 0 }: Props) {
       {/* ===== COVER PAGE ===== */}
       {isCover ? (
         <>
+          <LinearGradient
+            colors={["#0E3311", "#123D15", "#0A2A0D"]}
+            start={{ x: 0.2, y: 0 }}
+            end={{ x: 0.8, y: 1 }}
+            style={StyleSheet.absoluteFillObject}
+          />
           <View style={s.coverContainer}>
-            {/* Outer gold border */}
-            <View style={s.coverOuterBorder}>
-              {/* Inner border with ornamental feel */}
-              <View style={s.coverInnerBorder}>
-                <View style={s.coverContent}>
-                  {/* Top ornament */}
-                  <Text style={s.coverOrnamentTop}>❁ ❁ ❁</Text>
-
-                  {/* Central medallion */}
-                  <View style={s.coverMedallion}>
-                    <View style={s.coverMedallionInner}>
-                      <Text style={s.coverArabicTitle}>
-                        ٱلْقُرْآنُ ٱلْكَرِيمُ
-                      </Text>
-                    </View>
-                  </View>
-
-                  {/* Latin title */}
-                  <Text style={s.coverLatinTitle}>Al-Quran Al-Karim</Text>
-                  <Text style={s.coverSubtitle}>
-                    Aplikasi Tahsin
-                  </Text>
-
-                  {/* Bottom ornament */}
-                  <Text style={s.coverOrnamentBottom}>❁ ❁ ❁</Text>
-                </View>
+            {/* Book cover: leather-look gradient + gold tooling border */}
+            <View style={s.coverBookShadow}>
+              {/* Stacked paper edges peeking past the book's right edge,
+                  like a closed hardcover mushaf viewed at a slight angle */}
+              <View style={s.coverPageStack} pointerEvents="none">
+                <View style={[s.coverPageEdge, { right: -2 }]} />
+                <View style={[s.coverPageEdge, { right: -4 }]} />
+                <View style={[s.coverPageEdge, { right: -6 }]} />
               </View>
+
+              <LinearGradient
+                colors={["#2E7D32", "#1B5E20", "#123D15"]}
+                start={{ x: 0.15, y: 0 }}
+                end={{ x: 0.9, y: 1 }}
+                style={s.coverOuterBorder}
+              >
+                {/* Corner tooling jewels, echoing the surah-divider motif */}
+                <View style={[s.coverCornerJewel, s.coverCornerJewelTL]} />
+                <View style={[s.coverCornerJewel, s.coverCornerJewelTR]} />
+                <View style={[s.coverCornerJewel, s.coverCornerJewelBL]} />
+                <View style={[s.coverCornerJewel, s.coverCornerJewelBR]} />
+
+                {/* Inner border with ornamental feel */}
+                <View style={s.coverInnerBorder}>
+                  <View style={s.coverContent}>
+                    {/* Top ornament */}
+                    <Text style={s.coverOrnamentTop}>❁ ❁ ❁</Text>
+
+                    {/* Central medallion */}
+                    <View style={s.coverMedallion}>
+                      <View style={s.coverMedallionInner}>
+                        <Text style={s.coverArabicTitle}>
+                          ٱلْقُرْآنُ ٱلْكَرِيمُ
+                        </Text>
+                      </View>
+                    </View>
+
+                    {/* Latin title */}
+                    <Text style={s.coverLatinTitle}>Al-Quran Al-Karim</Text>
+                    <Text style={s.coverSubtitle}>
+                      Aplikasi Tahsin
+                    </Text>
+
+                    {/* Bottom ornament */}
+                    <Text style={s.coverOrnamentBottom}>❁ ❁ ❁</Text>
+                  </View>
+                </View>
+
+                {/* Left spine shading, as if the cover falls away in light */}
+                <LinearGradient
+                  colors={["#00000055", "#00000000"]}
+                  start={{ x: 0, y: 0.5 }}
+                  end={{ x: 0.12, y: 0.5 }}
+                  style={StyleSheet.absoluteFillObject}
+                  pointerEvents="none"
+                />
+              </LinearGradient>
             </View>
 
             {/* Start reading button */}
             <TouchableOpacity
               style={s.coverStartBtn}
-              onPress={() => setPage(1)}
+              onPress={() => jumpToPage(1)}
             >
               <Text style={s.coverStartText}>Mulai Membaca</Text>
               <FontAwesome name="arrow-left" size={16} color="#fff" />
@@ -1571,18 +1894,45 @@ export default function MushafView({ initialPage = 0 }: Props) {
                     style={[
                       s.pageTurnShadow,
                       {
-                        opacity: swipeX.interpolate({
+                        opacity: Animated.add(swipeX, turnX).interpolate({
                           inputRange: [-SCREEN_WIDTH, 0, SCREEN_WIDTH],
                           outputRange: [0.25, 0, 0.25],
                         }),
                       },
                     ]}
                   />
+
+                  {/* Neighbor page revealed behind the current page while the
+                      finger drags it aside — laid out at its final position so
+                      when the turn commits, nothing shifts. */}
+                  {dragRevealPage !== null && dragRevealPage !== page && (
+                    <View
+                      pointerEvents="none"
+                      style={[
+                        s.pageBorder,
+                        isDesktop && s.desktopPageBorder,
+                        s.pageLayerFill,
+                      ]}
+                    >
+                      <ScrollView
+                        contentContainerStyle={s.pageContent}
+                        scrollEnabled={false}
+                        showsVerticalScrollIndicator={false}
+                      >
+                        {renderStaticMushafPage(dragRevealPage)}
+                      </ScrollView>
+                    </View>
+                  )}
+
+                  {/* Live page. Moves only while the finger drags it (swipeX);
+                      after a turn commits it renders at rest — the incoming
+                      page never slides or settles. */}
                   <Animated.View
                     style={[
                       s.pageBorder,
                       isDesktop && s.desktopPageBorder,
                       {
+                        opacity: pageFade,
                         transform: [
                           { perspective: 1200 },
                           { translateX: swipeX },
@@ -1603,6 +1953,40 @@ export default function MushafView({ initialPage = 0 }: Props) {
                       {renderMushafLines()}
                     </ScrollView>
                   </Animated.View>
+
+                  {/* Outgoing leaf: static copy of the page just left,
+                      turning away on top of the already-settled new page. */}
+                  {turningPage !== null && turningPage >= 1 && (
+                    <Animated.View
+                      pointerEvents="none"
+                      style={[
+                        s.pageBorder,
+                        isDesktop && s.desktopPageBorder,
+                        s.pageLayerFill,
+                        s.turningLeaf,
+                        {
+                          transform: [
+                            { perspective: 1200 },
+                            { translateX: turnX },
+                            {
+                              rotateY: turnX.interpolate({
+                                inputRange: [-SCREEN_WIDTH, 0, SCREEN_WIDTH],
+                                outputRange: ["-16deg", "0deg", "16deg"],
+                              }),
+                            },
+                          ],
+                        },
+                      ]}
+                    >
+                      <ScrollView
+                        contentContainerStyle={s.pageContent}
+                        scrollEnabled={false}
+                        showsVerticalScrollIndicator={false}
+                      >
+                        {renderStaticMushafPage(turningPage)}
+                      </ScrollView>
+                    </Animated.View>
+                  )}
                 </View>
                 {/* <Text style={s.swipeHint}>Geser kiri/kanan untuk pindah halaman</Text> */}
               </Pressable>
@@ -2109,7 +2493,7 @@ export default function MushafView({ initialPage = 0 }: Props) {
               value={sliderValue}
               onValueChange={setSliderValue}
               onSlidingComplete={(val: number) => {
-                setPage(Math.round(val));
+                jumpToPage(Math.round(val));
                 setSliderVisible(false);
               }}
               minimumTrackTintColor={M.border}
@@ -2216,7 +2600,7 @@ export default function MushafView({ initialPage = 0 }: Props) {
                       item.num % 2 === 0 && s.indexRowAlt,
                     ]}
                     onPress={() => {
-                      setPage(pg);
+                      jumpToPage(pg);
                       setIndexVisible(false);
                       setIndexSearch("");
                     }}
@@ -2307,7 +2691,7 @@ export default function MushafView({ initialPage = 0 }: Props) {
                       item.page === page && s.bookmarkRowActive,
                     ]}
                     onPress={() => {
-                      setPage(item.page);
+                      jumpToPage(item.page);
                       setBookmarksVisible(false);
                     }}
                   >
@@ -2593,6 +2977,19 @@ const s = StyleSheet.create({
     overflow: "hidden",
     // minWidth: 450,
     // margin: "auto",
+  },
+  // Absolute copy of pageBorder's bounds within the turn stage, for the
+  // drag-reveal underlay and the outgoing turning leaf.
+  pageLayerFill: {
+    ...StyleSheet.absoluteFillObject,
+  },
+  // The leaf lifts slightly off the page beneath it while turning.
+  turningLeaf: {
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.35,
+    shadowRadius: 14,
+    elevation: 10,
   },
   swipeHint: {
     marginTop: 6,
@@ -2975,16 +3372,16 @@ const s = StyleSheet.create({
   surahBannerRow: {
     flexDirection: "row",
     alignItems: "center",
-    marginVertical: 6,
-    gap: 8,
+    marginVertical: 4,
+    gap: 6,
   },
   surahBannerSide: {
     flex: 1,
-    height: 10,
+    height: 8,
     justifyContent: "center",
   },
   surahBannerSideLine: {
-    height: 4,
+    height: 3,
     borderTopWidth: 1,
     borderBottomWidth: 1,
     borderColor: M.surahDecor,
@@ -2992,29 +3389,29 @@ const s = StyleSheet.create({
   surahBannerBoxOuter: {
     borderWidth: 1.5,
     borderColor: M.surahDecor,
-    borderRadius: 9,
+    borderRadius: 7,
     backgroundColor: M.surahBg,
-    padding: 3,
+    padding: 2,
   },
   surahBannerBoxInner: {
     borderWidth: 1,
     borderColor: M.surahDecor,
-    borderRadius: 6,
-    paddingHorizontal: 16,
-    paddingVertical: 1,
+    borderRadius: 5,
+    paddingHorizontal: 11,
+    paddingVertical: 0,
   },
   surahBannerCorner: {
     position: "absolute",
-    width: 7,
-    height: 7,
+    width: 6,
+    height: 6,
     backgroundColor: M.bookmark,
     borderRadius: 1.5,
     transform: [{ rotate: "45deg" }],
   },
-  surahBannerCornerTL: { top: -4, left: -4 },
-  surahBannerCornerTR: { top: -4, right: -4 },
-  surahBannerCornerBL: { bottom: -4, left: -4 },
-  surahBannerCornerBR: { bottom: -4, right: -4 },
+  surahBannerCornerTL: { top: -3, left: -3 },
+  surahBannerCornerTR: { top: -3, right: -3 },
+  surahBannerCornerBL: { bottom: -3, left: -3 },
+  surahBannerCornerBR: { bottom: -3, right: -3 },
 
   bismillah: {
     fontFamily: "AmiriQuran",
@@ -3504,11 +3901,38 @@ const s = StyleSheet.create({
   // ===== Cover Page =====
   coverContainer: {
     flex: 1,
-    backgroundColor: "#1B5E20",
     justifyContent: "center",
     alignItems: "center",
     padding: 20,
     paddingTop: TOP_INSET + 10,
+  },
+  // Thin paper-edge strips visible behind the book's right edge, as if a
+  // stack of pages sits inside the closed cover.
+  coverPageStack: {
+    ...StyleSheet.absoluteFillObject,
+    justifyContent: "center",
+    alignItems: "flex-end",
+  },
+  coverPageEdge: {
+    position: "absolute",
+    top: "8%",
+    bottom: "8%",
+    width: 3,
+    backgroundColor: "#EFE6C8",
+    opacity: 0.5,
+    borderRadius: 1,
+  },
+  // Drop shadow that lifts the book off the background, like it's resting
+  // on a shelf under soft light.
+  coverBookShadow: {
+    flex: 1,
+    width: "100%",
+    borderRadius: 12,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 10 },
+    shadowOpacity: 0.45,
+    shadowRadius: 20,
+    elevation: 14,
   },
   coverOuterBorder: {
     flex: 1,
@@ -3518,6 +3942,21 @@ const s = StyleSheet.create({
     borderRadius: 12,
     padding: 6,
   },
+  // Gold "tooling" corner jewels, echoing the surah-divider ornament so the
+  // cover and interior pages read as one consistent, hand-finished mushaf.
+  coverCornerJewel: {
+    position: "absolute",
+    width: 14,
+    height: 14,
+    backgroundColor: "#C5A645",
+    borderRadius: 3,
+    transform: [{ rotate: "45deg" }],
+    zIndex: 2,
+  },
+  coverCornerJewelTL: { top: -7, left: -7 },
+  coverCornerJewelTR: { top: -7, right: -7 },
+  coverCornerJewelBL: { bottom: -7, left: -7 },
+  coverCornerJewelBR: { bottom: -7, right: -7 },
   coverInnerBorder: {
     flex: 1,
     borderWidth: 2,

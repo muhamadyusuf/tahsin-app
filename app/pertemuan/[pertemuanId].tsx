@@ -17,7 +17,7 @@ import { api } from "@/convex/_generated/api";
 import { Doc, Id } from "@/convex/_generated/dataModel";
 import { Colors, NILAI_OPTIONS } from "@/lib/constants";
 import { useAuthContext } from "@/lib/auth-context";
-import JitsiMeeting from "@/components/JitsiMeeting";
+import MeetingRoom from "@/components/MeetingRoom";
 
 const STATUS_LABEL: Record<string, string> = {
   scheduled: "Terjadwal",
@@ -47,6 +47,7 @@ export default function PertemuanScreen() {
 
   const [starting, setStarting] = useState(false);
   const [ending, setEnding] = useState(false);
+  const [inMeeting, setInMeeting] = useState(false);
   const start = useMutation(api.kelasPertemuan.start);
   const end = useMutation(api.kelasPertemuan.end);
 
@@ -92,8 +93,9 @@ export default function PertemuanScreen() {
     }
   };
 
-  const showMeeting =
-    pertemuan.mode === "online" && pertemuan.status === "ongoing" && pertemuan.meetingUrl;
+  // Video meeting internal (WebRTC via Convex) — room-nya adalah pertemuan
+  // itu sendiri, tidak lagi memakai URL Jitsi.
+  const showMeeting = pertemuan.mode === "online" && pertemuan.status === "ongoing";
 
   return (
     <View style={st.container}>
@@ -144,9 +146,24 @@ export default function PertemuanScreen() {
         )}
       </View>
 
-      {showMeeting && (
-        <View style={st.meetingWrap}>
-          <JitsiMeeting meetingUrl={pertemuan.meetingUrl!} displayName={userData?.name} />
+      {showMeeting && !inMeeting && (
+        <View style={st.joinCard}>
+          <View style={st.joinCardIcon}>
+            <FontAwesome name="video-camera" size={18} color="#fff" />
+          </View>
+          <View style={{ flex: 1 }}>
+            <Text style={st.joinCardTitle}>Video meeting sedang berlangsung</Text>
+            <Text style={st.joinCardSubtitle}>
+              Gabung dengan kamera & mikrofon perangkat Anda
+            </Text>
+          </View>
+          <Pressable
+            style={[st.joinBtn, !userData?._id && { opacity: 0.5 }]}
+            onPress={() => setInMeeting(true)}
+            disabled={!userData?._id}
+          >
+            <Text style={st.joinBtnText}>Gabung</Text>
+          </Pressable>
         </View>
       )}
 
@@ -163,6 +180,18 @@ export default function PertemuanScreen() {
         <UstadzRoster pertemuan={pertemuan} kelas={kelas} ustadzUserId={userData?._id} />
       ) : (
         <SantriView pertemuan={pertemuan} santriUserId={userData?._id} />
+      )}
+
+      {showMeeting && inMeeting && userData?._id && (
+        <View style={st.meetingOverlay}>
+          <MeetingRoom
+            pertemuanId={pertemuan._id}
+            userId={userData._id}
+            displayName={userData.name ?? "Peserta"}
+            title={`${kelas.nama} • Pertemuan ${pertemuan.pertemuanKe}`}
+            onLeave={() => setInMeeting(false)}
+          />
+        </View>
       )}
     </View>
   );
@@ -415,7 +444,40 @@ const st = StyleSheet.create({
   },
   controlBtnText: { fontSize: 13, fontWeight: "700", color: Colors.primary },
 
-  meetingWrap: { height: 260, backgroundColor: "#000" },
+  joinCard: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+    backgroundColor: "#fff",
+    margin: 16,
+    marginBottom: 0,
+    padding: 14,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: Colors.border,
+  },
+  joinCardIcon: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: Colors.primary,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  joinCardTitle: { fontSize: 13, fontWeight: "700", color: Colors.text },
+  joinCardSubtitle: { fontSize: 11, color: Colors.textSecondary, marginTop: 2 },
+  joinBtn: {
+    backgroundColor: Colors.primary,
+    paddingHorizontal: 16,
+    paddingVertical: 9,
+    borderRadius: 10,
+  },
+  joinBtnText: { color: "#fff", fontWeight: "700", fontSize: 12 },
+  meetingOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    zIndex: 100,
+    elevation: 100,
+  },
   joinHint: {
     flexDirection: "row",
     alignItems: "center",

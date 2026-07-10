@@ -43,25 +43,18 @@ export const update = mutation({
   },
 });
 
-function generateJitsiRoom(kelasId: string, pertemuanKe: number): string {
-  const shortRandom = Math.random().toString(36).slice(2, 8);
-  return `https://meet.jit.si/tahsin-${kelasId}-${pertemuanKe}-${shortRandom}`;
-}
-
 export const start = mutation({
   args: { id: v.id("kelas_pertemuan") },
   handler: async (ctx, args) => {
     const pertemuan = await ctx.db.get(args.id);
     if (!pertemuan) throw new Error("Pertemuan not found");
 
-    const updates: Record<string, unknown> = {
+    // Pertemuan online memakai video meeting internal (WebRTC, convex/meeting.ts)
+    // dengan pertemuanId sebagai room — tidak perlu URL pihak ketiga lagi.
+    await ctx.db.patch(args.id, {
       status: "ongoing",
       startedAt: new Date().toISOString(),
-    };
-    if (pertemuan.mode === "online" && !pertemuan.meetingUrl) {
-      updates.meetingUrl = generateJitsiRoom(pertemuan.kelasId, pertemuan.pertemuanKe);
-    }
-    await ctx.db.patch(args.id, updates);
+    });
   },
 });
 
