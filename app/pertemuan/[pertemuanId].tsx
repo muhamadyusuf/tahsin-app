@@ -15,9 +15,10 @@ import FontAwesome from "@expo/vector-icons/FontAwesome";
 import { useMutation, useQuery } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import { Doc, Id } from "@/convex/_generated/dataModel";
+import { Linking } from "react-native";
 import { Colors, NILAI_OPTIONS } from "@/lib/constants";
 import { useAuthContext } from "@/lib/auth-context";
-import MeetingRoom from "@/components/MeetingRoom";
+import { useMeeting } from "@/lib/meeting-context";
 
 const STATUS_LABEL: Record<string, string> = {
   scheduled: "Terjadwal",
@@ -47,7 +48,7 @@ export default function PertemuanScreen() {
 
   const [starting, setStarting] = useState(false);
   const [ending, setEnding] = useState(false);
-  const [inMeeting, setInMeeting] = useState(false);
+  const meeting = useMeeting();
   const start = useMutation(api.kelasPertemuan.start);
   const end = useMutation(api.kelasPertemuan.end);
 
@@ -146,7 +147,7 @@ export default function PertemuanScreen() {
         )}
       </View>
 
-      {showMeeting && !inMeeting && (
+      {showMeeting && !meeting.active && (
         <View style={st.joinCard}>
           <View style={st.joinCardIcon}>
             <FontAwesome name="video-camera" size={18} color="#fff" />
@@ -159,7 +160,16 @@ export default function PertemuanScreen() {
           </View>
           <Pressable
             style={[st.joinBtn, !userData?._id && { opacity: 0.5 }]}
-            onPress={() => setInMeeting(true)}
+            onPress={() =>
+              userData?._id &&
+              meeting.joinMeeting({
+                pertemuanId: pertemuan._id,
+                userId: userData._id,
+                displayName: userData.name ?? "Peserta",
+                title: `${kelas.nama} • Pertemuan ${pertemuan.pertemuanKe}`,
+                isHost: !!isTeacher,
+              })
+            }
             disabled={!userData?._id}
           >
             <Text style={st.joinBtnText}>Gabung</Text>
@@ -181,18 +191,53 @@ export default function PertemuanScreen() {
       ) : (
         <SantriView pertemuan={pertemuan} santriUserId={userData?._id} />
       )}
+    </View>
+  );
+}
 
-      {showMeeting && inMeeting && userData?._id && (
-        <View style={st.meetingOverlay}>
-          <MeetingRoom
-            pertemuanId={pertemuan._id}
-            userId={userData._id}
-            displayName={userData.name ?? "Peserta"}
-            title={`${kelas.nama} • Pertemuan ${pertemuan.pertemuanKe}`}
-            onLeave={() => setInMeeting(false)}
-          />
-        </View>
-      )}
+// Daftar rekaman sesi meeting — bisa ditonton ulang oleh ustadz & santri.
+function RecordingList({ pertemuanId }: { pertemuanId: Id<"kelas_pertemuan"> }) {
+  const recordings = useQuery(api.recordings.listByPertemuan, { pertemuanId });
+  if (!recordings || recordings.length === 0) return null;
+
+  const fmtDuration = (sec: number) => {
+    const m = Math.floor(sec / 60);
+    const s = Math.round(sec % 60);
+    return `${m} mnt ${s} dtk`;
+  };
+
+  return (
+    <View style={{ gap: 8 }}>
+      <Text style={st.sectionTitle}>Rekaman Meeting</Text>
+      {recordings.map((rec) => (
+        <Pressable
+          key={rec._id}
+          style={st.recordingCard}
+          disabled={!rec.playbackUrl}
+          onPress={() => rec.playbackUrl && Linking.openURL(rec.playbackUrl)}
+        >
+          <View style={st.recordingIcon}>
+            <FontAwesome
+              name={rec.status === "processing" ? "hourglass-half" : "play"}
+              size={14}
+              color="#fff"
+            />
+          </View>
+          <View style={{ flex: 1 }}>
+            <Text style={st.recordingTitle}>
+              Rekaman {new Date(rec.createdAt).toLocaleString("id-ID")}
+            </Text>
+            <Text style={st.recordingMeta}>
+              {fmtDuration(rec.durationSec)} • oleh {rec.byName}
+              {rec.driveLink ? " • Google Drive" : ""}
+              {rec.status === "processing" ? " • sedang diproses…" : ""}
+            </Text>
+          </View>
+          {rec.playbackUrl && (
+            <FontAwesome name="external-link" size={13} color={Colors.primary} />
+          )}
+        </Pressable>
+      ))}
     </View>
   );
 }
@@ -226,6 +271,7 @@ function UstadzRoster({
 
   return (
     <ScrollView contentContainerStyle={st.content}>
+      <RecordingList pertemuanId={pertemuan._id} />
       <Text style={st.sectionTitle}>Presensi & Penilaian ({activeRoster.length} santri)</Text>
       {activeRoster.length === 0 ? (
         <View style={st.emptyBox}>
@@ -369,6 +415,7 @@ function SantriView({
 
   return (
     <ScrollView contentContainerStyle={st.content}>
+      <RecordingList pertemuanId={pertemuan._id} />
       <Text style={st.sectionTitle}>Hasil Pertemuan Anda</Text>
       {!own ? (
         <View style={st.emptyBox}>
@@ -473,11 +520,27 @@ const st = StyleSheet.create({
     borderRadius: 10,
   },
   joinBtnText: { color: "#fff", fontWeight: "700", fontSize: 12 },
-  meetingOverlay: {
-    ...StyleSheet.absoluteFillObject,
-    zIndex: 100,
-    elevation: 100,
+
+  recordingCard: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+    backgroundColor: "#fff",
+    borderRadius: 12,
+    padding: 12,
+    borderWidth: 1,
+    borderColor: Colors.border,
   },
+  recordingIcon: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    backgroundColor: Colors.primary,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  recordingTitle: { fontSize: 13, fontWeight: "700", color: Colors.text },
+  recordingMeta: { fontSize: 11, color: Colors.textSecondary, marginTop: 2 },
   joinHint: {
     flexDirection: "row",
     alignItems: "center",

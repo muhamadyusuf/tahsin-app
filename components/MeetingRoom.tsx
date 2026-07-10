@@ -248,8 +248,7 @@ export default function MeetingRoom({
   const hasScreenTile = tiles.some((t) => t.screenOn);
   const normalTiles = tiles.filter((t) => !t.screenOn).length;
   const columns = normalTiles <= 1 ? 1 : normalTiles <= 6 ? 2 : 3;
-  const rows =
-    Math.ceil(normalTiles / columns) + (hasScreenTile ? 0 : 0);
+  const rows = Math.ceil(normalTiles / columns);
   const tileWidth = gridSize.width > 0 ? gridSize.width / columns : 0;
   const screenTileHeight = hasScreenTile ? gridSize.height * 0.55 : 0;
   const tileHeight =
