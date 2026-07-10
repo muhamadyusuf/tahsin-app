@@ -7,7 +7,7 @@ import { Colors } from "@/lib/constants";
 import { useAuthContext } from "@/lib/auth-context";
 
 export default function TabsLayout() {
-  const { isLoading, isAuthenticated, isAdmin } = useAuthContext();
+  const { isLoading, isAuthenticated, isAdmin, role } = useAuthContext();
   const insets = useSafeAreaInsets();
 
   if (isLoading) {
@@ -25,6 +25,12 @@ export default function TabsLayout() {
   if (!isAdmin) {
     return <Redirect href="/pilih-role" />;
   }
+
+  // administrator manages the whole app; admin_pengajian (LKM) only manages
+  // their own lembaga — different tab sets rather than shared screens with
+  // hidden buttons, so an LKM admin never even lands on a global-scope screen.
+  const isLembaga = role === "admin_pengajian";
+  const hideTab = (visible: boolean) => (visible ? undefined : null);
 
   return (
     <Tabs
@@ -46,8 +52,19 @@ export default function TabsLayout() {
         name="dashboard"
         options={{
           title: "Dashboard",
+          href: hideTab(!isLembaga),
           tabBarIcon: ({ color, size }) => (
             <FontAwesome name="dashboard" size={size} color={color} />
+          ),
+        }}
+      />
+      <Tabs.Screen
+        name="anggota"
+        options={{
+          title: "Anggota",
+          href: hideTab(isLembaga),
+          tabBarIcon: ({ color, size }) => (
+            <FontAwesome name="users" size={size} color={color} />
           ),
         }}
       />
@@ -55,8 +72,19 @@ export default function TabsLayout() {
         name="pengguna"
         options={{
           title: "Pengguna",
+          href: hideTab(!isLembaga),
           tabBarIcon: ({ color, size }) => (
             <FontAwesome name="users" size={size} color={color} />
+          ),
+        }}
+      />
+      <Tabs.Screen
+        name="kelas"
+        options={{
+          title: "Kelas",
+          href: hideTab(isLembaga),
+          tabBarIcon: ({ color, size }) => (
+            <FontAwesome name="graduation-cap" size={size} color={color} />
           ),
         }}
       />
@@ -70,9 +98,20 @@ export default function TabsLayout() {
         }}
       />
       <Tabs.Screen
+        name="lkm-saya"
+        options={{
+          title: "LKM Saya",
+          href: hideTab(isLembaga),
+          tabBarIcon: ({ color, size }) => (
+            <FontAwesome name="institution" size={size} color={color} />
+          ),
+        }}
+      />
+      <Tabs.Screen
         name="lembaga"
         options={{
           title: "Lembaga",
+          href: hideTab(!isLembaga),
           tabBarIcon: ({ color, size }) => (
             <FontAwesome name="institution" size={size} color={color} />
           ),
@@ -82,6 +121,7 @@ export default function TabsLayout() {
         name="monitoring"
         options={{
           title: "Monitoring",
+          href: hideTab(!isLembaga),
           tabBarIcon: ({ color, size }) => (
             <FontAwesome name="bar-chart" size={size} color={color} />
           ),
@@ -91,6 +131,7 @@ export default function TabsLayout() {
         name="sub-bab"
         options={{
           title: "Sub-bab",
+          href: hideTab(!isLembaga),
           tabBarIcon: ({ color, size }) => (
             <FontAwesome name="sitemap" size={size} color={color} />
           ),
@@ -100,6 +141,7 @@ export default function TabsLayout() {
         name="ceramah"
         options={{
           title: "Ceramah",
+          href: hideTab(!isLembaga),
           tabBarIcon: ({ color, size }) => (
             <FontAwesome name="youtube-play" size={size} color={color} />
           ),

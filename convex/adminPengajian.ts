@@ -11,6 +11,7 @@ export const create = mutation({
     provinsi: v.string(),
     latitude: v.optional(v.float64()),
     longitude: v.optional(v.float64()),
+    fotoUrl: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
     const existing = await ctx.db
@@ -74,6 +75,9 @@ export const update = mutation({
     alamat: v.optional(v.string()),
     kota: v.optional(v.string()),
     provinsi: v.optional(v.string()),
+    latitude: v.optional(v.float64()),
+    longitude: v.optional(v.float64()),
+    fotoUrl: v.optional(v.string()),
     isActive: v.optional(v.boolean()),
   },
   handler: async (ctx, args) => {

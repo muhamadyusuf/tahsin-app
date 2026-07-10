@@ -7,32 +7,63 @@ import {
   Pressable,
   Alert,
   ActivityIndicator,
-  Platform,
 } from "react-native";
 import { useQuery, useMutation } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import { useRouter } from "expo-router";
 import FontAwesome from "@expo/vector-icons/FontAwesome";
 import { Colors } from "@/lib/constants";
+import { useAuthContext } from "@/lib/auth-context";
+import { Doc } from "@/convex/_generated/dataModel";
 import ConfirmModal from "@/components/ConfirmModal";
 
 type MateriType = "tahsin" | "ulumul_quran";
 
+const STATUS_LABEL: Record<string, string> = {
+  pending: "Menunggu Persetujuan",
+  approved: "Disetujui",
+  rejected: "Ditolak",
+};
+const STATUS_COLOR: Record<string, string> = {
+  pending: Colors.warning,
+  approved: Colors.success,
+  rejected: Colors.error,
+};
+
+function StatusBadge({ status }: { status?: string }) {
+  const key = status ?? "approved";
+  return (
+    <View style={[st.statusBadge, { backgroundColor: STATUS_COLOR[key] }]}>
+      <Text style={st.statusBadgeText}>{STATUS_LABEL[key]}</Text>
+    </View>
+  );
+}
+
 export default function MateriScreen() {
   const router = useRouter();
+  const { userData, role } = useAuthContext();
+  const isLembaga = role === "admin_pengajian";
   const [activeType, setActiveType] = useState<MateriType>("tahsin");
+  const [onlyPending, setOnlyPending] = useState(false);
   const [deleteModalVisible, setDeleteModalVisible] = useState(false);
   const [itemToDelete, setItemToDelete] = useState<{ id: string; judul: string } | null>(null);
 
-  const materiList = useQuery(api.materi.list, { type: activeType });
-  const materiIds = (materiList ?? []).map((item) => item._id);
-  const quizCounts = useQuery(
-    api.quiz.getQuizCountsByMateriIds,
-    materiIds.length > 0 ? { materiIds } : "skip"
+  const adminList = useQuery(
+    api.materi.listAllForType,
+    !isLembaga ? { type: activeType } : "skip"
   );
-  const removeMateri = useMutation(api.materi.remove);
+  const ownSubmissions = useQuery(
+    api.materi.listBySubmitter,
+    isLembaga && userData?._id ? { submittedBy: userData._id } : "skip"
+  );
+  const approvedList = useQuery(
+    api.materi.list,
+    isLembaga ? { type: activeType } : "skip"
+  );
 
-  const quizCountMap = new Map((quizCounts ?? []).map((item) => [item.materiId, item.count]));
+  const removeMateri = useMutation(api.materi.remove);
+  const approveMateri = useMutation(api.materi.approve);
+  const rejectMateri = useMutation(api.materi.reject);
 
   const handleDelete = (id: string, judul: string) => {
     setItemToDelete({ id, judul });
@@ -52,62 +83,60 @@ export default function MateriScreen() {
     }
   };
 
-  return (
-    <View style={st.container}>
-      {/* Type Tabs */}
-      <View style={st.tabRow}>
-        <Pressable
-          style={[st.tab, activeType === "tahsin" && st.tabActive]}
-          onPress={() => setActiveType("tahsin")}
-        >
-          <Text
-            style={[
-              st.tabText,
-              activeType === "tahsin" && st.tabTextActive,
-            ]}
-          >
-            Tahsin
-          </Text>
-        </Pressable>
-        <Pressable
-          style={[st.tab, activeType === "ulumul_quran" && st.tabActive]}
-          onPress={() => setActiveType("ulumul_quran")}
-        >
-          <Text
-            style={[
-              st.tabText,
-              activeType === "ulumul_quran" && st.tabTextActive,
-            ]}
-          >
-            Ulumul Quran
-          </Text>
-        </Pressable>
-      </View>
+  const handleApprove = async (id: string) => {
+    if (!userData?._id) return;
+    try {
+      await approveMateri({ id: id as any, reviewedBy: userData._id });
+    } catch {
+      Alert.alert("Error", "Gagal menyetujui materi.");
+    }
+  };
 
-      <View style={st.guideCard}>
-        <Text style={st.guideTitle}>Cara Input Quiz (Admin)</Text>
-        <Text style={st.guideText}>1. Pilih materi/sub-bab di bawah</Text>
-        <Text style={st.guideText}>2. Tekan tombol Quiz pada kartu materi</Text>
-        <Text style={st.guideText}>3. Isi pertanyaan dan opsi jawaban lalu simpan</Text>
-      </View>
+  const handleReject = async (id: string) => {
+    if (!userData?._id) return;
+    try {
+      await rejectMateri({ id: id as any, reviewedBy: userData._id });
+    } catch {
+      Alert.alert("Error", "Gagal menolak materi.");
+    }
+  };
 
-      {!materiList ? (
-        <View style={st.center}>
-          <ActivityIndicator size="large" color={Colors.primary} />
+  if (isLembaga) {
+    const ownFiltered = (ownSubmissions ?? []).filter((m) => m.type === activeType);
+    const isLoading = ownSubmissions === undefined || approvedList === undefined;
+
+    return (
+      <View style={st.container}>
+        <View style={st.tabRow}>
+          <Pressable
+            style={[st.tab, activeType === "tahsin" && st.tabActive]}
+            onPress={() => setActiveType("tahsin")}
+          >
+            <Text style={[st.tabText, activeType === "tahsin" && st.tabTextActive]}>Tahsin</Text>
+          </Pressable>
+          <Pressable
+            style={[st.tab, activeType === "ulumul_quran" && st.tabActive]}
+            onPress={() => setActiveType("ulumul_quran")}
+          >
+            <Text style={[st.tabText, activeType === "ulumul_quran" && st.tabTextActive]}>
+              Ulumul Quran
+            </Text>
+          </Pressable>
         </View>
-      ) : (
-        <FlatList
-          data={materiList.sort((a, b) => a.seq - b.seq)}
-          keyExtractor={(item) => item._id}
-          contentContainerStyle={{ padding: 16, paddingBottom: 100 }}
-          renderItem={({ item }) => {
-            const quizCount = quizCountMap.get(item._id) ?? 0;
-            return (
+
+        {isLoading ? (
+          <View style={st.center}>
+            <ActivityIndicator size="large" color={Colors.primary} />
+          </View>
+        ) : (
+          <FlatList
+            data={ownFiltered.sort((a, b) => a.seq - b.seq)}
+            keyExtractor={(item) => item._id}
+            contentContainerStyle={{ padding: 16, paddingBottom: 100 }}
+            ListHeaderComponent={<Text style={st.sectionTitle}>Materi Saya</Text>}
+            renderItem={({ item }) => (
               <View style={st.card}>
                 <View style={st.cardHeader}>
-                  <View style={st.seqBadge}>
-                    <Text style={st.seqText}>{item.seq}</Text>
-                  </View>
                   <View style={{ flex: 1 }}>
                     <Text style={st.cardTitle}>{item.judul}</Text>
                     {item.deskripsi && (
@@ -116,61 +145,14 @@ export default function MateriScreen() {
                       </Text>
                     )}
                   </View>
-                  <View
-                    style={[
-                      st.statusDot,
-                      { backgroundColor: item.isShow ? Colors.success : Colors.error },
-                    ]}
-                  />
+                  <StatusBadge status={item.status} />
                 </View>
-
-                <View
-                  style={st.cardMeta}
-                >
-                  {item.urlVideo && (
-                    <View style={st.metaTag}>
-                      <FontAwesome name="play-circle" size={12} color={Colors.info} />
-                      <Text style={st.metaTagText}>Video</Text>
-                    </View>
-                  )}
-                  {item.urlCover && (
-                    <View style={st.metaTag}>
-                      <FontAwesome name="image" size={12} color={Colors.warning} />
-                      <Text style={st.metaTagText}>Cover</Text>
-                    </View>
-                  )}
-                  <View style={st.metaTag}>
-                    <FontAwesome name="question-circle" size={12} color={Colors.primary} />
-                    <Text style={st.metaTagText}>Quiz {quizCount}</Text>
-                  </View>
-                  <Text style={st.visibilityText}>
-                    {item.isShow ? "Tampil" : "Tersembunyi"}
-                  </Text>
-                </View>
-
+                {item.status === "rejected" && item.reviewNote && (
+                  <Text style={st.rejectNote}>Catatan: {item.reviewNote}</Text>
+                )}
                 <View style={st.cardActions}>
                   <Pressable
-                    style={({ pressed }) => [
-                      st.actionBtn,
-                      st.actionBtnSub,
-                      pressed && { opacity: 0.7 },
-                    ]}
-                    onPress={() =>
-                      router.push({
-                        pathname: "/materi-detail",
-                        params: { id: item._id, type: activeType },
-                      })
-                    }
-                  >
-                    <FontAwesome name="sitemap" size={13} color={Colors.info} />
-                    <Text style={[st.actionBtnText, { color: Colors.info }]}>Sub-bab</Text>
-                  </Pressable>
-
-                  <Pressable
-                    style={({ pressed }) => [
-                      st.actionBtn,
-                      pressed && { opacity: 0.7 },
-                    ]}
+                    style={st.actionBtn}
                     onPress={() =>
                       router.push({
                         pathname: "/materi-form",
@@ -179,41 +161,105 @@ export default function MateriScreen() {
                     }
                   >
                     <FontAwesome name="pencil" size={13} color={Colors.primary} />
-                    <Text style={st.actionBtnText}>Edit</Text>
-                  </Pressable>
-
-                  {/* <Pressable
-                    style={({ pressed }) => [
-                      st.actionBtn,
-                      st.actionBtnQuiz,
-                      pressed && { opacity: 0.7 },
-                    ]}
-                    onPress={() =>
-                      router.push({
-                        pathname: "/quiz-manage",
-                        params: { materiId: item._id },
-                      })
-                    }
-                  >
-                    <FontAwesome name="question-circle" size={13} color={Colors.primaryDark} />
-                    <Text style={[st.actionBtnText, { color: Colors.primaryDark }]}>Quiz</Text>
-                  </Pressable> */}
-
-                  <Pressable
-                    style={({ pressed }) => [
-                      st.actionBtn,
-                      st.actionBtnDanger,
-                      pressed && { opacity: 0.7 },
-                    ]}
-                    onPress={() => handleDelete(item._id, item.judul)}
-                  >
-                    <FontAwesome name="trash-o" size={13} color={Colors.error} />
-                    <Text style={[st.actionBtnText, { color: Colors.error }]}>Hapus</Text>
+                    <Text style={st.actionBtnText}>
+                      {item.status === "rejected" ? "Perbaiki & Ajukan Ulang" : "Edit"}
+                    </Text>
                   </Pressable>
                 </View>
               </View>
-            );
-          }}
+            )}
+            ListEmptyComponent={
+              <View style={st.empty}>
+                <FontAwesome name="book" size={32} color={Colors.border} />
+                <Text style={st.emptyText}>Belum ada materi yang Anda ajukan</Text>
+              </View>
+            }
+            ListFooterComponent={
+              <>
+                <Text style={[st.sectionTitle, { marginTop: 16 }]}>Materi Tersedia (Disetujui)</Text>
+                {(approvedList ?? []).map((item) => (
+                  <View key={item._id} style={st.card}>
+                    <Text style={st.cardTitle}>{item.judul}</Text>
+                    {item.deskripsi && (
+                      <Text style={st.cardDesc} numberOfLines={2}>
+                        {item.deskripsi}
+                      </Text>
+                    )}
+                  </View>
+                ))}
+                {(approvedList ?? []).length === 0 && (
+                  <Text style={st.emptyText}>Belum ada materi yang disetujui</Text>
+                )}
+              </>
+            }
+          />
+        )}
+
+        <Pressable
+          style={({ pressed }) => [st.fab, pressed && { opacity: 0.85 }]}
+          onPress={() => router.push({ pathname: "/materi-form", params: { type: activeType } })}
+        >
+          <FontAwesome name="plus" size={22} color="#fff" />
+        </Pressable>
+      </View>
+    );
+  }
+
+  const pendingCount = (adminList ?? []).filter((m) => m.status === "pending").length;
+  const displayed = (adminList ?? []).filter((m) => (onlyPending ? m.status === "pending" : true));
+
+  return (
+    <View style={st.container}>
+      <View style={st.tabRow}>
+        <Pressable
+          style={[st.tab, activeType === "tahsin" && st.tabActive]}
+          onPress={() => setActiveType("tahsin")}
+        >
+          <Text style={[st.tabText, activeType === "tahsin" && st.tabTextActive]}>Tahsin</Text>
+        </Pressable>
+        <Pressable
+          style={[st.tab, activeType === "ulumul_quran" && st.tabActive]}
+          onPress={() => setActiveType("ulumul_quran")}
+        >
+          <Text style={[st.tabText, activeType === "ulumul_quran" && st.tabTextActive]}>
+            Ulumul Quran
+          </Text>
+        </Pressable>
+      </View>
+
+      <Pressable
+        style={[st.pendingFilter, onlyPending && st.pendingFilterActive]}
+        onPress={() => setOnlyPending((v) => !v)}
+      >
+        <FontAwesome
+          name="clock-o"
+          size={13}
+          color={onlyPending ? "#fff" : Colors.warning}
+        />
+        <Text style={[st.pendingFilterText, onlyPending && { color: "#fff" }]}>
+          Menunggu Persetujuan ({pendingCount})
+        </Text>
+      </Pressable>
+
+      {!adminList ? (
+        <View style={st.center}>
+          <ActivityIndicator size="large" color={Colors.primary} />
+        </View>
+      ) : (
+        <FlatList
+          data={displayed.sort((a, b) => a.seq - b.seq)}
+          keyExtractor={(item) => item._id}
+          contentContainerStyle={{ padding: 16, paddingBottom: 100 }}
+          renderItem={({ item }) => (
+            <MateriCard
+              item={item}
+              router={router}
+              activeType={activeType}
+              onDelete={handleDelete}
+              onApprove={handleApprove}
+              onReject={handleReject}
+            />
+          )}
           ListEmptyComponent={
             <View style={st.empty}>
               <FontAwesome name="book" size={32} color={Colors.border} />
@@ -223,15 +269,9 @@ export default function MateriScreen() {
         />
       )}
 
-      {/* FAB Add */}
       <Pressable
         style={({ pressed }) => [st.fab, pressed && { opacity: 0.85 }]}
-        onPress={() =>
-          router.push({
-            pathname: "/materi-form",
-            params: { type: activeType },
-          })
-        }
+        onPress={() => router.push({ pathname: "/materi-form", params: { type: activeType } })}
       >
         <FontAwesome name="plus" size={22} color="#fff" />
       </Pressable>
@@ -250,15 +290,89 @@ export default function MateriScreen() {
   );
 }
 
+function MateriCard({
+  item,
+  router,
+  activeType,
+  onDelete,
+  onApprove,
+  onReject,
+}: {
+  item: Doc<"materi">;
+  router: ReturnType<typeof useRouter>;
+  activeType: MateriType;
+  onDelete: (id: string, judul: string) => void;
+  onApprove: (id: string) => void;
+  onReject: (id: string) => void;
+}) {
+  const isPending = item.status === "pending";
+  return (
+    <View style={st.card}>
+      <View style={st.cardHeader}>
+        <View style={st.seqBadge}>
+          <Text style={st.seqText}>{item.seq}</Text>
+        </View>
+        <View style={{ flex: 1 }}>
+          <Text style={st.cardTitle}>{item.judul}</Text>
+          {item.deskripsi && (
+            <Text style={st.cardDesc} numberOfLines={2}>
+              {item.deskripsi}
+            </Text>
+          )}
+        </View>
+        <StatusBadge status={item.status} />
+      </View>
+
+      {isPending ? (
+        <View style={st.cardActions}>
+          <Pressable
+            style={[st.actionBtn, st.actionBtnDanger]}
+            onPress={() => onReject(item._id)}
+          >
+            <FontAwesome name="times" size={13} color={Colors.error} />
+            <Text style={[st.actionBtnText, { color: Colors.error }]}>Tolak</Text>
+          </Pressable>
+          <Pressable style={st.actionBtn} onPress={() => onApprove(item._id)}>
+            <FontAwesome name="check" size={13} color={Colors.primary} />
+            <Text style={st.actionBtnText}>Setujui</Text>
+          </Pressable>
+        </View>
+      ) : (
+        <View style={st.cardActions}>
+          <Pressable
+            style={[st.actionBtn, st.actionBtnSub]}
+            onPress={() =>
+              router.push({ pathname: "/materi-detail", params: { id: item._id, type: activeType } })
+            }
+          >
+            <FontAwesome name="sitemap" size={13} color={Colors.info} />
+            <Text style={[st.actionBtnText, { color: Colors.info }]}>Sub-bab</Text>
+          </Pressable>
+          <Pressable
+            style={st.actionBtn}
+            onPress={() => router.push({ pathname: "/materi-form", params: { id: item._id, type: activeType } })}
+          >
+            <FontAwesome name="pencil" size={13} color={Colors.primary} />
+            <Text style={st.actionBtnText}>Edit</Text>
+          </Pressable>
+          <Pressable
+            style={[st.actionBtn, st.actionBtnDanger]}
+            onPress={() => onDelete(item._id, item.judul)}
+          >
+            <FontAwesome name="trash-o" size={13} color={Colors.error} />
+            <Text style={[st.actionBtnText, { color: Colors.error }]}>Hapus</Text>
+          </Pressable>
+        </View>
+      )}
+    </View>
+  );
+}
+
 const st = StyleSheet.create({
   container: { flex: 1, backgroundColor: Colors.background },
   center: { flex: 1, justifyContent: "center", alignItems: "center" },
 
-  tabRow: {
-    flexDirection: "row",
-    padding: 16,
-    gap: 8,
-  },
+  tabRow: { flexDirection: "row", padding: 16, paddingBottom: 8, gap: 8 },
   tab: {
     flex: 1,
     paddingVertical: 10,
@@ -268,34 +382,27 @@ const st = StyleSheet.create({
     borderWidth: 1,
     borderColor: Colors.border,
   },
-  tabActive: {
-    backgroundColor: Colors.primary,
-    borderColor: Colors.primary,
-  },
+  tabActive: { backgroundColor: Colors.primary, borderColor: Colors.primary },
   tabText: { fontSize: 14, fontWeight: "600", color: Colors.textSecondary },
   tabTextActive: { color: "#fff" },
 
-  guideCard: {
-    backgroundColor: "#E8F5E9",
-    borderRadius: 12,
+  pendingFilter: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 6,
     marginHorizontal: 16,
-    marginTop: 2,
-    marginBottom: 4,
-    padding: 12,
+    marginBottom: 8,
+    paddingVertical: 8,
+    borderRadius: 10,
+    backgroundColor: "#FFF3E0",
     borderWidth: 1,
-    borderColor: Colors.primaryLight,
-    gap: 2,
+    borderColor: "#FFCC80",
   },
-  guideTitle: {
-    fontSize: 13,
-    fontWeight: "700",
-    color: Colors.primaryDark,
-    marginBottom: 4,
-  },
-  guideText: {
-    fontSize: 12,
-    color: Colors.primaryDark,
-  },
+  pendingFilterActive: { backgroundColor: Colors.warning, borderColor: Colors.warning },
+  pendingFilterText: { fontSize: 12, fontWeight: "700", color: Colors.warning },
+
+  sectionTitle: { fontSize: 14, fontWeight: "700", color: Colors.text, marginBottom: 8 },
 
   card: {
     backgroundColor: "#fff",
@@ -320,29 +427,10 @@ const st = StyleSheet.create({
   seqText: { fontSize: 13, fontWeight: "800", color: Colors.primary },
   cardTitle: { fontSize: 15, fontWeight: "600", color: Colors.text },
   cardDesc: { fontSize: 12, color: Colors.textSecondary, marginTop: 2 },
-  statusDot: { width: 8, height: 8, borderRadius: 4, marginTop: 4 },
 
-  cardMeta: {
-    flexDirection: "row",
-    alignItems: "center",
-    marginTop: 10,
-    gap: 8,
-  },
-  metaTag: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 4,
-    backgroundColor: Colors.background,
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-    borderRadius: 6,
-  },
-  metaTagText: { fontSize: 11, color: Colors.textSecondary },
-  visibilityText: {
-    fontSize: 11,
-    color: Colors.textSecondary,
-    marginLeft: "auto",
-  },
+  statusBadge: { paddingHorizontal: 8, paddingVertical: 3, borderRadius: 6 },
+  statusBadgeText: { fontSize: 10, fontWeight: "700", color: "#fff" },
+  rejectNote: { fontSize: 12, color: Colors.error, marginTop: 8 },
 
   cardActions: {
     flexDirection: "row",
@@ -361,12 +449,7 @@ const st = StyleSheet.create({
     borderRadius: 8,
     backgroundColor: Colors.primaryLight,
   },
-  actionBtnQuiz: {
-    backgroundColor: "#DCEFE0",
-  },
-  actionBtnSub: {
-    backgroundColor: "#E8F2FF",
-  },
+  actionBtnSub: { backgroundColor: "#E8F2FF" },
   actionBtnDanger: { backgroundColor: "#FFEBEE" },
   actionBtnText: { fontSize: 12, fontWeight: "600", color: Colors.primary },
 

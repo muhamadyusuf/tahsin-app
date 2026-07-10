@@ -1209,7 +1209,7 @@ export default function MushafView({ initialPage = 0 }: Props) {
               lineHeight: Math.round(mushafFontSize * 1.95),
               // Pages 1-2 are decorative (Al-Fatihah / Al-Baqarah opening) — centre-align
               // All other pages use full justification to match the printed mushaf
-              textAlign: page <= 2 ? ("center" as const) : ("justify" as const),
+              textAlign: page <= 2 ? ("center" as const) : ("center" as const),
             },
             isActiveLine && s.mushafLineActive,
           ]}

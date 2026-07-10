@@ -78,6 +78,15 @@ export default function RootLayout() {
               <Stack.Screen name="user-detail" options={{ title: "Detail Pengguna", headerTintColor: Colors.primary }} />
               <Stack.Screen name="hadis" options={{ headerShown: false }} />
               <Stack.Screen name="doa" options={{ headerShown: false }} />
+              <Stack.Screen name="sambung-ayat" options={{ headerShown: false }} />
+              <Stack.Screen name="ngaji-ai/index" options={{ headerShown: false }} />
+              <Stack.Screen name="ngaji-ai/[surahNumber]" options={{ headerShown: false }} />
+              <Stack.Screen name="talaqi-lkm/index" options={{ headerShown: false }} />
+              <Stack.Screen name="talaqi-lkm/[adminPengajianId]" options={{ headerShown: false }} />
+              <Stack.Screen name="kelas-admin/[adminPengajianId]" options={{ headerShown: false }} />
+              <Stack.Screen name="kelas-form" options={{ title: "Form Kelas", headerTintColor: Colors.primary }} />
+              <Stack.Screen name="kelas-detail/[kelasId]" options={{ headerShown: false }} />
+              <Stack.Screen name="pertemuan/[pertemuanId]" options={{ headerShown: false }} />
             </Stack>
           </View>
         </View>

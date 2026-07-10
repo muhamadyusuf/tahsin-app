@@ -137,6 +137,17 @@ export async function getJuz(juzNumber: number): Promise<SurahDetail> {
   );
 }
 
+/**
+ * Get a juz's ayahs with per-ayah surah info attached (a juz can span
+ * multiple surahs, so each ayah carries its own `surah` object).
+ */
+export async function getJuzAyahs(juzNumber: number): Promise<PageAyah[]> {
+  const data = await fetchApi<{ ayahs: PageAyah[] }>(
+    `/juz/${juzNumber}/${QURAN_EDITION_ARABIC}`
+  );
+  return data.ayahs;
+}
+
 // === PAGE ===
 
 /** Get a page of the Quran */

@@ -12,6 +12,8 @@ import {
 import FontAwesome from "@expo/vector-icons/FontAwesome";
 import { useClerk } from "@clerk/expo";
 import { useRouter } from "expo-router";
+import { useQuery } from "convex/react";
+import { api } from "@/convex/_generated/api";
 import { Colors, ROLES } from "@/lib/constants";
 import { useAuthContext } from "@/lib/auth-context";
 import ConfirmModal from "@/components/ConfirmModal";
@@ -29,6 +31,16 @@ export default function ProfilScreen() {
   const router = useRouter();
 
   const [logoutModalVisible, setLogoutModalVisible] = React.useState(false);
+
+  const santriProfile = useQuery(
+    api.santri.getByUserId,
+    role === "santri" && userData?._id ? { userId: userData._id } : "skip"
+  );
+  const affiliatedLembagaId = santriProfile?.adminPengajianId ?? userData?.adminPengajianId;
+  const lembaga = useQuery(
+    api.adminPengajian.getById,
+    affiliatedLembagaId ? { id: affiliatedLembagaId } : "skip"
+  );
 
   const doLogout = async () => {
     setLogoutModalVisible(false);
@@ -65,6 +77,12 @@ export default function ProfilScreen() {
             {ROLE_LABELS[role ?? "santri"] ?? "Santri"}
           </Text>
         </View>
+        {lembaga && (
+          <View style={styles.lembagaRow}>
+            <FontAwesome name="building" size={12} color={Colors.textSecondary} />
+            <Text style={styles.lembagaText}>{lembaga.namaLembaga}</Text>
+          </View>
+        )}
       </View>
 
       {/* Stats */}
@@ -256,6 +274,16 @@ const styles = StyleSheet.create({
     color: Colors.primaryDark,
     fontWeight: "bold",
     fontSize: 12,
+  },
+  lembagaRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    marginTop: 10,
+  },
+  lembagaText: {
+    fontSize: 13,
+    color: Colors.textSecondary,
   },
   statsRow: {
     flexDirection: "row",

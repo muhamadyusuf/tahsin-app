@@ -1408,6 +1408,16 @@ export default function TilawahScreen() {
             <Text style={styles.categoryLabel}>Untaian{"\n"}Do'a</Text>
           </TouchableOpacity>
 
+          <TouchableOpacity
+            style={styles.categoryCard}
+            onPress={() => router.push("/sambung-ayat")}
+          >
+            <View style={[styles.categoryIcon, { backgroundColor: "#FFFDE7" }]}>
+              <FontAwesome name="puzzle-piece" size={20} color="#F57F17" />
+            </View>
+            <Text style={styles.categoryLabel}>Sambung{"\n"}Ayat</Text>
+          </TouchableOpacity>
+
           {Platform.OS !== "web" && (
             <TouchableOpacity
               style={styles.categoryCard}

@@ -11,6 +11,7 @@ import FontAwesome from "@expo/vector-icons/FontAwesome";
 import { useRouter } from "expo-router";
 import { useQuery } from "convex/react";
 import { api } from "@/convex/_generated/api";
+import { Doc } from "@/convex/_generated/dataModel";
 import { Colors, TALAQI_TYPES } from "@/lib/constants";
 import { useAuthContext } from "@/lib/auth-context";
 
@@ -41,6 +42,114 @@ function formatDate(dateStr: string) {
 }
 
 export default function TalaqiScreen() {
+  const { role } = useAuthContext();
+
+  if (role === "ustadz") {
+    return <UstadzTalaqiContent />;
+  }
+  return <SantriTalaqiContent />;
+}
+
+function UstadzTalaqiContent() {
+  const router = useRouter();
+  const { userData } = useAuthContext();
+
+  const ownUstadz = useQuery(
+    api.ustadz.getByUserId,
+    userData?._id ? { userId: userData._id } : "skip"
+  );
+  const kelasList = useQuery(
+    api.kelas.listByUstadz,
+    ownUstadz?._id ? { ustadzId: ownUstadz._id } : "skip"
+  );
+
+  const isLoading = ownUstadz === undefined || (ownUstadz && kelasList === undefined);
+
+  if (isLoading) {
+    return (
+      <View style={styles.center}>
+        <ActivityIndicator size="large" color={Colors.primary} />
+        <Text style={styles.loadingText}>Memuat kelas Anda...</Text>
+      </View>
+    );
+  }
+
+  return (
+    <ScrollView style={styles.container} contentContainerStyle={styles.content}>
+      <View style={styles.headerCard}>
+        <View style={styles.headerTop}>
+          <View>
+            <Text style={styles.headerTitle}>Talaqi</Text>
+            <Text style={styles.headerSubtitle}>Kelas yang Anda ampu</Text>
+          </View>
+          <View style={styles.headerIcon}>
+            <FontAwesome name="graduation-cap" size={24} color={Colors.primary} />
+          </View>
+        </View>
+      </View>
+
+      {!ownUstadz ? (
+        <View style={styles.emptyState}>
+          <FontAwesome name="user-md" size={48} color={Colors.textSecondary} />
+          <Text style={styles.emptyTitle}>Profil Ustadz Belum Ada</Text>
+          <Text style={styles.emptySubtitle}>
+            Hubungi admin lembaga pengajian Anda untuk didaftarkan sebagai ustadz.
+          </Text>
+        </View>
+      ) : (kelasList ?? []).length === 0 ? (
+        <View style={styles.emptyState}>
+          <FontAwesome name="graduation-cap" size={48} color={Colors.textSecondary} />
+          <Text style={styles.emptyTitle}>Belum Ada Kelas</Text>
+          <Text style={styles.emptySubtitle}>Kelas yang ditugaskan LKM akan tampil di sini</Text>
+        </View>
+      ) : (
+        (kelasList ?? []).map((kelas) => (
+          <KelasCard
+            key={kelas._id}
+            kelas={kelas}
+            onPress={() =>
+              router.push({ pathname: "/kelas-detail/[kelasId]", params: { kelasId: kelas._id } })
+            }
+          />
+        ))
+      )}
+    </ScrollView>
+  );
+}
+
+function KelasCard({ kelas, onPress }: { kelas: Doc<"kelas">; onPress: () => void }) {
+  const pertemuanList = useQuery(api.kelasPertemuan.listByKelas, { kelasId: kelas._id });
+  const nextPertemuan = (pertemuanList ?? []).find((p) => p.status === "scheduled");
+  const typeLabel = TALAQI_TYPES.find((t) => t.value === kelas.type)?.label ?? kelas.type;
+
+  return (
+    <TouchableOpacity style={styles.sessionCard} onPress={onPress} activeOpacity={0.85}>
+      <View style={styles.sessionBody}>
+        <View style={styles.sessionRow}>
+          <View
+            style={[styles.typeBadge, { backgroundColor: TYPE_COLORS[kelas.type] ?? Colors.primary }]}
+          >
+            <FontAwesome name={TYPE_ICONS[kelas.type] ?? "book"} size={10} color="#fff" />
+            <Text style={styles.typeBadgeText}>{typeLabel}</Text>
+          </View>
+          <Text style={styles.sessionDate}>
+            {kelas.modeDefault === "online" ? "Online" : "Offline"}
+          </Text>
+        </View>
+        <Text style={styles.kelasNama}>{kelas.nama}</Text>
+        {nextPertemuan ? (
+          <Text style={styles.sessionRowText}>
+            Pertemuan berikutnya: {nextPertemuan.tanggal} (ke-{nextPertemuan.pertemuanKe})
+          </Text>
+        ) : (
+          <Text style={styles.sessionRowText}>Tidak ada pertemuan terjadwal</Text>
+        )}
+      </View>
+    </TouchableOpacity>
+  );
+}
+
+function SantriTalaqiContent() {
   const router = useRouter();
   const { userData, role } = useAuthContext();
   const [filterType, setFilterType] = useState<string | null>(null);
@@ -50,7 +159,22 @@ export default function TalaqiScreen() {
     userData?._id ? { userId: userData._id } : "skip"
   );
 
-  const isLoading = talaqiList === undefined;
+  const santriProfile = useQuery(
+    api.santri.getByUserId,
+    userData?._id ? { userId: userData._id } : "skip"
+  );
+
+  const enrollments = useQuery(
+    api.kelas.listEnrollmentsBySantri,
+    santriProfile?._id ? { santriId: santriProfile._id } : "skip"
+  );
+
+  const isLoading =
+    talaqiList === undefined ||
+    santriProfile === undefined ||
+    (!!santriProfile?._id && enrollments === undefined);
+
+  const isUnaffiliated = !santriProfile?.adminPengajianId;
 
   const filtered = filterType
     ? (talaqiList ?? []).filter((t) => t.type === filterType)
@@ -72,6 +196,9 @@ export default function TalaqiScreen() {
           (talaqiList ?? []).filter((t) => t.nilai != null).length
         ).toFixed(1)
       : "-";
+
+  const currentEnrollments = (enrollments ?? []).filter((e) => e.enrollment.isActive);
+  const pastEnrollments = (enrollments ?? []).filter((e) => !e.enrollment.isActive);
 
   if (isLoading) {
     return (
@@ -100,6 +227,25 @@ export default function TalaqiScreen() {
         </View>
         <FontAwesome name="chevron-right" size={14} color={Colors.primary} />
       </TouchableOpacity>
+
+      {isUnaffiliated && (
+        <TouchableOpacity
+          style={styles.ustadzCard}
+          onPress={() => router.push("/talaqi-lkm")}
+          activeOpacity={0.85}
+        >
+          <View style={styles.aiLeft}>
+            <View style={styles.ustadzIconWrap}>
+              <FontAwesome name="graduation-cap" size={18} color={Colors.primaryDark} />
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.aiTitle}>Ngaji dengan Ustadz</Text>
+              <Text style={styles.aiSubtitle}>Cari lembaga kursus mengaji (LKM) terdekat dan bergabung ke kelas</Text>
+            </View>
+          </View>
+          <FontAwesome name="chevron-right" size={14} color={Colors.primary} />
+        </TouchableOpacity>
+      )}
 
       {/* Header */}
       <View style={styles.headerCard}>
@@ -135,6 +281,42 @@ export default function TalaqiScreen() {
           </View>
         </View>
       </View>
+
+      {!isUnaffiliated && (
+        <>
+          <Text style={styles.sectionTitle}>Kelas Saya</Text>
+          {currentEnrollments.length === 0 ? (
+            <Text style={styles.sectionEmpty}>Belum ditempatkan di kelas manapun</Text>
+          ) : (
+            currentEnrollments.map(({ enrollment, kelas }) => (
+              <EnrollmentCard
+                key={enrollment._id}
+                kelas={kelas!}
+                onPress={() =>
+                  router.push({ pathname: "/kelas-detail/[kelasId]", params: { kelasId: kelas!._id } })
+                }
+              />
+            ))
+          )}
+
+          {pastEnrollments.length > 0 && (
+            <>
+              <Text style={styles.sectionTitle}>Kelas Sebelumnya</Text>
+              {pastEnrollments.map(({ enrollment, kelas }) => (
+                <EnrollmentCard
+                  key={enrollment._id}
+                  kelas={kelas!}
+                  onPress={() =>
+                    router.push({ pathname: "/kelas-detail/[kelasId]", params: { kelasId: kelas!._id } })
+                  }
+                />
+              ))}
+            </>
+          )}
+
+          <Text style={styles.sectionTitle}>Riwayat</Text>
+        </>
+      )}
 
       {/* Filter chips */}
       <ScrollView
@@ -191,9 +373,7 @@ export default function TalaqiScreen() {
           <Text style={styles.emptySubtitle}>
             {filterType
               ? "Tidak ada sesi untuk filter ini"
-              : role === "ustadz"
-                ? "Mulai beri penilaian pada santri Anda"
-                : "Riwayat talaqi akan muncul setelah sesi bersama ustadz"}
+              : "Riwayat talaqi akan muncul setelah sesi bersama ustadz"}
           </Text>
         </View>
       ) : (
@@ -301,6 +481,28 @@ export default function TalaqiScreen() {
   );
 }
 
+function EnrollmentCard({ kelas, onPress }: { kelas: Doc<"kelas">; onPress: () => void }) {
+  const typeLabel = TALAQI_TYPES.find((t) => t.value === kelas.type)?.label ?? kelas.type;
+  return (
+    <TouchableOpacity style={styles.sessionCard} onPress={onPress} activeOpacity={0.85}>
+      <View style={styles.sessionBody}>
+        <View style={styles.sessionRow}>
+          <View
+            style={[styles.typeBadge, { backgroundColor: TYPE_COLORS[kelas.type] ?? Colors.primary }]}
+          >
+            <FontAwesome name={TYPE_ICONS[kelas.type] ?? "book"} size={10} color="#fff" />
+            <Text style={styles.typeBadgeText}>{typeLabel}</Text>
+          </View>
+          <Text style={styles.sessionDate}>
+            {kelas.modeDefault === "online" ? "Online" : "Offline"}
+          </Text>
+        </View>
+        <Text style={styles.kelasNama}>{kelas.nama}</Text>
+      </View>
+    </TouchableOpacity>
+  );
+}
+
 const styles = StyleSheet.create({
   container: {
     flex: 1,
@@ -345,6 +547,26 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: Colors.textSecondary,
     marginTop: 2,
+  },
+  ustadzCard: {
+    backgroundColor: "#FFF3E0",
+    borderWidth: 1,
+    borderColor: "#FFCC80",
+    borderRadius: 14,
+    padding: 12,
+    marginBottom: 10,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 10,
+  },
+  ustadzIconWrap: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: "#FFE0B2",
+    justifyContent: "center",
+    alignItems: "center",
   },
   center: {
     flex: 1,
@@ -416,6 +638,25 @@ const styles = StyleSheet.create({
     width: 1,
     height: 28,
     backgroundColor: "rgba(255,255,255,0.3)",
+  },
+
+  sectionTitle: {
+    fontSize: 15,
+    fontWeight: "700",
+    color: Colors.text,
+    marginBottom: 8,
+    marginTop: 4,
+  },
+  sectionEmpty: {
+    fontSize: 13,
+    color: Colors.textSecondary,
+    marginBottom: 12,
+  },
+  kelasNama: {
+    fontSize: 15,
+    fontWeight: "700",
+    color: Colors.text,
+    marginTop: 6,
   },
 
   // Filter
@@ -505,7 +746,7 @@ const styles = StyleSheet.create({
   },
   sessionBody: {
     paddingHorizontal: 14,
-    paddingBottom: 14,
+    paddingVertical: 12,
     gap: 8,
   },
   sessionRow: {

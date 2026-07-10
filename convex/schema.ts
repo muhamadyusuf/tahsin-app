@@ -32,6 +32,7 @@ export default defineSchema({
     provinsi: v.string(),
     latitude: v.optional(v.float64()),
     longitude: v.optional(v.float64()),
+    fotoUrl: v.optional(v.string()),
     isActive: v.boolean(),
   })
     .index("by_userId", ["userId"])
@@ -69,10 +70,22 @@ export default defineSchema({
     urlVideo: v.optional(v.string()),
     isShow: v.boolean(),
     type: v.union(v.literal("tahsin"), v.literal("ulumul_quran")),
+    // Approval workflow — undefined/omitted is treated as "approved" so
+    // pre-existing rows (created before this field existed) stay visible.
+    status: v.optional(
+      v.union(v.literal("pending"), v.literal("approved"), v.literal("rejected"))
+    ),
+    submittedBy: v.optional(v.id("users")),
+    submittedByAdminPengajianId: v.optional(v.id("admin_pengajian")),
+    reviewedBy: v.optional(v.id("users")),
+    reviewNote: v.optional(v.string()),
+    reviewedAt: v.optional(v.string()),
   })
     .index("by_parentId", ["parentId"])
     .index("by_type", ["type"])
-    .index("by_type_seq", ["type", "seq"]),
+    .index("by_type_seq", ["type", "seq"])
+    .index("by_status", ["status"])
+    .index("by_submittedBy", ["submittedBy"]),
 
   // Quiz per materi
   quiz: defineTable({
@@ -183,11 +196,110 @@ export default defineSchema({
       )
     ),
     catatan: v.optional(v.string()),
+    // Links this record to a specific kelas/pertemuan when it originates from
+    // the structured kelas teaching flow. Optional so ad-hoc talaqi rows
+    // (not tied to any kelas) keep working unchanged.
+    kelasId: v.optional(v.id("kelas")),
+    kelasPertemuanId: v.optional(v.id("kelas_pertemuan")),
   })
     .index("by_userId", ["userId"])
     .index("by_ustadzId", ["ustadzId"])
     .index("by_adminPengajianId", ["adminPengajianId"])
-    .index("by_userId_tanggal", ["userId", "tanggal"]),
+    .index("by_userId_tanggal", ["userId", "tanggal"])
+    .index("by_kelasId", ["kelasId"])
+    .index("by_kelasPertemuanId_userId", ["kelasPertemuanId", "userId"]),
+
+  // LKM join request — santri requesting to join a lembaga/kelas, pending LKM verification
+  lkm_join_request: defineTable({
+    santriId: v.id("santri"),
+    userId: v.id("users"), // denormalized for easy display join
+    adminPengajianId: v.id("admin_pengajian"),
+    status: v.union(
+      v.literal("pending"),
+      v.literal("approved"),
+      v.literal("rejected")
+    ),
+    requestedKelasId: v.optional(v.id("kelas")),
+    assignedKelasId: v.optional(v.id("kelas")),
+    reviewedBy: v.optional(v.id("users")),
+    reviewNote: v.optional(v.string()),
+    createdAt: v.string(),
+    reviewedAt: v.optional(v.string()),
+  })
+    .index("by_santriId", ["santriId"])
+    .index("by_adminPengajianId_status", ["adminPengajianId", "status"]),
+
+  // Kelas (class) — created/managed by admin_pengajian
+  kelas: defineTable({
+    adminPengajianId: v.id("admin_pengajian"),
+    ustadzId: v.id("ustadz"),
+    nama: v.string(),
+    type: v.union(
+      v.literal("tahsin"),
+      v.literal("murojaah"),
+      v.literal("tahfidz")
+    ),
+    modeDefault: v.union(v.literal("online"), v.literal("offline")),
+    silabus: v.optional(v.string()),
+    silabusMateriIds: v.optional(v.array(v.id("materi"))),
+    kapasitas: v.optional(v.float64()),
+    // Used to auto-generate the kelas_pertemuan schedule at creation time.
+    // Optional so kelas rows created before this field existed stay valid.
+    jumlahPertemuan: v.optional(v.float64()),
+    tanggalMulai: v.optional(v.string()), // ISO date string
+    isActive: v.boolean(),
+    createdAt: v.string(),
+  })
+    .index("by_adminPengajianId", ["adminPengajianId"])
+    .index("by_ustadzId", ["ustadzId"]),
+
+  // Recurring weekly schedule slots for a kelas
+  kelas_jadwal: defineTable({
+    kelasId: v.id("kelas"),
+    hari: v.union(
+      v.literal(0),
+      v.literal(1),
+      v.literal(2),
+      v.literal(3),
+      v.literal(4),
+      v.literal(5),
+      v.literal(6)
+    ), // 0=Minggu
+    jamMulai: v.string(), // "HH:mm"
+    jamSelesai: v.string(),
+  }).index("by_kelasId", ["kelasId"]),
+
+  // Kelas enrollment — many santri per kelas
+  kelas_santri: defineTable({
+    kelasId: v.id("kelas"),
+    santriId: v.id("santri"),
+    userId: v.id("users"), // denormalized
+    joinedAt: v.string(),
+    isActive: v.boolean(),
+  })
+    .index("by_kelasId", ["kelasId"])
+    .index("by_santriId", ["santriId"])
+    .index("by_kelasId_santriId", ["kelasId", "santriId"]),
+
+  // One row per scheduled meeting occurrence of a kelas, auto-generated from
+  // the kelas jadwal + jumlahPertemuan + tanggalMulai when the kelas is created.
+  kelas_pertemuan: defineTable({
+    kelasId: v.id("kelas"),
+    pertemuanKe: v.float64(),
+    tanggal: v.string(),
+    mode: v.union(v.literal("online"), v.literal("offline")),
+    meetingUrl: v.optional(v.string()),
+    status: v.union(
+      v.literal("scheduled"),
+      v.literal("ongoing"),
+      v.literal("done"),
+      v.literal("cancelled")
+    ),
+    startedAt: v.optional(v.string()),
+    endedAt: v.optional(v.string()),
+  })
+    .index("by_kelasId", ["kelasId"])
+    .index("by_kelasId_pertemuanKe", ["kelasId", "pertemuanKe"]),
 
   // User learning progress
   user_progress: defineTable({
@@ -238,4 +350,84 @@ export default defineSchema({
   })
     .index("by_isActive", ["isActive"])
     .index("by_postedBy", ["postedBy"]),
+
+  // Sambung Ayat game — personal best score per user, powers the leaderboard
+  sambung_ayat_scores: defineTable({
+    userId: v.id("users"),
+    score: v.float64(),
+    correctCount: v.float64(),
+    totalCount: v.float64(),
+    bestCombo: v.float64(),
+    juzRange: v.string(), // e.g. "Juz 30" or "Juz 1-5"
+    updatedAt: v.string(), // ISO datetime
+  })
+    .index("by_userId", ["userId"])
+    .index("by_score", ["score"]),
+
+  // Ngaji AI — hasil analisis bacaan terbaru per user+surah+ayat.
+  // Satu dokumen per ayat (di-upsert saat rekam ulang), attemptCount &
+  // bestScore menyimpan jejak perbaikan tanpa menumpuk riwayat tak terbatas.
+  ngaji_ai_results: defineTable({
+    userId: v.id("users"),
+    surahNumber: v.float64(),
+    ayahNumber: v.float64(),
+    score: v.float64(),
+    bestScore: v.float64(),
+    pronunciationScore: v.float64(),
+    tajwidScore: v.float64(),
+    fluencyScore: v.float64(),
+    transcript: v.string(),
+    expectedText: v.string(),
+    wordStatuses: v.array(
+      v.object({
+        displayIndex: v.float64(),
+        word: v.string(),
+        status: v.string(), // correct | partial | wrong | missing
+        recognized: v.string(),
+        similarity: v.float64(),
+        note: v.string(),
+        // Status per huruf (tanpa harakat) untuk highlight ala ngaji.ai;
+        // optional agar dokumen lama tetap valid.
+        letters: v.optional(
+          v.array(v.object({ letter: v.string(), correct: v.boolean() }))
+        ),
+      })
+    ),
+    mistakes: v.array(
+      v.object({
+        wordIndex: v.float64(),
+        expected: v.string(),
+        recognized: v.string(),
+        type: v.string(), // missing | different | extra
+        note: v.string(),
+      })
+    ),
+    extraWords: v.array(
+      v.object({
+        recognized: v.string(),
+        atRecognizedIndex: v.float64(),
+        note: v.string(),
+      })
+    ),
+    recommendation: v.string(),
+    attemptCount: v.float64(),
+    updatedAt: v.string(), // ISO datetime
+  })
+    .index("by_userId_surah_ayah", ["userId", "surahNumber", "ayahNumber"])
+    .index("by_userId_surah", ["userId", "surahNumber"])
+    .index("by_userId", ["userId"]),
+
+  // Ringkasan Ngaji AI per surah (denormalisasi) — dipakai daftar surah agar
+  // tidak perlu membaca seluruh ngaji_ai_results milik user.
+  ngaji_ai_surah_summary: defineTable({
+    userId: v.id("users"),
+    surahNumber: v.float64(),
+    totalScore: v.float64(), // jumlah skor terbaru semua ayat yang dinilai
+    ayahDone: v.float64(), // banyaknya ayat yang sudah punya hasil
+    totalAyahs: v.float64(),
+    lastAyahNumber: v.float64(), // posisi terakhir latihan
+    updatedAt: v.string(), // ISO datetime
+  })
+    .index("by_userId", ["userId"])
+    .index("by_userId_surah", ["userId", "surahNumber"]),
 });

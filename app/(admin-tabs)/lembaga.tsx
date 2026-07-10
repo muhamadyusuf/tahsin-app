@@ -6,6 +6,7 @@ import {
   FlatList,
   Pressable,
   ActivityIndicator,
+  Image,
 } from "react-native";
 import { useQuery } from "convex/react";
 import { api } from "@/convex/_generated/api";
@@ -37,13 +38,17 @@ export default function LembagaScreen() {
           return (
             <View style={st.card}>
               <View style={st.cardHeader}>
-                <View style={st.iconWrap}>
-                  <FontAwesome
-                    name="institution"
-                    size={18}
-                    color={Colors.primary}
-                  />
-                </View>
+                {item.fotoUrl ? (
+                  <Image source={{ uri: item.fotoUrl }} style={st.iconWrap} resizeMode="cover" />
+                ) : (
+                  <View style={st.iconWrap}>
+                    <FontAwesome
+                      name="institution"
+                      size={18}
+                      color={Colors.primary}
+                    />
+                  </View>
+                )}
                 <View style={{ flex: 1 }}>
                   <Text style={st.cardTitle}>{item.namaLembaga}</Text>
                   <Text style={st.cardLoc}>
@@ -103,6 +108,21 @@ export default function LembagaScreen() {
                 >
                   <FontAwesome name="pencil" size={12} color={Colors.primary} />
                   <Text style={st.actionText}>Edit</Text>
+                </Pressable>
+                <Pressable
+                  style={({ pressed }) => [
+                    st.actionBtn,
+                    pressed && { opacity: 0.7 },
+                  ]}
+                  onPress={() =>
+                    router.push({
+                      pathname: "/kelas-admin/[adminPengajianId]",
+                      params: { adminPengajianId: item._id },
+                    })
+                  }
+                >
+                  <FontAwesome name="users" size={12} color={Colors.primary} />
+                  <Text style={st.actionText}>Kelola Kelas</Text>
                 </Pressable>
               </View>
             </View>

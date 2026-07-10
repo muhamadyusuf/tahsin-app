@@ -17,6 +17,7 @@ import { Id } from "@/convex/_generated/dataModel";
 import FontAwesome from "@expo/vector-icons/FontAwesome";
 import { Colors } from "@/lib/constants";
 import MarkdownRenderer from "@/components/MarkdownRenderer";
+import { useAuthContext } from "@/lib/auth-context";
 
 const MD_CHEATSHEET = `# Heading 1
 ## Heading 2
@@ -44,14 +45,22 @@ export default function MateriFormScreen() {
   }>();
   const router = useRouter();
   const isEdit = !!id;
+  const { userData, role } = useAuthContext();
+  const isLembaga = role === "admin_pengajian";
 
   const existing = useQuery(
     api.materi.getById,
     id ? { id: id as Id<"materi"> } : "skip"
   );
+  const ownLembaga = useQuery(
+    api.adminPengajian.getByUserId,
+    isLembaga && userData?._id ? { userId: userData._id } : "skip"
+  );
 
   const createMateri = useMutation(api.materi.create);
   const updateMateri = useMutation(api.materi.update);
+  const proposeMateri = useMutation(api.materi.propose);
+  const resubmitMateri = useMutation(api.materi.resubmit);
 
   const [judul, setJudul] = useState("");
   const [deskripsi, setDeskripsi] = useState("");
@@ -83,10 +92,15 @@ export default function MateriFormScreen() {
       Alert.alert("Error", "Judul materi wajib diisi.");
       return;
     }
+    if (isLembaga && !isEdit && !ownLembaga) {
+      Alert.alert("Error", "Profil lembaga belum dibuat.");
+      return;
+    }
+
     setSubmitting(true);
     try {
       if (isEdit) {
-        await updateMateri({
+        const fields = {
           id: id as Id<"materi">,
           judul: judul.trim(),
           deskripsi: deskripsi.trim() || undefined,
@@ -94,8 +108,28 @@ export default function MateriFormScreen() {
           urlCover: urlCover.trim() || undefined,
           urlVideo: urlVideo.trim() || undefined,
           isShow,
+        };
+        if (isLembaga) {
+          await resubmitMateri(fields);
+          Alert.alert("Berhasil", "Materi diajukan ulang, menunggu persetujuan administrator.");
+        } else {
+          await updateMateri(fields);
+          Alert.alert("Berhasil", "Materi berhasil diperbarui.");
+        }
+      } else if (isLembaga && userData && ownLembaga) {
+        await proposeMateri({
+          judul: judul.trim(),
+          deskripsi: deskripsi.trim() || undefined,
+          seq: parseFloat(seq) || 1,
+          parentId: parentId ? (parentId as Id<"materi">) : undefined,
+          urlCover: urlCover.trim() || undefined,
+          urlVideo: urlVideo.trim() || undefined,
+          isShow,
+          type: materiType,
+          submittedBy: userData._id,
+          submittedByAdminPengajianId: ownLembaga._id,
         });
-        Alert.alert("Berhasil", "Materi berhasil diperbarui.");
+        Alert.alert("Berhasil", "Materi diajukan, menunggu persetujuan administrator.");
       } else {
         await createMateri({
           judul: judul.trim(),
