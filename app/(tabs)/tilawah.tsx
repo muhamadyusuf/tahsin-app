@@ -1418,6 +1418,26 @@ export default function TilawahScreen() {
             <Text style={styles.categoryLabel}>Sambung{"\n"}Ayat</Text>
           </TouchableOpacity>
 
+          <TouchableOpacity
+            style={styles.categoryCard}
+            onPress={() => router.push("/tasbih")}
+          >
+            <View style={[styles.categoryIcon, { backgroundColor: "#E0F2F1" }]}>
+              <FontAwesome name="circle-o-notch" size={20} color="#00695C" />
+            </View>
+            <Text style={styles.categoryLabel}>Tasbih{"\n"}Digital</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={styles.categoryCard}
+            onPress={() => router.push("/dzikir")}
+          >
+            <View style={[styles.categoryIcon, { backgroundColor: "#E1F5FE" }]}>
+              <FontAwesome name="book" size={20} color="#0277BD" />
+            </View>
+            <Text style={styles.categoryLabel}>Dzikir{"\n"}Harian</Text>
+          </TouchableOpacity>
+
           {Platform.OS !== "web" && (
             <TouchableOpacity
               style={styles.categoryCard}

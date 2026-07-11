@@ -83,6 +83,8 @@ export default function RootLayout() {
               <Stack.Screen name="hadis" options={{ headerShown: false }} />
               <Stack.Screen name="doa" options={{ headerShown: false }} />
               <Stack.Screen name="sambung-ayat" options={{ headerShown: false }} />
+              <Stack.Screen name="tasbih" options={{ headerShown: false }} />
+              <Stack.Screen name="dzikir" options={{ headerShown: false }} />
               <Stack.Screen name="ngaji-ai/index" options={{ headerShown: false }} />
               <Stack.Screen name="ngaji-ai/[surahNumber]" options={{ headerShown: false }} />
               <Stack.Screen name="talaqi-lkm/index" options={{ headerShown: false }} />
