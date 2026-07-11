@@ -1,4 +1,10 @@
-import React, { createContext, useContext, useEffect, useState } from "react";
+import React, {
+  createContext,
+  useContext,
+  useEffect,
+  useRef,
+  useState,
+} from "react";
 import { useUser } from "@clerk/expo";
 import { useQuery, useMutation } from "convex/react";
 import { api } from "@/convex/_generated/api";
@@ -58,15 +64,24 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     userData?._id ? { userId: userData._id } : "skip"
   );
 
-  useEffect(() => {
-    let isCancelled = false;
+  // Ref (bukan state di dependency) untuk menandai upsert yang sedang jalan.
+  // Versi lama memakai cleanup `isCancelled` + isProvisioningUser di deps:
+  // begitu setIsProvisioningUser(true) memicu re-run, cleanup menandai
+  // isCancelled dan .finally tidak pernah me-reset flag - isLoading macet
+  // true dan user baru stuck di splash selamanya.
+  const provisioningRef = useRef(false);
 
-    if (!(isLoaded && isSignedIn && user && userData === null) || isProvisioningUser) {
+  useEffect(() => {
+    if (!(isLoaded && isSignedIn && user && userData === null)) {
+      return;
+    }
+    if (provisioningRef.current) {
       return;
     }
 
     // First login can race with route guards; keep app in loading state
     // until the Convex user record is provisioned.
+    provisioningRef.current = true;
     setIsProvisioningUser(true);
 
     upsertUser({
@@ -84,15 +99,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         console.error("Failed to provision user in Convex:", error);
       })
       .finally(() => {
-        if (!isCancelled) {
-          setIsProvisioningUser(false);
-        }
+        provisioningRef.current = false;
+        setIsProvisioningUser(false);
       });
-
-    return () => {
-      isCancelled = true;
-    };
-  }, [isLoaded, isSignedIn, user, userData, isProvisioningUser, upsertUser]);
+  }, [isLoaded, isSignedIn, user, userData, upsertUser]);
 
   useEffect(() => {
     if (isLoaded) {

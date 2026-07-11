@@ -33,6 +33,7 @@
     "expo-secure-store": "^55.0.13",
     "expo-splash-screen": "~31.0.13",
     "expo-status-bar": "~3.0.9",
+    "expo-updates": "^57.0.6",
     "expo-web-browser": "~15.0.10",
     "nativewind": "^4.2.3",
     "react": "19.1.0",

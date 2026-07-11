@@ -1,34 +1,71 @@
-import { Redirect } from "expo-router";
-import { ActivityIndicator, View, Text, StyleSheet } from "react-native";
+import { useEffect } from "react";
+import { useRouter, useRootNavigationState, type Href } from "expo-router";
+import {
+  ActivityIndicator,
+  View,
+  Text,
+  StyleSheet,
+  Platform,
+} from "react-native";
 import { useAuthContext } from "@/lib/auth-context";
 import { Colors } from "@/lib/constants";
 
 export default function Index() {
   const { isLoading, isAuthenticated, role } = useAuthContext();
+  const router = useRouter();
+  // router.replace yang dipanggil sebelum root navigator siap akan di-drop
+  // diam-diam (terutama di web, tepat setelah replace dari sso-callback).
+  // Tunggu sampai navigation state punya key sebelum mencoba redirect.
+  const rootNavigationState = useRootNavigationState();
+  const navReady = !!rootNavigationState?.key;
 
-  if (isLoading) {
-    return (
-      <View style={styles.container}>
-        <Text style={styles.title}>Tahsin</Text>
-        <Text style={styles.subtitle}>Belajar Al-Qur'an</Text>
-        <ActivityIndicator size="large" color={Colors.primary} style={styles.spinner} />
-      </View>
-    );
-  }
+  useEffect(() => {
+    if (isLoading || !navReady) return;
 
-  if (!isAuthenticated) {
-    return <Redirect href="/(auth)/login" />;
-  }
+    let target: Href;
+    let webPath: string;
+    if (!isAuthenticated) {
+      target = "/(auth)/login";
+      webPath = "/login";
+    } else if (!role) {
+      target = "/pilih-role";
+      webPath = "/pilih-role";
+    } else if (role === "administrator" || role === "admin_pengajian") {
+      target = "/(admin-tabs)/dashboard";
+      webPath = "/dashboard";
+    } else {
+      target = "/(tabs)/tilawah";
+      webPath = "/tilawah";
+    }
 
-  if (!role) {
-    return <Redirect href="/pilih-role" />;
-  }
+    router.replace(target);
 
-  if (role === "administrator" || role === "admin_pengajian") {
-    return <Redirect href="/(admin-tabs)/dashboard" />;
-  }
+    // Kalau replace di atas tetap di-drop, coba ulang; di web, jalan
+    // terakhirnya paksa full reload ke halaman tujuan. Interval otomatis
+    // bersih saat navigasi berhasil karena index unmount.
+    let attempts = 0;
+    const retry = setInterval(() => {
+      attempts += 1;
+      if (attempts <= 2) {
+        router.replace(target);
+        return;
+      }
+      clearInterval(retry);
+      if (Platform.OS === "web" && typeof window !== "undefined") {
+        window.location.replace(webPath);
+      }
+    }, 700);
 
-  return <Redirect href="/(tabs)/tilawah" />;
+    return () => clearInterval(retry);
+  }, [isLoading, isAuthenticated, role, navReady, router]);
+
+  return (
+    <View style={styles.container}>
+      <Text style={styles.title}>Tahsin</Text>
+      <Text style={styles.subtitle}>Belajar Al-Qur'an</Text>
+      <ActivityIndicator size="large" color={Colors.primary} style={styles.spinner} />
+    </View>
+  );
 }
 
 const styles = StyleSheet.create({

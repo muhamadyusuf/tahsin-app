@@ -501,4 +501,49 @@ export default defineSchema({
   })
     .index("by_userId", ["userId"])
     .index("by_userId_surah", ["userId", "surahNumber"]),
+
+  // Rekap Tasbih Digital — agregat harian per jenis dzikir. Sengaja low-churn:
+  // hanya di-update saat satu putaran selesai atau sesi disimpan (bukan setiap
+  // ketukan), sehingga aman dari amplifikasi tulis.
+  tasbih_harian: defineTable({
+    userId: v.id("users"),
+    tanggal: v.string(), // YYYY-MM-DD (waktu lokal pengguna)
+    dzikirId: v.string(), // id preset: subhanallah, alhamdulillah, dst.
+    dzikirLabel: v.string(),
+    jumlah: v.float64(), // total hitungan hari itu untuk dzikir ini
+    putaran: v.float64(), // banyaknya putaran (target tercapai)
+    updatedAt: v.string(), // ISO datetime
+  })
+    .index("by_userId", ["userId"])
+    .index("by_userId_tanggal", ["userId", "tanggal"])
+    .index("by_userId_tanggal_dzikir", ["userId", "tanggal", "dzikirId"]),
+
+  // Rekap Dzikir harian — satu baris per butir dzikir yang diselesaikan,
+  // di-dedup per (user, tanggal, kategori, butir) agar tidak dobel.
+  dzikir_selesai: defineTable({
+    userId: v.id("users"),
+    tanggal: v.string(), // YYYY-MM-DD
+    kategoriId: v.string(), // pagi, petang, setelah-shalat, dst.
+    kategoriLabel: v.string(),
+    itemId: v.string(),
+    itemJudul: v.string(),
+    completedAt: v.string(), // ISO datetime
+  })
+    .index("by_userId", ["userId"])
+    .index("by_userId_tanggal", ["userId", "tanggal"])
+    .index("by_userId_tanggal_kategori", ["userId", "tanggal", "kategoriId"])
+    .index("by_userId_tanggal_kategori_item", [
+      "userId",
+      "tanggal",
+      "kategoriId",
+      "itemId",
+    ]),
+
+  // Target ibadah harian yang ditetapkan pengguna (satu baris per user).
+  dzikir_target: defineTable({
+    userId: v.id("users"),
+    tasbihTarget: v.float64(), // target total hitungan tasbih per hari
+    dzikirKategori: v.array(v.string()), // kategori dzikir yang ditargetkan tuntas tiap hari
+    updatedAt: v.string(),
+  }).index("by_userId", ["userId"]),
 });

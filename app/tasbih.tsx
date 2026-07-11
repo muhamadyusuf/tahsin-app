@@ -25,6 +25,9 @@ import Svg, {
   G,
 } from "react-native-svg";
 
+import { useMutation } from "convex/react";
+import { api } from "@/convex/_generated/api";
+import { useAuthContext } from "@/lib/auth-context";
 import { Colors } from "@/lib/constants";
 import {
   TASBIH_DESIGNS,
@@ -32,6 +35,13 @@ import {
   TasbihDesign,
 } from "@/lib/tasbih-designs";
 import { TASBIH_DZIKIR_PRESETS } from "@/lib/dzikir-data";
+
+/** Tanggal lokal dalam format YYYY-MM-DD (dipakai sebagai kunci rekap harian). */
+function todayStr() {
+  const d = new Date();
+  const p = (n: number) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
+}
 
 // ── Persistence keys ─────────────────────────────────────────────────────────
 const K_COUNT = "tasbih:count";
@@ -193,12 +203,34 @@ export default function TasbihScreen() {
   const [presetIdx, setPresetIdx] = useState(0);
   const [vibrate, setVibrate] = useState(true);
   const [showDesigns, setShowDesigns] = useState(false);
+  const [justSaved, setJustSaved] = useState(false);
   const loadedRef = useRef(false);
+
+  const { userData } = useAuthContext();
+  const recordTasbih = useMutation(api.dzikir.recordTasbih);
 
   const design =
     TASBIH_DESIGNS.find((d) => d.id === designId) ?? TASBIH_DESIGNS[0];
   const preset = TASBIH_DZIKIR_PRESETS[presetIdx];
   const target = preset.target;
+
+  // Kirim hasil ke database rekap. Selalu terikat pada reset hitungan ke 0
+  // (putaran selesai atau tombol Simpan) sehingga tidak pernah dobel hitung.
+  const persist = useCallback(
+    (jumlah: number, putaran: number) => {
+      if (!userData?._id) return;
+      if (jumlah <= 0 && putaran <= 0) return;
+      recordTasbih({
+        userId: userData._id,
+        tanggal: todayStr(),
+        dzikirId: preset.id,
+        dzikirLabel: preset.latin,
+        jumlah,
+        putaran,
+      }).catch(() => {});
+    },
+    [userData?._id, recordTasbih, preset.id, preset.latin]
+  );
 
   // Muat state tersimpan
   useEffect(() => {
@@ -271,22 +303,35 @@ export default function TasbihScreen() {
     setCount((c) => {
       const next = c + 1;
       if (next >= target) {
-        // Satu putaran selesai
+        // Satu putaran selesai → simpan ke rekap (target hitungan, 1 putaran)
         setLaps((l) => l + 1);
         buzz(120);
         setTotal((t) => t + 1);
+        persist(target, 1);
         return 0;
       }
       buzz(15);
       setTotal((t) => t + 1);
       return next;
     });
-  }, [target, buzz]);
+  }, [target, buzz, persist]);
+
+  // Simpan sisa hitungan (yang belum genap satu putaran) ke rekap, lalu reset
+  // hitungan ke 0. Karena selalu diikuti reset, tidak akan dobel dengan
+  // penyimpanan putaran berikutnya.
+  const handleSave = useCallback(() => {
+    if (count <= 0) return;
+    persist(count, 0);
+    setCount(0);
+    buzz(30);
+    setJustSaved(true);
+    setTimeout(() => setJustSaved(false), 1500);
+  }, [count, persist, buzz]);
 
   const handleReset = useCallback(() => {
     Alert.alert(
       "Reset Hitungan",
-      "Kembalikan hitungan dan putaran ke nol? Total keseluruhan tetap tersimpan.",
+      "Kembalikan hitungan dan putaran ke nol? Hitungan yang belum disimpan akan hilang (total rekap yang sudah tersimpan tetap ada).",
       [
         { text: "Batal", style: "cancel" },
         {
@@ -303,9 +348,11 @@ export default function TasbihScreen() {
   }, [buzz]);
 
   const changePreset = useCallback(() => {
+    // Simpan sisa hitungan dzikir saat ini sebelum berganti agar tidak hilang.
+    if (count > 0) persist(count, 0);
     setPresetIdx((i) => (i + 1) % TASBIH_DZIKIR_PRESETS.length);
     setCount(0);
-  }, []);
+  }, [count, persist]);
 
   const renderHeader = () => (
     <View style={[styles.header, { paddingTop: insets.top + 8 }]}>
@@ -313,7 +360,12 @@ export default function TasbihScreen() {
         <FontAwesome name="arrow-left" size={16} color={Colors.textLight} />
       </TouchableOpacity>
       <Text style={styles.headerTitle}>Tasbih Digital</Text>
-      <View style={styles.headerAction} />
+      <TouchableOpacity
+        style={styles.headerAction}
+        onPress={() => router.push("/rekap-ibadah")}
+      >
+        <FontAwesome name="bar-chart" size={16} color={Colors.textLight} />
+      </TouchableOpacity>
     </View>
   );
 
@@ -373,6 +425,23 @@ export default function TasbihScreen() {
           Ketuk area tasbih untuk menghitung
         </Text>
       </View>
+
+      {/* Simpan ke rekap */}
+      <TouchableOpacity
+        style={[styles.saveBtn, (count <= 0 || justSaved) && styles.saveBtnDisabled]}
+        onPress={handleSave}
+        disabled={count <= 0 || justSaved}
+        activeOpacity={0.85}
+      >
+        <FontAwesome name={justSaved ? "check" : "cloud-upload"} size={15} color="#fff" />
+        <Text style={styles.saveBtnText}>
+          {justSaved ? "Tersimpan ke rekap" : "Simpan hitungan ke rekap"}
+        </Text>
+      </TouchableOpacity>
+      <Text style={styles.saveHint}>
+        Setiap putaran yang selesai otomatis tersimpan. Gunakan tombol ini untuk
+        menyimpan sisa hitungan yang belum genap satu putaran.
+      </Text>
 
       {/* Kontrol */}
       <View style={styles.controlRow}>
@@ -471,7 +540,14 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
   headerTitle: { flex: 1, fontSize: 17, fontWeight: "700", color: Colors.textLight },
-  headerAction: { width: 36, height: 36 },
+  headerAction: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: "rgba(255,255,255,0.15)",
+    justifyContent: "center",
+    alignItems: "center",
+  },
 
   // Tasbih
   tasbihScroll: { padding: 16, paddingBottom: 40 },
@@ -532,6 +608,27 @@ const styles = StyleSheet.create({
   counterNum: { fontSize: 64, fontWeight: "900", lineHeight: 68 },
   counterOf: { fontSize: 15, fontWeight: "600", opacity: 0.7, marginTop: -2 },
   tapHint: { fontSize: 12, opacity: 0.75, marginTop: 4 },
+
+  saveBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 8,
+    backgroundColor: Colors.primary,
+    paddingVertical: 13,
+    borderRadius: 12,
+    marginBottom: 8,
+  },
+  saveBtnDisabled: { backgroundColor: "#A5D6A7" },
+  saveBtnText: { fontSize: 14, fontWeight: "700", color: "#fff" },
+  saveHint: {
+    fontSize: 11,
+    color: Colors.textSecondary,
+    textAlign: "center",
+    lineHeight: 16,
+    marginBottom: 14,
+    paddingHorizontal: 8,
+  },
 
   controlRow: { flexDirection: "row", gap: 10, marginBottom: 8 },
   ctrlBtn: {

@@ -3,15 +3,37 @@ import { View, Text, ScrollView, TouchableOpacity, StyleSheet } from "react-nati
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useRouter } from "expo-router";
 import FontAwesome from "@expo/vector-icons/FontAwesome";
+import { useQuery } from "convex/react";
 
+import { api } from "@/convex/_generated/api";
+import { useAuthContext } from "@/lib/auth-context";
 import { Colors } from "@/lib/constants";
 import { DZIKIR_KATEGORI, DzikirKategori } from "@/lib/dzikir-data";
 import DzikirList from "@/components/DzikirList";
+
+/** Tanggal lokal dalam format YYYY-MM-DD. */
+function todayStr() {
+  const d = new Date();
+  const p = (n: number) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
+}
 
 export default function DzikirScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const [selected, setSelected] = useState<DzikirKategori | null>(null);
+  const { userData } = useAuthContext();
+
+  // Butir dzikir yang sudah diselesaikan hari ini (untuk menandai progres).
+  const selesaiHariIni = useQuery(
+    api.dzikir.getDzikirSelesaiByDate,
+    userData?._id ? { userId: userData._id, tanggal: todayStr() } : "skip"
+  );
+  const completedIds = selected
+    ? (selesaiHariIni ?? [])
+        .filter((r) => r.kategoriId === selected.id)
+        .map((r) => r.itemId)
+    : [];
 
   const handleBack = () => {
     if (selected) {
@@ -29,7 +51,12 @@ export default function DzikirScreen() {
       <Text style={styles.headerTitle} numberOfLines={1}>
         {title}
       </Text>
-      <View style={styles.headerAction} />
+      <TouchableOpacity
+        style={styles.headerAction}
+        onPress={() => router.push("/rekap-ibadah")}
+      >
+        <FontAwesome name="bar-chart" size={16} color={Colors.textLight} />
+      </TouchableOpacity>
     </View>
   );
 
@@ -44,6 +71,10 @@ export default function DzikirScreen() {
           subtitle={selected.deskripsi}
           icon={selected.icon}
           accent={selected.warna}
+          userId={userData?._id}
+          kategoriId={selected.id}
+          kategoriLabel={selected.nama}
+          completedIds={completedIds}
         />
       </View>
     );
@@ -112,7 +143,14 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
   headerTitle: { flex: 1, fontSize: 17, fontWeight: "700", color: Colors.textLight },
-  headerAction: { width: 36, height: 36 },
+  headerAction: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: "rgba(255,255,255,0.15)",
+    justifyContent: "center",
+    alignItems: "center",
+  },
 
   scroll: { padding: 16, paddingBottom: 40 },
   hero: {

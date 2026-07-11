@@ -11,6 +11,7 @@
 import type * as adminPengajian from "../adminPengajian.js";
 import type * as appConfig from "../appConfig.js";
 import type * as ceramahVideo from "../ceramahVideo.js";
+import type * as dzikir from "../dzikir.js";
 import type * as http from "../http.js";
 import type * as iotDevices from "../iotDevices.js";
 import type * as kelas from "../kelas.js";
@@ -41,6 +42,7 @@ declare const fullApi: ApiFromModules<{
   adminPengajian: typeof adminPengajian;
   appConfig: typeof appConfig;
   ceramahVideo: typeof ceramahVideo;
+  dzikir: typeof dzikir;
   http: typeof http;
   iotDevices: typeof iotDevices;
   kelas: typeof kelas;

@@ -85,6 +85,7 @@ export default function RootLayout() {
               <Stack.Screen name="sambung-ayat" options={{ headerShown: false }} />
               <Stack.Screen name="tasbih" options={{ headerShown: false }} />
               <Stack.Screen name="dzikir" options={{ headerShown: false }} />
+              <Stack.Screen name="rekap-ibadah" options={{ headerShown: false }} />
               <Stack.Screen name="ngaji-ai/index" options={{ headerShown: false }} />
               <Stack.Screen name="ngaji-ai/[surahNumber]" options={{ headerShown: false }} />
               <Stack.Screen name="talaqi-lkm/index" options={{ headerShown: false }} />

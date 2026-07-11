@@ -1,13 +1,25 @@
-import React, { useCallback, useState } from "react";
+import React, { useCallback, useEffect, useState } from "react";
 import { View, Text, ScrollView, TouchableOpacity, StyleSheet } from "react-native";
 import FontAwesome from "@expo/vector-icons/FontAwesome";
+import { useMutation } from "convex/react";
 
+import { api } from "@/convex/_generated/api";
+import { Id } from "@/convex/_generated/dataModel";
 import { Colors } from "@/lib/constants";
 import { DzikirItem } from "@/lib/dzikir-data";
 
+/** Tanggal lokal dalam format YYYY-MM-DD. */
+function todayStr() {
+  const d = new Date();
+  const p = (n: number) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
+}
+
 /**
- * Daftar dzikir dengan penghitung pengulangan per butir.
- * Dipakai oleh menu Dzikir untuk menampilkan tiap kategori.
+ * Daftar dzikir dengan penghitung pengulangan per butir. Ketika sebuah butir
+ * selesai dibaca (hitungan mencapai jumlah anjuran), butir itu dicatat ke
+ * database rekap (di-dedup per hari). Butir yang sudah selesai hari ini
+ * ditandai otomatis lewat `completedIds`.
  */
 export default function DzikirList({
   items,
@@ -15,22 +27,61 @@ export default function DzikirList({
   subtitle,
   icon,
   accent = Colors.primary,
+  userId,
+  kategoriId,
+  kategoriLabel,
+  completedIds,
 }: {
   items: DzikirItem[];
   title: string;
   subtitle: string;
   icon: string;
   accent?: string;
+  userId?: Id<"users">;
+  kategoriId: string;
+  kategoriLabel: string;
+  completedIds?: string[];
 }) {
   const [counts, setCounts] = useState<Record<string, number>>({});
+  const recordDzikirItem = useMutation(api.dzikir.recordDzikirItem);
 
-  const tap = useCallback((id: string, max: number) => {
+  // Tandai butir yang sudah selesai hari ini (dari database) sebagai lengkap.
+  useEffect(() => {
+    if (!completedIds || completedIds.length === 0) return;
     setCounts((prev) => {
-      const cur = prev[id] ?? 0;
-      const next = cur >= max ? 0 : cur + 1;
-      return { ...prev, [id]: next };
+      let changed = false;
+      const next = { ...prev };
+      for (const item of items) {
+        if (completedIds.includes(item.id) && next[item.id] !== item.ulang) {
+          next[item.id] = item.ulang;
+          changed = true;
+        }
+      }
+      return changed ? next : prev; // ref sama → tidak memicu render ulang
     });
-  }, []);
+  }, [completedIds, items]);
+
+  const tap = useCallback(
+    (id: string, max: number, judul: string) => {
+      setCounts((prev) => {
+        const cur = prev[id] ?? 0;
+        const next = cur >= max ? 0 : cur + 1;
+        // Baru saja mencapai selesai → catat ke rekap (idempoten per hari).
+        if (next >= max && cur < max && userId) {
+          recordDzikirItem({
+            userId,
+            tanggal: todayStr(),
+            kategoriId,
+            kategoriLabel,
+            itemId: id,
+            itemJudul: judul,
+          }).catch(() => {});
+        }
+        return { ...prev, [id]: next };
+      });
+    },
+    [userId, recordDzikirItem, kategoriId, kategoriLabel]
+  );
 
   return (
     <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>
@@ -82,7 +133,7 @@ export default function DzikirList({
                 { borderColor: accent, backgroundColor: accent + "1A" },
                 complete && { backgroundColor: accent },
               ]}
-              onPress={() => tap(d.id, d.ulang)}
+              onPress={() => tap(d.id, d.ulang, d.judul)}
               activeOpacity={0.85}
             >
               <FontAwesome
