@@ -1,6 +1,6 @@
 import { httpRouter } from "convex/server";
 import { httpAction } from "./_generated/server";
-import { api, internal } from "./_generated/api";
+import { internal } from "./_generated/api";
 import { getSurahForPage, getJuzForPage } from "./quranPages";
 
 const http = httpRouter();
@@ -88,9 +88,10 @@ http.route({
     }
     await ctx.runMutation(internal.iotDevices.touchDevice, { id: device._id });
 
-    const position = await ctx.runQuery(api.mushafProgress.getReadingPosition, {
-      userId: device.userId,
-    });
+    const position = await ctx.runQuery(
+      internal.mushafProgress.getReadingPositionInternal,
+      { userId: device.userId }
+    );
     return json({ position });
   }),
 });

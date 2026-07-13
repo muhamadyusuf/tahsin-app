@@ -6,7 +6,7 @@ import React, {
   useState,
 } from "react";
 import { useUser } from "@clerk/expo";
-import { useQuery, useMutation } from "convex/react";
+import { useQuery, useMutation, useConvexAuth } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import { Id } from "@/convex/_generated/dataModel";
 import { UserRole } from "./constants";
@@ -48,12 +48,17 @@ const AuthContext = createContext<AuthContextType>({
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const { isLoaded, isSignedIn, user } = useUser();
+  // Fungsi Convex kini memverifikasi JWT Clerk di server, jadi tunggu sampai
+  // token benar-benar diterima Convex (bukan hanya isSignedIn dari Clerk)
+  // sebelum memanggil query/mutation yang butuh identitas.
+  const { isAuthenticated: convexAuthed, isLoading: convexAuthLoading } =
+    useConvexAuth();
   const [isReady, setIsReady] = useState(false);
   const [isProvisioningUser, setIsProvisioningUser] = useState(false);
 
   const userData = useQuery(
     api.users.getByClerkId,
-    isSignedIn && user?.id ? { clerkId: user.id } : "skip"
+    convexAuthed && user?.id ? { clerkId: user.id } : "skip"
   );
 
   const upsertUser = useMutation(api.users.upsertUser);
@@ -72,7 +77,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const provisioningRef = useRef(false);
 
   useEffect(() => {
-    if (!(isLoaded && isSignedIn && user && userData === null)) {
+    if (!(isLoaded && isSignedIn && convexAuthed && user && userData === null)) {
       return;
     }
     if (provisioningRef.current) {
@@ -102,7 +107,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         provisioningRef.current = false;
         setIsProvisioningUser(false);
       });
-  }, [isLoaded, isSignedIn, user, userData, upsertUser]);
+  }, [isLoaded, isSignedIn, convexAuthed, user, userData, upsertUser]);
 
   useEffect(() => {
     if (isLoaded) {
@@ -113,6 +118,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const value: AuthContextType = {
     isLoading:
       !isReady ||
+      (isSignedIn && convexAuthLoading) ||
       (isSignedIn && userData === undefined) ||
       (isSignedIn && userData === null) ||
       isProvisioningUser ||

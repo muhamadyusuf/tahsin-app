@@ -10,6 +10,7 @@
 
 import type * as adminPengajian from "../adminPengajian.js";
 import type * as appConfig from "../appConfig.js";
+import type * as authz from "../authz.js";
 import type * as ceramahVideo from "../ceramahVideo.js";
 import type * as dzikir from "../dzikir.js";
 import type * as http from "../http.js";
@@ -41,6 +42,7 @@ import type {
 declare const fullApi: ApiFromModules<{
   adminPengajian: typeof adminPengajian;
   appConfig: typeof appConfig;
+  authz: typeof authz;
   ceramahVideo: typeof ceramahVideo;
   dzikir: typeof dzikir;
   http: typeof http;

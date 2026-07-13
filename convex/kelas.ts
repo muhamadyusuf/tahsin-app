@@ -1,5 +1,6 @@
 import { query, mutation } from "./_generated/server";
 import { v } from "convex/values";
+import { assertSelfOrStaff, getAuthUser, requireLkmOwner } from "./authz";
 
 const jadwalArg = v.object({
   hari: v.union(
@@ -59,6 +60,7 @@ export const create = mutation({
     jadwal: v.array(jadwalArg),
   },
   handler: async (ctx, args) => {
+    await requireLkmOwner(ctx, args.adminPengajianId);
     const { jadwal, ...kelasArgs } = args;
     const kelasId = await ctx.db.insert("kelas", {
       ...kelasArgs,
@@ -105,6 +107,9 @@ export const update = mutation({
     isActive: v.optional(v.boolean()),
   },
   handler: async (ctx, args) => {
+    const kelas = await ctx.db.get(args.id);
+    if (!kelas) throw new Error("Kelas tidak ditemukan");
+    await requireLkmOwner(ctx, kelas.adminPengajianId);
     const { id, ...updates } = args;
     const filtered = Object.fromEntries(
       Object.entries(updates).filter(([_, val]) => val !== undefined)
@@ -120,6 +125,9 @@ export const setJadwal = mutation({
     jadwal: v.array(jadwalArg),
   },
   handler: async (ctx, args) => {
+    const kelas = await ctx.db.get(args.kelasId);
+    if (!kelas) throw new Error("Kelas tidak ditemukan");
+    await requireLkmOwner(ctx, kelas.adminPengajianId);
     const existing = await ctx.db
       .query("kelas_jadwal")
       .withIndex("by_kelasId", (q) => q.eq("kelasId", args.kelasId))
@@ -136,6 +144,7 @@ export const setJadwal = mutation({
 export const listJadwal = query({
   args: { kelasId: v.id("kelas") },
   handler: async (ctx, args) => {
+    if (!(await getAuthUser(ctx))) return [];
     return await ctx.db
       .query("kelas_jadwal")
       .withIndex("by_kelasId", (q) => q.eq("kelasId", args.kelasId))
@@ -146,6 +155,7 @@ export const listJadwal = query({
 export const listByAdminPengajian = query({
   args: { adminPengajianId: v.id("admin_pengajian") },
   handler: async (ctx, args) => {
+    if (!(await getAuthUser(ctx))) return [];
     return await ctx.db
       .query("kelas")
       .withIndex("by_adminPengajianId", (q) =>
@@ -158,6 +168,7 @@ export const listByAdminPengajian = query({
 export const listByUstadz = query({
   args: { ustadzId: v.id("ustadz") },
   handler: async (ctx, args) => {
+    if (!(await getAuthUser(ctx))) return [];
     return await ctx.db
       .query("kelas")
       .withIndex("by_ustadzId", (q) => q.eq("ustadzId", args.ustadzId))
@@ -168,6 +179,7 @@ export const listByUstadz = query({
 export const getById = query({
   args: { id: v.id("kelas") },
   handler: async (ctx, args) => {
+    if (!(await getAuthUser(ctx))) return null;
     return await ctx.db.get(args.id);
   },
 });
@@ -175,6 +187,7 @@ export const getById = query({
 export const listSantri = query({
   args: { kelasId: v.id("kelas") },
   handler: async (ctx, args) => {
+    if (!(await getAuthUser(ctx))) return [];
     return await ctx.db
       .query("kelas_santri")
       .withIndex("by_kelasId", (q) => q.eq("kelasId", args.kelasId))
@@ -186,6 +199,11 @@ export const listSantri = query({
 export const listEnrollmentsBySantri = query({
   args: { santriId: v.id("santri") },
   handler: async (ctx, args) => {
+    const caller = await getAuthUser(ctx);
+    if (!caller) return [];
+    const santri = await ctx.db.get(args.santriId);
+    if (!santri) return [];
+    await assertSelfOrStaff(ctx, caller, santri.userId);
     const enrollments = await ctx.db
       .query("kelas_santri")
       .withIndex("by_santriId", (q) => q.eq("santriId", args.santriId))

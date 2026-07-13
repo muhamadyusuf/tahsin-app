@@ -1,5 +1,6 @@
 import { action, mutation, query } from "./_generated/server";
 import { v } from "convex/values";
+import { assertSelfOrStaff, getAuthUser, requireSelf } from "./authz";
 
 type MistakeItem = {
   wordIndex: number;
@@ -437,7 +438,11 @@ export const analyzeRecitation = action({
     audioBase64: v.string(),
     mimeType: v.optional(v.string()),
   },
-  handler: async (_ctx, args) => {
+  handler: async (ctx, args) => {
+    // Cegah pemakaian kuota API transkripsi oleh pemanggil anonim.
+    if (!(await ctx.auth.getUserIdentity())) {
+      throw new Error("Harus login untuk menggunakan Ngaji AI");
+    }
     const keys = {
       gemini: process.env.GEMINI_API_KEY,
       mistral: process.env.MISTRAL_API_KEY,
@@ -720,6 +725,7 @@ export const saveResult = mutation({
     recommendation: v.string(),
   },
   handler: async (ctx, args) => {
+    await requireSelf(ctx, args.userId);
     const now = new Date().toISOString();
     const { totalAyahs, ...resultFields } = args;
 
@@ -787,6 +793,9 @@ export const saveResult = mutation({
 export const getMySummaries = query({
   args: { userId: v.id("users") },
   handler: async (ctx, args) => {
+    const caller = await getAuthUser(ctx);
+    if (!caller) return [];
+    await assertSelfOrStaff(ctx, caller, args.userId);
     return await ctx.db
       .query("ngaji_ai_surah_summary")
       .withIndex("by_userId", (q) => q.eq("userId", args.userId))
@@ -798,6 +807,9 @@ export const getMySummaries = query({
 export const getSurahResults = query({
   args: { userId: v.id("users"), surahNumber: v.float64() },
   handler: async (ctx, args) => {
+    const caller = await getAuthUser(ctx);
+    if (!caller) return [];
+    await assertSelfOrStaff(ctx, caller, args.userId);
     return await ctx.db
       .query("ngaji_ai_results")
       .withIndex("by_userId_surah", (q) =>

@@ -1,3 +1,5 @@
+import { cachedFetch } from "./offline-cache";
+
 const BASE_URL = "https://api.myquran.com/v3/hadis/enc";
 
 export interface HadisText {
@@ -13,11 +15,6 @@ export interface HadisData {
   hikmah: string;
   prev: number | null;
   next: number | null;
-}
-
-interface HadisResponse {
-  status: boolean;
-  data: HadisData;
 }
 
 export interface HadisSearchItem {
@@ -42,37 +39,38 @@ export interface HadisSearchResult {
   hadis: HadisSearchItem[];
 }
 
-interface HadisSearchResponse {
-  status: boolean;
-  data: HadisSearchResult;
+// Shared helper — every hadis endpoint below returns `{ data: T }`, so we
+// fetch, unwrap, and cache the response by `cacheKey` in one place. A cache
+// hit lets the same content re-appear offline instead of an error.
+async function fetchHadisJson<T>(
+  url: string,
+  cacheKey: string,
+  errorMessage: string
+): Promise<T> {
+  return cachedFetch(cacheKey, async () => {
+    const res = await fetch(url);
+    if (!res.ok) throw new Error(errorMessage);
+    const json: { data: T } = await res.json();
+    return json.data;
+  });
 }
 
 export async function getRandomHadis(): Promise<HadisData> {
-  const res = await fetch(`${BASE_URL}/random`);
-  if (!res.ok) throw new Error("Gagal memuat hadis");
-  const json: HadisResponse = await res.json();
-  return json.data;
+  // Stable key on purpose: online, a fresh random pick always wins; offline,
+  // the last pick shown is reused so the widget doesn't just show an error.
+  return fetchHadisJson(`${BASE_URL}/random`, "hadis:random:last", "Gagal memuat hadis");
 }
 
 export async function getHadisById(id: number): Promise<HadisData> {
-  const res = await fetch(`${BASE_URL}/show/${id}`);
-  if (!res.ok) throw new Error("Gagal memuat hadis");
-  const json: HadisResponse = await res.json();
-  return json.data;
+  return fetchHadisJson(`${BASE_URL}/show/${id}`, `hadis:show:${id}`, "Gagal memuat hadis");
 }
 
 export async function getNextHadis(id: number): Promise<HadisData> {
-  const res = await fetch(`${BASE_URL}/next/${id}`);
-  if (!res.ok) throw new Error("Gagal memuat hadis");
-  const json: HadisResponse = await res.json();
-  return json.data;
+  return fetchHadisJson(`${BASE_URL}/next/${id}`, `hadis:next:${id}`, "Gagal memuat hadis");
 }
 
 export async function getPrevHadis(id: number): Promise<HadisData> {
-  const res = await fetch(`${BASE_URL}/prev/${id}`);
-  if (!res.ok) throw new Error("Gagal memuat hadis");
-  const json: HadisResponse = await res.json();
-  return json.data;
+  return fetchHadisJson(`${BASE_URL}/prev/${id}`, `hadis:prev:${id}`, "Gagal memuat hadis");
 }
 
 export async function searchHadis(
@@ -81,12 +79,11 @@ export async function searchHadis(
   limit = 10
 ): Promise<HadisSearchResult> {
   const encodedKeyword = encodeURIComponent(keyword);
-  const res = await fetch(
-    `${BASE_URL}/cari/${encodedKeyword}?page=${page}&limit=${limit}`
+  return fetchHadisJson(
+    `${BASE_URL}/cari/${encodedKeyword}?page=${page}&limit=${limit}`,
+    `hadis:cari:${keyword}:${page}:${limit}`,
+    "Gagal mencari hadis"
   );
-  if (!res.ok) throw new Error("Gagal mencari hadis");
-  const json: HadisSearchResponse = await res.json();
-  return json.data;
 }
 
 // ─── v2 API (Arbain, Bulughul Maram, 9 Perawi) ────────────────────────────────
@@ -100,28 +97,20 @@ export interface ArbainItem {
   indo: string;
 }
 
-interface ArbainResponse {
-  status: boolean;
-  data: ArbainItem;
-}
-
-interface ArbainAllResponse {
-  status: boolean;
-  data: ArbainItem[];
-}
-
 export async function getAllArbain(): Promise<ArbainItem[]> {
-  const res = await fetch(`${BASE_URL_V2}/arbain/semua`);
-  if (!res.ok) throw new Error("Gagal memuat hadis arbain");
-  const json: ArbainAllResponse = await res.json();
-  return json.data;
+  return fetchHadisJson(
+    `${BASE_URL_V2}/arbain/semua`,
+    "arbain:all",
+    "Gagal memuat hadis arbain"
+  );
 }
 
 export async function getArbainByNo(no: number): Promise<ArbainItem> {
-  const res = await fetch(`${BASE_URL_V2}/arbain/${no}`);
-  if (!res.ok) throw new Error("Gagal memuat hadis arbain");
-  const json: ArbainResponse = await res.json();
-  return json.data;
+  return fetchHadisJson(
+    `${BASE_URL_V2}/arbain/${no}`,
+    `arbain:${no}`,
+    "Gagal memuat hadis arbain"
+  );
 }
 
 // Bulughul Maram
@@ -131,24 +120,20 @@ export interface BmItem {
   id: string;
 }
 
-interface BmResponse {
-  status: boolean;
-  info: { min: number; max: number };
-  data: BmItem;
-}
-
 export async function getBmByNo(no: number): Promise<BmItem> {
-  const res = await fetch(`${BASE_URL_V2}/bm/${no}`);
-  if (!res.ok) throw new Error("Gagal memuat hadis Bulughul Maram");
-  const json: BmResponse = await res.json();
-  return json.data;
+  return fetchHadisJson(
+    `${BASE_URL_V2}/bm/${no}`,
+    `bm:${no}`,
+    "Gagal memuat hadis Bulughul Maram"
+  );
 }
 
 export async function getRandomBm(): Promise<BmItem> {
-  const res = await fetch(`${BASE_URL_V2}/bm/acak`);
-  if (!res.ok) throw new Error("Gagal memuat hadis Bulughul Maram");
-  const json: BmResponse = await res.json();
-  return json.data;
+  return fetchHadisJson(
+    `${BASE_URL_V2}/bm/acak`,
+    "bm:random:last",
+    "Gagal memuat hadis Bulughul Maram"
+  );
 }
 
 // 9 Perawi
@@ -158,36 +143,23 @@ export interface PerawiInfo {
   total: number;
 }
 
-interface PerawiListResponse {
-  status: boolean;
-  data: PerawiInfo[];
-}
-
 export interface PerawiHadisItem {
   number: number;
   arab: string;
   id: string;
 }
 
-interface PerawiHadisResponse {
-  status: boolean;
-  info: { perawi: PerawiInfo };
-  data: PerawiHadisItem;
-}
-
 export async function getPerawiList(): Promise<PerawiInfo[]> {
-  const res = await fetch(`${BASE_URL_V2}/perawi/`);
-  if (!res.ok) throw new Error("Gagal memuat daftar perawi");
-  const json: PerawiListResponse = await res.json();
-  return json.data;
+  return fetchHadisJson(`${BASE_URL_V2}/perawi/`, "perawi:list", "Gagal memuat daftar perawi");
 }
 
 export async function getHadisByPerawi(
   slug: string,
   no: number
 ): Promise<PerawiHadisItem> {
-  const res = await fetch(`${BASE_URL_V2}/${slug}/${no}`);
-  if (!res.ok) throw new Error("Gagal memuat hadis perawi");
-  const json: PerawiHadisResponse = await res.json();
-  return json.data;
+  return fetchHadisJson(
+    `${BASE_URL_V2}/${slug}/${no}`,
+    `perawi:${slug}:${no}`,
+    "Gagal memuat hadis perawi"
+  );
 }

@@ -13,10 +13,12 @@ import {
 } from "./_generated/server";
 import { internal } from "./_generated/api";
 import { v } from "convex/values";
+import { getAuthUser, requireSelf, requireUser } from "./authz";
 
 export const generateUploadUrl = mutation({
   args: {},
   handler: async (ctx) => {
+    await requireUser(ctx);
     return await ctx.storage.generateUploadUrl();
   },
 });
@@ -32,13 +34,14 @@ export const finalize = mutation({
     durationSec: v.float64(),
   },
   handler: async (ctx, args) => {
+    const user = await requireSelf(ctx, args.byUserId);
     const pertemuan = await ctx.db.get(args.pertemuanId);
     if (!pertemuan) throw new Error("Pertemuan tidak ditemukan");
     const recordingId = await ctx.db.insert("meeting_recordings", {
       pertemuanId: args.pertemuanId,
       kelasId: pertemuan.kelasId,
       byUserId: args.byUserId,
-      byName: args.byName,
+      byName: user._id === args.byUserId ? user.name : args.byName,
       storageId: args.storageId,
       status: "processing",
       mimeType: args.mimeType,
@@ -56,6 +59,7 @@ export const finalize = mutation({
 export const listByPertemuan = query({
   args: { pertemuanId: v.id("kelas_pertemuan") },
   handler: async (ctx, args) => {
+    if (!(await getAuthUser(ctx))) return [];
     const rows = await ctx.db
       .query("meeting_recordings")
       .withIndex("by_pertemuanId", (q) => q.eq("pertemuanId", args.pertemuanId))

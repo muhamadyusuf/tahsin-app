@@ -1,6 +1,7 @@
 import { mutation, query, MutationCtx } from "./_generated/server";
 import { v } from "convex/values";
-import { Id } from "./_generated/dataModel";
+import { Doc, Id } from "./_generated/dataModel";
+import { canManageKelas, getAuthUser, requireSelf, requireUser } from "./authz";
 
 // Peserta dianggap terputus jika heartbeat berhenti selama ini.
 const STALE_PARTICIPANT_MS = 60_000;
@@ -27,6 +28,22 @@ async function deleteSignalsOfSession(
   for (const row of all) {
     if (row.fromSession === sessionId) await ctx.db.delete(row._id);
   }
+}
+
+// Klaim host dari client hanya diakui bila pemanggil memang berhak mengelola
+// kelas dari pertemuan ini (ustadz pengampu, pemilik LKM, atau administrator).
+async function verifyHost(
+  ctx: MutationCtx,
+  user: Doc<"users">,
+  pertemuanId: Id<"kelas_pertemuan">,
+  claimed: boolean | undefined
+): Promise<boolean> {
+  if (!claimed) return false;
+  const pertemuan = await ctx.db.get(pertemuanId);
+  if (!pertemuan) return false;
+  const kelas = await ctx.db.get(pertemuan.kelasId);
+  if (!kelas) return false;
+  return await canManageKelas(ctx, user, kelas);
 }
 
 // Bersihkan peserta yang heartbeat-nya mati (app crash / tab ditutup) beserta
@@ -61,6 +78,8 @@ export const join = mutation({
     isHost: v.optional(v.boolean()),
   },
   handler: async (ctx, args) => {
+    const user = await requireSelf(ctx, args.userId);
+    const isHost = await verifyHost(ctx, user, args.pertemuanId, args.isHost);
     await purgeStale(ctx, args.pertemuanId);
     const existing = await ctx.db
       .query("meeting_participants")
@@ -71,7 +90,7 @@ export const join = mutation({
     if (existing) {
       await ctx.db.patch(existing._id, {
         lastSeen: Date.now(),
-        isHost: args.isHost ?? false,
+        isHost,
       });
     } else {
       await ctx.db.insert("meeting_participants", {
@@ -81,7 +100,7 @@ export const join = mutation({
         name: args.name,
         micOn: true,
         camOn: true,
-        isHost: args.isHost ?? false,
+        isHost,
         screenOn: false,
         recOn: false,
         lastSeen: Date.now(),
@@ -104,6 +123,8 @@ export const heartbeat = mutation({
     recOn: v.optional(v.boolean()),
   },
   handler: async (ctx, args) => {
+    const user = await requireSelf(ctx, args.userId);
+    const isHost = await verifyHost(ctx, user, args.pertemuanId, args.isHost);
     const existing = await ctx.db
       .query("meeting_participants")
       .withIndex("by_pertemuanId_sessionId", (q) =>
@@ -114,7 +135,7 @@ export const heartbeat = mutation({
       lastSeen: Date.now(),
       micOn: args.micOn,
       camOn: args.camOn,
-      isHost: args.isHost ?? false,
+      isHost,
       screenOn: args.screenOn ?? false,
       recOn: args.recOn ?? false,
     };
@@ -141,6 +162,7 @@ export const leave = mutation({
     sessionId: v.string(),
   },
   handler: async (ctx, args) => {
+    await requireUser(ctx);
     const existing = await ctx.db
       .query("meeting_participants")
       .withIndex("by_pertemuanId_sessionId", (q) =>
@@ -156,6 +178,7 @@ export const leave = mutation({
 export const participants = query({
   args: { pertemuanId: v.id("kelas_pertemuan") },
   handler: async (ctx, args) => {
+    if (!(await getAuthUser(ctx))) return [];
     return await ctx.db
       .query("meeting_participants")
       .withIndex("by_pertemuanId", (q) => q.eq("pertemuanId", args.pertemuanId))
@@ -177,6 +200,7 @@ export const signal = mutation({
     payload: v.string(),
   },
   handler: async (ctx, args) => {
+    await requireUser(ctx);
     // Perintah moderasi (mute / minta unmute) hanya sah dari host yang
     // terdaftar di room — cegah peserta biasa mem-mute peserta lain.
     if (args.kind === "ctrl") {
@@ -203,12 +227,14 @@ export const sendMessage = mutation({
     text: v.string(),
   },
   handler: async (ctx, args) => {
+    const user = await requireSelf(ctx, args.userId);
     const text = args.text.trim().slice(0, 2000);
     if (!text) return null;
     await ctx.db.insert("meeting_messages", {
       pertemuanId: args.pertemuanId,
       userId: args.userId,
-      name: args.name,
+      // Nama diambil dari profil pemanggil, bukan argumen — cegah penyamaran.
+      name: user._id === args.userId ? user.name : args.name,
       text,
     });
     return null;
@@ -218,6 +244,7 @@ export const sendMessage = mutation({
 export const listMessages = query({
   args: { pertemuanId: v.id("kelas_pertemuan") },
   handler: async (ctx, args) => {
+    if (!(await getAuthUser(ctx))) return [];
     const rows = await ctx.db
       .query("meeting_messages")
       .withIndex("by_pertemuanId", (q) => q.eq("pertemuanId", args.pertemuanId))
@@ -233,6 +260,7 @@ export const signalsFor = query({
     sessionId: v.string(),
   },
   handler: async (ctx, args) => {
+    if (!(await getAuthUser(ctx))) return [];
     return await ctx.db
       .query("meeting_signals")
       .withIndex("by_pertemuanId_toSession", (q) =>
@@ -245,6 +273,7 @@ export const signalsFor = query({
 export const consumeSignals = mutation({
   args: { ids: v.array(v.id("meeting_signals")) },
   handler: async (ctx, args) => {
+    await requireUser(ctx);
     for (const id of args.ids) {
       const row = await ctx.db.get(id);
       if (row) await ctx.db.delete(id);

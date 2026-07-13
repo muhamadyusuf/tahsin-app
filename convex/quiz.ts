@@ -1,11 +1,18 @@
 import { query, mutation } from "./_generated/server";
 import { v } from "convex/values";
 import { Id } from "./_generated/dataModel";
+import {
+  assertSelfOrStaff,
+  getAuthUser,
+  requireContentManager,
+  requireSelf,
+} from "./authz";
 
 // List quizzes for a materi
 export const listByMateri = query({
   args: { materiId: v.id("materi") },
   handler: async (ctx, args) => {
+    if (!(await getAuthUser(ctx))) return [];
     return await ctx.db
       .query("quiz")
       .withIndex("by_materiId", (q) => q.eq("materiId", args.materiId))
@@ -17,6 +24,7 @@ export const listByMateri = query({
 export const getById = query({
   args: { quizId: v.id("quiz") },
   handler: async (ctx, args) => {
+    if (!(await getAuthUser(ctx))) return null;
     return await ctx.db.get(args.quizId);
   },
 });
@@ -25,6 +33,7 @@ export const getById = query({
 export const getOptions = query({
   args: { quizId: v.id("quiz") },
   handler: async (ctx, args) => {
+    if (!(await getAuthUser(ctx))) return [];
     return await ctx.db
       .query("quiz_options")
       .withIndex("by_quizId", (q) => q.eq("quizId", args.quizId))
@@ -36,6 +45,7 @@ export const getOptions = query({
 export const getQuizCountsByMateriIds = query({
   args: { materiIds: v.array(v.id("materi")) },
   handler: async (ctx, args) => {
+    if (!(await getAuthUser(ctx))) return [];
     if (args.materiIds.length === 0) {
       return [] as { materiId: string; count: number }[];
     }
@@ -60,6 +70,7 @@ export const getQuizCountsByMateriIds = query({
 export const getUsageByQuizIds = query({
   args: { quizIds: v.array(v.id("quiz")) },
   handler: async (ctx, args) => {
+    if (!(await getAuthUser(ctx))) return [];
     if (args.quizIds.length === 0) {
       return [] as {
         quizId: string;
@@ -115,6 +126,7 @@ export const createQuiz = mutation({
     type: v.union(v.literal("pilihan_ganda"), v.literal("essay")),
   },
   handler: async (ctx, args) => {
+    await requireContentManager(ctx);
     return await ctx.db.insert("quiz", args);
   },
 });
@@ -129,6 +141,7 @@ export const createOption = mutation({
     poin: v.float64(),
   },
   handler: async (ctx, args) => {
+    await requireContentManager(ctx);
     return await ctx.db.insert("quiz_options", args);
   },
 });
@@ -156,6 +169,7 @@ export const bulkCreateFromJson = mutation({
     ),
   },
   handler: async (ctx, args) => {
+    await requireContentManager(ctx);
     let createdQuizCount = 0;
     let createdOptionCount = 0;
 
@@ -199,6 +213,9 @@ export const getRandomFinalQuizForBab = query({
     limit: v.optional(v.float64()),
   },
   handler: async (ctx, args) => {
+    const caller = await getAuthUser(ctx);
+    if (!caller) return [];
+    await assertSelfOrStaff(ctx, caller, args.userId);
     const allMateri = await ctx.db.query("materi").collect();
 
     const descendants: Id<"materi">[] = [];
@@ -251,6 +268,7 @@ export const updateQuiz = mutation({
     type: v.union(v.literal("pilihan_ganda"), v.literal("essay")),
   },
   handler: async (ctx, args) => {
+    await requireContentManager(ctx);
     const { quizId, ...updates } = args;
     await ctx.db.patch(quizId, updates);
     return quizId;
@@ -271,6 +289,7 @@ export const replaceOptions = mutation({
     ),
   },
   handler: async (ctx, args) => {
+    await requireContentManager(ctx);
     const existingOptions = await ctx.db
       .query("quiz_options")
       .withIndex("by_quizId", (q) => q.eq("quizId", args.quizId))
@@ -298,6 +317,7 @@ export const replaceOptions = mutation({
 export const removeQuiz = mutation({
   args: { quizId: v.id("quiz"), force: v.optional(v.boolean()) },
   handler: async (ctx, args) => {
+    await requireContentManager(ctx);
     const allAnswers = await ctx.db.query("user_quiz_answers").collect();
     const answerCount = allAnswers.filter((answer) => answer.quizId === args.quizId).length;
 
@@ -344,6 +364,7 @@ export const submitAnswer = mutation({
     isCorrect: v.optional(v.boolean()),
   },
   handler: async (ctx, args) => {
+    await requireSelf(ctx, args.userId);
     return await ctx.db.insert("user_quiz_answers", {
       userId: args.userId,
       quizId: args.quizId,
@@ -364,6 +385,7 @@ export const saveProgress = mutation({
     score: v.optional(v.float64()),
   },
   handler: async (ctx, args) => {
+    await requireSelf(ctx, args.userId);
     const existing = await ctx.db
       .query("user_progress")
       .withIndex("by_userId_materiId", (q) =>
@@ -394,6 +416,9 @@ export const saveProgress = mutation({
 export const getUserProgress = query({
   args: { userId: v.id("users") },
   handler: async (ctx, args) => {
+    const caller = await getAuthUser(ctx);
+    if (!caller) return [];
+    await assertSelfOrStaff(ctx, caller, args.userId);
     return await ctx.db
       .query("user_progress")
       .withIndex("by_userId", (q) => q.eq("userId", args.userId))
@@ -408,6 +433,9 @@ export const getUserAnswers = query({
     quizId: v.id("quiz"),
   },
   handler: async (ctx, args) => {
+    const caller = await getAuthUser(ctx);
+    if (!caller) return [];
+    await assertSelfOrStaff(ctx, caller, args.userId);
     return await ctx.db
       .query("user_quiz_answers")
       .withIndex("by_userId_quizId", (q) =>

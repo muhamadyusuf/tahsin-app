@@ -1,7 +1,8 @@
 import { query, mutation } from "./_generated/server";
 import { v } from "convex/values";
+import { getAuthUser, requireLkmOwner } from "./authz";
 
-// Create ustadz profile for a user
+// Create ustadz profile for a user — pemilik LKM tujuan atau administrator
 export const create = mutation({
   args: {
     userId: v.id("users"),
@@ -9,6 +10,7 @@ export const create = mutation({
     spesialisasi: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
+    await requireLkmOwner(ctx, args.adminPengajianId);
     const existing = await ctx.db
       .query("ustadz")
       .withIndex("by_userId", (q) => q.eq("userId", args.userId))
@@ -30,6 +32,7 @@ export const create = mutation({
 export const getByUserId = query({
   args: { userId: v.id("users") },
   handler: async (ctx, args) => {
+    if (!(await getAuthUser(ctx))) return null;
     return await ctx.db
       .query("ustadz")
       .withIndex("by_userId", (q) => q.eq("userId", args.userId))
@@ -41,6 +44,7 @@ export const getByUserId = query({
 export const listByAdminPengajian = query({
   args: { adminPengajianId: v.id("admin_pengajian") },
   handler: async (ctx, args) => {
+    if (!(await getAuthUser(ctx))) return [];
     return await ctx.db
       .query("ustadz")
       .withIndex("by_adminPengajianId", (q) =>

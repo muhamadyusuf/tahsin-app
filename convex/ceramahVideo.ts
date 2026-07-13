@@ -1,10 +1,12 @@
 import { mutation, query } from "./_generated/server";
 import { v } from "convex/values";
+import { getAuthUser, isAdministrator, requireAdministrator } from "./authz";
 
-// Public: list all active ceramah videos (live first, then by createdAt desc)
+// List all active ceramah videos (live first, then by createdAt desc)
 export const listActiveVideos = query({
   args: {},
   handler: async (ctx) => {
+    if (!(await getAuthUser(ctx))) return [];
     const videos = await ctx.db
       .query("ceramah_video")
       .withIndex("by_isActive", (q) => q.eq("isActive", true))
@@ -24,6 +26,8 @@ export const listActiveVideos = query({
 export const listAllVideos = query({
   args: {},
   handler: async (ctx) => {
+    const caller = await getAuthUser(ctx);
+    if (!caller || !isAdministrator(caller)) return [];
     const videos = await ctx.db.query("ceramah_video").collect();
     return videos.sort((a, b) => b.createdAt.localeCompare(a.createdAt));
   },
@@ -39,12 +43,13 @@ export const addVideo = mutation({
     postedBy: v.id("users"),
   },
   handler: async (ctx, args) => {
+    const admin = await requireAdministrator(ctx);
     return await ctx.db.insert("ceramah_video", {
       judul: args.judul,
       deskripsi: args.deskripsi,
       youtubeUrl: args.youtubeUrl,
       isLive: args.isLive,
-      postedBy: args.postedBy,
+      postedBy: admin._id,
       isActive: true,
       createdAt: new Date().toISOString(),
     });
@@ -62,6 +67,7 @@ export const updateVideo = mutation({
     isActive: v.optional(v.boolean()),
   },
   handler: async (ctx, args) => {
+    await requireAdministrator(ctx);
     const { id, ...updates } = args;
     const patch: Partial<{
       judul: string;
@@ -85,6 +91,7 @@ export const updateVideo = mutation({
 export const deleteVideo = mutation({
   args: { id: v.id("ceramah_video") },
   handler: async (ctx, args) => {
+    await requireAdministrator(ctx);
     await ctx.db.delete(args.id);
   },
 });

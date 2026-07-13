@@ -1,7 +1,14 @@
 import { query, mutation } from "./_generated/server";
 import { v } from "convex/values";
-
-const ADMIN_EMAILS = ["muhamadyusufaa@gmail.com", "badrudin.on@gmail.com"];
+import {
+  ADMIN_EMAILS,
+  getAuthUser,
+  isAdministrator,
+  isStaff,
+  requireAdministrator,
+  requireSelf,
+  requireUser,
+} from "./authz";
 
 const ALL_ROLES = [
   "administrator",
@@ -12,13 +19,17 @@ const ALL_ROLES = [
 
 type Role = (typeof ALL_ROLES)[number];
 
-// Get current user by Clerk ID
+// Get current user by Clerk ID — hanya mengembalikan profil pemanggil sendiri.
+// Mengembalikan null (bukan error) saat token belum terpasang agar alur
+// login/splash tidak crash.
 export const getByClerkId = query({
   args: { clerkId: v.string() },
   handler: async (ctx, args) => {
+    const identity = await ctx.auth.getUserIdentity();
+    if (!identity || identity.subject !== args.clerkId) return null;
     return await ctx.db
       .query("users")
-      .withIndex("by_clerkId", (q) => q.eq("clerkId", args.clerkId))
+      .withIndex("by_clerkId", (q) => q.eq("clerkId", identity.subject))
       .first();
   },
 });
@@ -27,6 +38,10 @@ export const getByClerkId = query({
 export const getAvailableRoles = query({
   args: { userId: v.id("users") },
   handler: async (ctx, args): Promise<Role[]> => {
+    const caller = await getAuthUser(ctx);
+    if (!caller) return [];
+    if (caller._id !== args.userId && !isAdministrator(caller)) return [];
+
     const user = await ctx.db.get(args.userId);
     if (!user) {
       return [];
@@ -68,7 +83,8 @@ export const getAvailableRoles = query({
   },
 });
 
-// Create or update user from Clerk webhook / first login
+// Create or update user from first login — identitas diambil dari JWT Clerk,
+// argumen clerkId harus cocok dengan identitas pemanggil.
 export const upsertUser = mutation({
   args: {
     clerkId: v.string(),
@@ -78,6 +94,14 @@ export const upsertUser = mutation({
     avatarUrl: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
+    const identity = await ctx.auth.getUserIdentity();
+    if (!identity) {
+      throw new Error("Harus login untuk mendaftarkan akun");
+    }
+    if (identity.subject !== args.clerkId) {
+      throw new Error("clerkId tidak cocok dengan akun yang sedang login");
+    }
+
     const existing = await ctx.db
       .query("users")
       .withIndex("by_clerkId", (q) => q.eq("clerkId", args.clerkId))
@@ -110,7 +134,7 @@ export const upsertUser = mutation({
   },
 });
 
-// Update user profile
+// Update user profile — hanya milik sendiri (administrator boleh untuk siapa pun)
 export const updateProfile = mutation({
   args: {
     userId: v.id("users"),
@@ -120,6 +144,7 @@ export const updateProfile = mutation({
     avatarUrl: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
+    await requireSelf(ctx, args.userId);
     const { userId, ...updates } = args;
     const filtered = Object.fromEntries(
       Object.entries(updates).filter(([_, val]) => val !== undefined)
@@ -140,11 +165,13 @@ export const updateRole = mutation({
     ),
   },
   handler: async (ctx, args) => {
+    await requireAdministrator(ctx);
     await ctx.db.patch(args.userId, { role: args.role });
   },
 });
 
-// List all users (admin)
+// List all users — hanya staf (administrator/LKM/ustadz), dipakai layar
+// admin, form kelas, dan roster penilaian.
 export const listAll = query({
   args: {
     role: v.optional(
@@ -157,6 +184,9 @@ export const listAll = query({
     ),
   },
   handler: async (ctx, args) => {
+    const caller = await getAuthUser(ctx);
+    if (!caller || !(await isStaff(ctx, caller))) return [];
+
     if (args.role) {
       return await ctx.db
         .query("users")
@@ -167,18 +197,21 @@ export const listAll = query({
   },
 });
 
-// Get user by ID
+// Get user by ID — perlu login (dipakai menampilkan nama/avatar pengguna lain)
 export const getById = query({
   args: { userId: v.id("users") },
   handler: async (ctx, args) => {
+    const caller = await getAuthUser(ctx);
+    if (!caller) return null;
     return await ctx.db.get(args.userId);
   },
 });
 
-// Promote a user to administrator by email
+// Promote a user to administrator by email (admin only)
 export const promoteByEmail = mutation({
   args: { email: v.string(), role: v.string() },
   handler: async (ctx, args) => {
+    await requireAdministrator(ctx);
     const user = await ctx.db
       .query("users")
       .withIndex("by_email", (q) => q.eq("email", args.email))
@@ -201,6 +234,7 @@ export const setActiveRole = mutation({
     ),
   },
   handler: async (ctx, args) => {
+    await requireSelf(ctx, args.userId);
     const user = await ctx.db.get(args.userId);
     if (!user) {
       throw new Error("User not found");
@@ -232,7 +266,7 @@ export const setActiveRole = mutation({
     if (santri) {
       roles.add("santri");
     }
-    if (user.role === "administrator") {
+    if (user.role === "administrator" || isAdministrator(user)) {
       ALL_ROLES.forEach((role) => roles.add(role));
     }
 

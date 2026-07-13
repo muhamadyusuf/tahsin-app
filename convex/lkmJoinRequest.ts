@@ -1,5 +1,12 @@
 import { query, mutation } from "./_generated/server";
 import { v } from "convex/values";
+import {
+  assertSelfOrStaff,
+  getAuthUser,
+  isAdministrator,
+  requireLkmOwner,
+  requireSelf,
+} from "./authz";
 
 const EARTH_RADIUS_KM = 6371;
 
@@ -28,6 +35,7 @@ export const listNearby = query({
     radiusKm: v.optional(v.float64()),
   },
   handler: async (ctx, args) => {
+    if (!(await getAuthUser(ctx))) return [];
     const all = await ctx.db.query("admin_pengajian").collect();
     const withDistance = all
       .filter(
@@ -62,6 +70,7 @@ export const create = mutation({
     requestedKelasId: v.optional(v.id("kelas")),
   },
   handler: async (ctx, args) => {
+    await requireSelf(ctx, args.userId);
     let santri = await ctx.db
       .query("santri")
       .withIndex("by_userId", (q) => q.eq("userId", args.userId))
@@ -101,6 +110,9 @@ export const create = mutation({
 export const getBySantri = query({
   args: { userId: v.id("users") },
   handler: async (ctx, args) => {
+    const caller = await getAuthUser(ctx);
+    if (!caller) return [];
+    await assertSelfOrStaff(ctx, caller, args.userId);
     const santri = await ctx.db
       .query("santri")
       .withIndex("by_userId", (q) => q.eq("userId", args.userId))
@@ -122,6 +134,14 @@ export const listByAdminPengajian = query({
     ),
   },
   handler: async (ctx, args) => {
+    const caller = await getAuthUser(ctx);
+    if (!caller) return [];
+    if (!isAdministrator(caller)) {
+      const lkm = await ctx.db.get(args.adminPengajianId);
+      if (!lkm || lkm.userId !== caller._id) {
+        throw new Error("Bukan pengelola lembaga pengajian ini");
+      }
+    }
     return await ctx.db
       .query("lkm_join_request")
       .withIndex("by_adminPengajianId_status", (q) =>
@@ -146,6 +166,7 @@ export const approve = mutation({
   handler: async (ctx, args) => {
     const request = await ctx.db.get(args.id);
     if (!request) throw new Error("Join request not found");
+    const reviewer = await requireLkmOwner(ctx, request.adminPengajianId);
     if (request.status !== "pending") {
       throw new Error("Join request already reviewed");
     }
@@ -169,7 +190,7 @@ export const approve = mutation({
     await ctx.db.patch(args.id, {
       status: "approved",
       assignedKelasId: args.assignedKelasId,
-      reviewedBy: args.reviewedBy,
+      reviewedBy: reviewer._id,
       reviewNote: args.reviewNote,
       reviewedAt: new Date().toISOString(),
     });
@@ -185,13 +206,14 @@ export const reject = mutation({
   handler: async (ctx, args) => {
     const request = await ctx.db.get(args.id);
     if (!request) throw new Error("Join request not found");
+    const reviewer = await requireLkmOwner(ctx, request.adminPengajianId);
     if (request.status !== "pending") {
       throw new Error("Join request already reviewed");
     }
 
     await ctx.db.patch(args.id, {
       status: "rejected",
-      reviewedBy: args.reviewedBy,
+      reviewedBy: reviewer._id,
       reviewNote: args.reviewNote,
       reviewedAt: new Date().toISOString(),
     });

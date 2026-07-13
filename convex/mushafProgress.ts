@@ -1,6 +1,13 @@
-import { query, mutation, internalMutation, MutationCtx } from "./_generated/server";
+import {
+  query,
+  mutation,
+  internalMutation,
+  internalQuery,
+  MutationCtx,
+} from "./_generated/server";
 import { v } from "convex/values";
 import { Doc, Id } from "./_generated/dataModel";
+import { assertSelfOrStaff, getAuthUser, requireSelf } from "./authz";
 
 const sourceValidator = v.union(v.literal("app"), v.literal("iot"));
 
@@ -119,11 +126,13 @@ async function recordPageReadImpl(
   return { duplicate: false };
 }
 
-/** Immediate single-page commit — used by the IoT HTTP endpoints, where a
- * physical device reports a page turn in real time (no "session" concept). */
+/** Immediate single-page commit from the app (per-user, authenticated). */
 export const recordPageRead = mutation({
   args: recordPageReadArgs,
-  handler: async (ctx, args) => recordPageReadImpl(ctx, args),
+  handler: async (ctx, args) => {
+    await requireSelf(ctx, args.userId);
+    return recordPageReadImpl(ctx, args);
+  },
 });
 
 /** Used by the IoT HTTP endpoints in convex/http.ts (already-authenticated device calls). */
@@ -142,6 +151,7 @@ export const recordPageReadInternal = internalMutation({
 export const updateReadingPosition = mutation({
   args: positionArgs,
   handler: async (ctx, args) => {
+    await requireSelf(ctx, args.userId);
     await upsertReadingPosition(ctx, { ...args, source: "app" });
   },
 });
@@ -167,6 +177,7 @@ export const finishReadingSession = mutation({
     ),
   },
   handler: async (ctx, args) => {
+    await requireSelf(ctx, args.userId);
     let saved = 0;
     for (const p of args.pages) {
       const result = await recordPageReadImpl(ctx, {
@@ -185,6 +196,20 @@ export const finishReadingSession = mutation({
 });
 
 export const getReadingPosition = query({
+  args: { userId: v.id("users") },
+  handler: async (ctx, args) => {
+    const caller = await getAuthUser(ctx);
+    if (!caller) return null;
+    await assertSelfOrStaff(ctx, caller, args.userId);
+    return await ctx.db
+      .query("reading_position")
+      .withIndex("by_userId", (q) => q.eq("userId", args.userId))
+      .unique();
+  },
+});
+
+/** Versi internal untuk endpoint HTTP IoT (sudah terautentikasi via apiKey). */
+export const getReadingPositionInternal = internalQuery({
   args: { userId: v.id("users") },
   handler: async (ctx, args) => {
     return await ctx.db

@@ -1,6 +1,7 @@
 import * as Location from "expo-location";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { Platform } from "react-native";
+import { cachedFetch } from "./offline-cache";
 
 const BASE_URL = "https://equran.id/api/v2/shalat";
 const NOMINATIM_URL = "https://nominatim.openstreetmap.org/reverse";
@@ -81,42 +82,52 @@ const PRAYER_KEYS: (keyof SholatJadwal)[] = [
 // ===== API Calls =====
 
 export async function getProvinsi(): Promise<string[]> {
-  const res = await fetch(`${BASE_URL}/provinsi`);
-  if (!res.ok) throw new Error("Gagal mengambil data provinsi");
-  const json = await res.json();
-  // API might return { data: [...] } or { status, data: [...] }
-  const raw = json.data ?? json;
-  if (Array.isArray(raw)) return raw;
-  return [];
+  return cachedFetch("sholat:provinsi", async () => {
+    const res = await fetch(`${BASE_URL}/provinsi`);
+    if (!res.ok) throw new Error("Gagal mengambil data provinsi");
+    const json = await res.json();
+    // API might return { data: [...] } or { status, data: [...] }
+    const raw = json.data ?? json;
+    return Array.isArray(raw) ? raw : [];
+  });
 }
 
 export async function getKabKota(provinsi: string): Promise<string[]> {
-  const res = await fetch(`${BASE_URL}/kabkota`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ provinsi }),
+  return cachedFetch(`sholat:kabkota:${provinsi}`, async () => {
+    const res = await fetch(`${BASE_URL}/kabkota`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ provinsi }),
+    });
+    if (!res.ok) throw new Error("Gagal mengambil data kabupaten/kota");
+    const json = await res.json();
+    const raw = json.data ?? json;
+    return Array.isArray(raw) ? raw : [];
   });
-  if (!res.ok) throw new Error("Gagal mengambil data kabupaten/kota");
-  const json = await res.json();
-  const raw = json.data ?? json;
-  if (Array.isArray(raw)) return raw;
-  return [];
 }
 
+// Jadwal sholat sebulan penuh untuk satu lokasi tidak pernah berubah setelah
+// diterbitkan — aman di-cache permanen per (provinsi, kabkota, bulan, tahun)
+// supaya tetap tersedia offline sepanjang bulan itu.
 export async function getSholatTimes(
   provinsi: string,
   kabkota: string,
   bulan: number,
   tahun: number
 ): Promise<SholatData> {
-  const res = await fetch(`${BASE_URL}`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ provinsi, kabkota, bulan, tahun }),
-  });
-  if (!res.ok) throw new Error("Gagal mengambil jadwal sholat");
-  const json = await res.json();
-  return json.data ?? json;
+  return cachedFetch(
+    `sholat:jadwal:${provinsi}:${kabkota}:${tahun}-${bulan}`,
+    async () => {
+      const res = await fetch(`${BASE_URL}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ provinsi, kabkota, bulan, tahun }),
+      });
+      if (!res.ok) throw new Error("Gagal mengambil jadwal sholat");
+      const json = await res.json();
+      return json.data ?? json;
+    }
+  );
 }
 
 // ===== Location Detection =====

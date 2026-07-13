@@ -1,5 +1,6 @@
 import { mutation, query } from "./_generated/server";
 import { v } from "convex/values";
+import { requireAdministrator } from "./authz";
 
 const APP_CONFIG_KEY = "global";
 
@@ -23,6 +24,7 @@ export const upsertTilawahHeaderImage = mutation({
     tilawahHeaderImageUrl: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
+    await requireAdministrator(ctx);
     const existing = await ctx.db
       .query("app_config")
       .withIndex("by_key", (q) => q.eq("key", APP_CONFIG_KEY))

@@ -1,5 +1,29 @@
-import { query, mutation } from "./_generated/server";
+import { query, mutation, MutationCtx } from "./_generated/server";
 import { v } from "convex/values";
+import { Doc, Id } from "./_generated/dataModel";
+import {
+  assertSelfOrStaff,
+  getAuthUser,
+  getLkmRow,
+  getUstadzRow,
+  isAdministrator,
+  isStaff,
+  requireUser,
+} from "./authz";
+
+// Pengisi nilai/presensi talaqi: administrator, LKM, atau ustadz yang
+// bersangkutan (ustadzId argumen harus dirinya sendiri).
+async function requireTalaqiWriter(
+  ctx: MutationCtx,
+  ustadzId: Id<"users">
+): Promise<Doc<"users">> {
+  const user = await requireUser(ctx);
+  if (isAdministrator(user)) return user;
+  if (await getLkmRow(ctx, user)) return user;
+  const ustadzRow = await getUstadzRow(ctx, user);
+  if (ustadzRow && ustadzId === user._id) return user;
+  throw new Error("Hanya ustadz yang bersangkutan yang boleh mengisi talaqi");
+}
 
 const nilaiValues = v.union(
   v.literal(6),
@@ -37,6 +61,7 @@ export const create = mutation({
     kelasPertemuanId: v.optional(v.id("kelas_pertemuan")),
   },
   handler: async (ctx, args) => {
+    await requireTalaqiWriter(ctx, args.ustadzId);
     return await ctx.db.insert("talaqi", args);
   },
 });
@@ -67,6 +92,7 @@ export const upsertForPertemuan = mutation({
     catatan: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
+    await requireTalaqiWriter(ctx, args.ustadzId);
     const existing = await ctx.db
       .query("talaqi")
       .withIndex("by_kelasPertemuanId_userId", (q) =>
@@ -86,6 +112,9 @@ export const upsertForPertemuan = mutation({
 export const getBySantri = query({
   args: { userId: v.id("users") },
   handler: async (ctx, args) => {
+    const caller = await getAuthUser(ctx);
+    if (!caller) return [];
+    await assertSelfOrStaff(ctx, caller, args.userId);
     return await ctx.db
       .query("talaqi")
       .withIndex("by_userId", (q) => q.eq("userId", args.userId))
@@ -97,6 +126,9 @@ export const getBySantri = query({
 export const getByUstadz = query({
   args: { ustadzId: v.id("users") },
   handler: async (ctx, args) => {
+    const caller = await getAuthUser(ctx);
+    if (!caller) return [];
+    await assertSelfOrStaff(ctx, caller, args.ustadzId);
     return await ctx.db
       .query("talaqi")
       .withIndex("by_ustadzId", (q) => q.eq("ustadzId", args.ustadzId))
@@ -104,10 +136,12 @@ export const getByUstadz = query({
   },
 });
 
-// Get talaqi sessions by admin pengajian
+// Get talaqi sessions by admin pengajian — staf saja
 export const getByAdminPengajian = query({
   args: { adminPengajianId: v.id("admin_pengajian") },
   handler: async (ctx, args) => {
+    const caller = await getAuthUser(ctx);
+    if (!caller || !(await isStaff(ctx, caller))) return [];
     return await ctx.db
       .query("talaqi")
       .withIndex("by_adminPengajianId", (q) =>
@@ -121,6 +155,7 @@ export const getByAdminPengajian = query({
 export const getByKelasPertemuan = query({
   args: { kelasPertemuanId: v.id("kelas_pertemuan") },
   handler: async (ctx, args) => {
+    if (!(await getAuthUser(ctx))) return [];
     return await ctx.db
       .query("talaqi")
       .withIndex("by_kelasPertemuanId_userId", (q) =>
@@ -134,6 +169,7 @@ export const getByKelasPertemuan = query({
 export const getByKelas = query({
   args: { kelasId: v.id("kelas") },
   handler: async (ctx, args) => {
+    if (!(await getAuthUser(ctx))) return [];
     return await ctx.db
       .query("talaqi")
       .withIndex("by_kelasId", (q) => q.eq("kelasId", args.kelasId))
@@ -150,6 +186,9 @@ export const update = mutation({
     catatan: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
+    const row = await ctx.db.get(args.id);
+    if (!row) throw new Error("Catatan talaqi tidak ditemukan");
+    await requireTalaqiWriter(ctx, row.ustadzId);
     const { id, ...updates } = args;
     const filtered = Object.fromEntries(
       Object.entries(updates).filter(([_, val]) => val !== undefined)

@@ -1,6 +1,15 @@
-import { query, mutation } from "./_generated/server";
+import { query, mutation, MutationCtx } from "./_generated/server";
 import { v } from "convex/values";
-import { Doc } from "./_generated/dataModel";
+import { Doc, Id } from "./_generated/dataModel";
+import {
+  assertSelfOrStaff,
+  getAuthUser,
+  getLkmRow,
+  isAdministrator,
+  isStaff,
+  requireAdministrator,
+  requireUser,
+} from "./authz";
 
 function isApproved(m: Doc<"materi">) {
   return m.status === undefined || m.status === "approved";
@@ -14,6 +23,7 @@ export const list = query({
     parentId: v.optional(v.id("materi")),
   },
   handler: async (ctx, args) => {
+    if (!(await getAuthUser(ctx))) return [];
     const all = await ctx.db
       .query("materi")
       .withIndex("by_type_seq", (q) => q.eq("type", args.type))
@@ -35,6 +45,7 @@ export const listAllByType = query({
     type: v.union(v.literal("tahsin"), v.literal("ulumul_quran")),
   },
   handler: async (ctx, args) => {
+    if (!(await getAuthUser(ctx))) return [];
     const all = await ctx.db
       .query("materi")
       .withIndex("by_type_seq", (q) => q.eq("type", args.type))
@@ -47,6 +58,7 @@ export const listAllByType = query({
 export const getChildren = query({
   args: { parentId: v.id("materi") },
   handler: async (ctx, args) => {
+    if (!(await getAuthUser(ctx))) return [];
     const children = await ctx.db
       .query("materi")
       .withIndex("by_parentId", (q) => q.eq("parentId", args.parentId))
@@ -59,6 +71,7 @@ export const getChildren = query({
 export const getById = query({
   args: { id: v.id("materi") },
   handler: async (ctx, args) => {
+    if (!(await getAuthUser(ctx))) return null;
     return await ctx.db.get(args.id);
   },
 });
@@ -69,6 +82,8 @@ export const listAllForType = query({
     type: v.union(v.literal("tahsin"), v.literal("ulumul_quran")),
   },
   handler: async (ctx, args) => {
+    const caller = await getAuthUser(ctx);
+    if (!caller || !(await isStaff(ctx, caller))) return [];
     return await ctx.db
       .query("materi")
       .withIndex("by_type_seq", (q) => q.eq("type", args.type))
@@ -80,6 +95,9 @@ export const listAllForType = query({
 export const listBySubmitter = query({
   args: { submittedBy: v.id("users") },
   handler: async (ctx, args) => {
+    const caller = await getAuthUser(ctx);
+    if (!caller) return [];
+    await assertSelfOrStaff(ctx, caller, args.submittedBy);
     return await ctx.db
       .query("materi")
       .withIndex("by_submittedBy", (q) => q.eq("submittedBy", args.submittedBy))
@@ -100,6 +118,7 @@ export const create = mutation({
     type: v.union(v.literal("tahsin"), v.literal("ulumul_quran")),
   },
   handler: async (ctx, args) => {
+    await requireAdministrator(ctx);
     return await ctx.db.insert("materi", { ...args, status: "approved" });
   },
 });
@@ -120,9 +139,32 @@ export const propose = mutation({
     submittedByAdminPengajianId: v.id("admin_pengajian"),
   },
   handler: async (ctx, args) => {
+    const user = await requireUser(ctx);
+    if (!isAdministrator(user)) {
+      const lkm = await getLkmRow(ctx, user);
+      if (
+        !lkm ||
+        args.submittedBy !== user._id ||
+        args.submittedByAdminPengajianId !== lkm._id
+      ) {
+        throw new Error("Hanya pengelola lembaga yang boleh mengusulkan materi atas nama lembaganya");
+      }
+    }
     return await ctx.db.insert("materi", { ...args, status: "pending" });
   },
 });
+
+// Boleh menyunting materi: administrator atau pengusul materi itu sendiri.
+async function requireMateriEditor(ctx: MutationCtx, materiId: Id<"materi">) {
+  const user = await requireUser(ctx);
+  if (isAdministrator(user)) return user;
+  const materi = await ctx.db.get(materiId);
+  if (!materi) throw new Error("Materi tidak ditemukan");
+  if (materi.submittedBy !== user._id) {
+    throw new Error("Tidak punya akses mengubah materi ini");
+  }
+  return user;
+}
 
 // Update materi
 export const update = mutation({
@@ -136,6 +178,7 @@ export const update = mutation({
     isShow: v.optional(v.boolean()),
   },
   handler: async (ctx, args) => {
+    await requireMateriEditor(ctx, args.id);
     const { id, ...updates } = args;
     const filtered = Object.fromEntries(
       Object.entries(updates).filter(([_, val]) => val !== undefined)
@@ -156,6 +199,7 @@ export const resubmit = mutation({
     isShow: v.optional(v.boolean()),
   },
   handler: async (ctx, args) => {
+    await requireMateriEditor(ctx, args.id);
     const { id, ...updates } = args;
     const filtered = Object.fromEntries(
       Object.entries(updates).filter(([_, val]) => val !== undefined)
@@ -177,10 +221,11 @@ export const approve = mutation({
     reviewedBy: v.id("users"),
   },
   handler: async (ctx, args) => {
+    const admin = await requireAdministrator(ctx);
     await ctx.db.patch(args.id, {
       status: "approved",
       isShow: true,
-      reviewedBy: args.reviewedBy,
+      reviewedBy: admin._id,
       reviewedAt: new Date().toISOString(),
     });
   },
@@ -194,19 +239,21 @@ export const reject = mutation({
     reviewNote: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
+    const admin = await requireAdministrator(ctx);
     await ctx.db.patch(args.id, {
       status: "rejected",
-      reviewedBy: args.reviewedBy,
+      reviewedBy: admin._id,
       reviewNote: args.reviewNote,
       reviewedAt: new Date().toISOString(),
     });
   },
 });
 
-// Delete materi
+// Delete materi — administrator atau pengusulnya
 export const remove = mutation({
   args: { id: v.id("materi") },
   handler: async (ctx, args) => {
+    await requireMateriEditor(ctx, args.id);
     await ctx.db.delete(args.id);
   },
 });

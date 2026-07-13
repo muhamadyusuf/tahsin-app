@@ -1,5 +1,6 @@
 import { query, mutation } from "./_generated/server";
 import { v } from "convex/values";
+import { assertSelfOrStaff, getAuthUser, requireSelf } from "./authz";
 
 // ── TASBIH ───────────────────────────────────────────────────────────────────
 
@@ -19,6 +20,7 @@ export const recordTasbih = mutation({
     putaran: v.float64(),
   },
   handler: async (ctx, args) => {
+    await requireSelf(ctx, args.userId);
     if (args.jumlah <= 0 && args.putaran <= 0) return null;
 
     const existing = await ctx.db
@@ -58,6 +60,9 @@ export const recordTasbih = mutation({
 export const getTasbihHistory = query({
   args: { userId: v.id("users") },
   handler: async (ctx, args) => {
+    const caller = await getAuthUser(ctx);
+    if (!caller) return [];
+    await assertSelfOrStaff(ctx, caller, args.userId);
     return await ctx.db
       .query("tasbih_harian")
       .withIndex("by_userId", (q) => q.eq("userId", args.userId))
@@ -83,6 +88,7 @@ export const recordDzikirItem = mutation({
     itemJudul: v.string(),
   },
   handler: async (ctx, args) => {
+    await requireSelf(ctx, args.userId);
     const existing = await ctx.db
       .query("dzikir_selesai")
       .withIndex("by_userId_tanggal_kategori_item", (q) =>
@@ -111,6 +117,9 @@ export const recordDzikirItem = mutation({
 export const getDzikirHistory = query({
   args: { userId: v.id("users") },
   handler: async (ctx, args) => {
+    const caller = await getAuthUser(ctx);
+    if (!caller) return [];
+    await assertSelfOrStaff(ctx, caller, args.userId);
     return await ctx.db
       .query("dzikir_selesai")
       .withIndex("by_userId", (q) => q.eq("userId", args.userId))
@@ -124,6 +133,9 @@ export const getDzikirHistory = query({
 export const getDzikirSelesaiByDate = query({
   args: { userId: v.id("users"), tanggal: v.string() },
   handler: async (ctx, args) => {
+    const caller = await getAuthUser(ctx);
+    if (!caller) return [];
+    await assertSelfOrStaff(ctx, caller, args.userId);
     return await ctx.db
       .query("dzikir_selesai")
       .withIndex("by_userId_tanggal", (q) =>
@@ -140,6 +152,9 @@ export const getDzikirSelesaiByDate = query({
 export const getTasbihByMonth = query({
   args: { userId: v.id("users"), bulan: v.string() },
   handler: async (ctx, args) => {
+    const caller = await getAuthUser(ctx);
+    if (!caller) return [];
+    await assertSelfOrStaff(ctx, caller, args.userId);
     return await ctx.db
       .query("tasbih_harian")
       .withIndex("by_userId_tanggal", (q) =>
@@ -155,6 +170,9 @@ export const getTasbihByMonth = query({
 export const getDzikirByMonth = query({
   args: { userId: v.id("users"), bulan: v.string() },
   handler: async (ctx, args) => {
+    const caller = await getAuthUser(ctx);
+    if (!caller) return [];
+    await assertSelfOrStaff(ctx, caller, args.userId);
     return await ctx.db
       .query("dzikir_selesai")
       .withIndex("by_userId_tanggal", (q) =>
@@ -172,6 +190,9 @@ export const getDzikirByMonth = query({
 export const getTarget = query({
   args: { userId: v.id("users") },
   handler: async (ctx, args) => {
+    const caller = await getAuthUser(ctx);
+    if (!caller) return null;
+    await assertSelfOrStaff(ctx, caller, args.userId);
     return await ctx.db
       .query("dzikir_target")
       .withIndex("by_userId", (q) => q.eq("userId", args.userId))
@@ -186,6 +207,7 @@ export const setTarget = mutation({
     dzikirKategori: v.array(v.string()),
   },
   handler: async (ctx, args) => {
+    await requireSelf(ctx, args.userId);
     const existing = await ctx.db
       .query("dzikir_target")
       .withIndex("by_userId", (q) => q.eq("userId", args.userId))

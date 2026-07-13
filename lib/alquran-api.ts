@@ -4,6 +4,7 @@ import {
   QURAN_EDITION_TRANSLATION,
   QURAN_EDITION_AUDIO,
 } from "./constants";
+import { cachedFetch } from "./offline-cache";
 
 // Types
 export interface Surah {
@@ -54,17 +55,20 @@ interface ApiResponse<T> {
   data: T;
 }
 
-// API Helper
+// API Helper — Qur'an text/editions never change, so responses are cached by
+// endpoint and reused whenever the device is offline or the API is down.
 async function fetchApi<T>(endpoint: string): Promise<T> {
-  const response = await fetch(`${QURAN_API_BASE}${endpoint}`);
-  if (!response.ok) {
-    throw new Error(`Al-Quran API error: ${response.status}`);
-  }
-  const json: ApiResponse<T> = await response.json();
-  if (json.code !== 200) {
-    throw new Error(`Al-Quran API error: ${json.status}`);
-  }
-  return json.data;
+  return cachedFetch(`alquran:${endpoint}`, async () => {
+    const response = await fetch(`${QURAN_API_BASE}${endpoint}`);
+    if (!response.ok) {
+      throw new Error(`Al-Quran API error: ${response.status}`);
+    }
+    const json: ApiResponse<T> = await response.json();
+    if (json.code !== 200) {
+      throw new Error(`Al-Quran API error: ${json.status}`);
+    }
+    return json.data;
+  });
 }
 
 // === SURAH ===

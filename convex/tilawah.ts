@@ -1,5 +1,12 @@
 import { query, mutation } from "./_generated/server";
 import { v } from "convex/values";
+import {
+  assertSelfOrStaff,
+  getAuthUser,
+  isAdministrator,
+  requireSelf,
+  requireUser,
+} from "./authz";
 
 // Log tilawah harian — khatam is user-declared
 export const create = mutation({
@@ -13,6 +20,7 @@ export const create = mutation({
     isKhatam: v.optional(v.boolean()),
   },
   handler: async (ctx, args) => {
+    await requireSelf(ctx, args.userId);
     const id = await ctx.db.insert("tilawah_harian", {
       userId: args.userId,
       tanggal: args.tanggal,
@@ -44,6 +52,9 @@ export const create = mutation({
 export const getByUser = query({
   args: { userId: v.id("users") },
   handler: async (ctx, args) => {
+    const caller = await getAuthUser(ctx);
+    if (!caller) return [];
+    await assertSelfOrStaff(ctx, caller, args.userId);
     return await ctx.db
       .query("tilawah_harian")
       .withIndex("by_userId", (q) => q.eq("userId", args.userId))
@@ -58,6 +69,9 @@ export const getByDate = query({
     tanggal: v.string(),
   },
   handler: async (ctx, args) => {
+    const caller = await getAuthUser(ctx);
+    if (!caller) return [];
+    await assertSelfOrStaff(ctx, caller, args.userId);
     return await ctx.db
       .query("tilawah_harian")
       .withIndex("by_userId_tanggal", (q) =>
@@ -67,10 +81,16 @@ export const getByDate = query({
   },
 });
 
-// Delete tilawah entry
+// Delete tilawah entry — pemilik catatan atau administrator
 export const remove = mutation({
   args: { id: v.id("tilawah_harian") },
   handler: async (ctx, args) => {
+    const user = await requireUser(ctx);
+    const row = await ctx.db.get(args.id);
+    if (!row) return;
+    if (row.userId !== user._id && !isAdministrator(user)) {
+      throw new Error("Bukan pemilik catatan tilawah ini");
+    }
     await ctx.db.delete(args.id);
   },
 });
@@ -87,6 +107,12 @@ export const update = mutation({
     isKhatam: v.optional(v.boolean()),
   },
   handler: async (ctx, args) => {
+    const user = await requireUser(ctx);
+    const row = await ctx.db.get(args.id);
+    if (!row) throw new Error("Catatan tilawah tidak ditemukan");
+    if (row.userId !== user._id && !isAdministrator(user)) {
+      throw new Error("Bukan pemilik catatan tilawah ini");
+    }
     const { id, ...fields } = args;
     // Remove undefined fields
     const patch: Record<string, any> = {};
@@ -101,6 +127,9 @@ export const update = mutation({
 export const getKhatam = query({
   args: { userId: v.id("users") },
   handler: async (ctx, args) => {
+    const caller = await getAuthUser(ctx);
+    if (!caller) return [];
+    await assertSelfOrStaff(ctx, caller, args.userId);
     return await ctx.db
       .query("khatam")
       .withIndex("by_userId", (q) => q.eq("userId", args.userId))
@@ -112,6 +141,9 @@ export const getKhatam = query({
 export const getKhatamProgress = query({
   args: { userId: v.id("users") },
   handler: async (ctx, args) => {
+    const caller = await getAuthUser(ctx);
+    if (!caller) return { khatamCount: 0, khatamList: [] };
+    await assertSelfOrStaff(ctx, caller, args.userId);
     const khatamList = await ctx.db
       .query("khatam")
       .withIndex("by_userId", (q) => q.eq("userId", args.userId))

@@ -1,10 +1,14 @@
 import { query, mutation } from "./_generated/server";
 import { v } from "convex/values";
+import { assertSelfOrStaff, getAuthUser, requireSelf } from "./authz";
 
 // Get the logged-in user's personal best score
 export const getMyBest = query({
   args: { userId: v.id("users") },
   handler: async (ctx, args) => {
+    const caller = await getAuthUser(ctx);
+    if (!caller) return null;
+    await assertSelfOrStaff(ctx, caller, args.userId);
     return await ctx.db
       .query("sambung_ayat_scores")
       .withIndex("by_userId", (q) => q.eq("userId", args.userId))
@@ -16,6 +20,7 @@ export const getMyBest = query({
 export const getLeaderboard = query({
   args: { limit: v.optional(v.float64()) },
   handler: async (ctx, args) => {
+    if (!(await getAuthUser(ctx))) return [];
     const max = Math.max(1, Math.min(50, Math.floor(args.limit ?? 20)));
     const top = await ctx.db
       .query("sambung_ayat_scores")
@@ -56,6 +61,7 @@ export const submitScore = mutation({
     juzRange: v.string(),
   },
   handler: async (ctx, args) => {
+    await requireSelf(ctx, args.userId);
     const existing = await ctx.db
       .query("sambung_ayat_scores")
       .withIndex("by_userId", (q) => q.eq("userId", args.userId))
