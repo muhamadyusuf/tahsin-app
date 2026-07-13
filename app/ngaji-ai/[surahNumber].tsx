@@ -1,3 +1,8 @@
+import FontAwesome from "@expo/vector-icons/FontAwesome";
+import { useAction, useMutation, useQuery } from "convex/react";
+import { Audio } from "expo-av";
+import * as FileSystem from "expo-file-system/legacy";
+import { useLocalSearchParams, useRouter } from "expo-router";
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
@@ -9,17 +14,18 @@ import {
   Text,
   View,
 } from "react-native";
-import { useLocalSearchParams, useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import FontAwesome from "@expo/vector-icons/FontAwesome";
-import { Audio } from "expo-av";
-import * as FileSystem from "expo-file-system/legacy";
-import { useAction, useMutation, useQuery } from "convex/react";
 
 import { api } from "@/convex/_generated/api";
-import { Colors, QURAN_EDITION_ARABIC, QURAN_EDITION_AUDIO } from "@/lib/constants";
-import { useAuthContext } from "@/lib/auth-context";
+// Tambahkan QURAN_API_BASE pada import constants
 import { getSurahMultiEdition, SurahDetail } from "@/lib/alquran-api";
+import { useAuthContext } from "@/lib/auth-context";
+import {
+  Colors,
+  QURAN_API_BASE,
+  QURAN_EDITION_ARABIC,
+  QURAN_EDITION_AUDIO,
+} from "@/lib/constants";
 
 type WordHighlightStatus = "correct" | "partial" | "wrong" | "missing";
 
@@ -52,8 +58,6 @@ type ExtraWordItem = {
   note: string;
 };
 
-// Bentuk seragam untuk hasil analisis, baik yang baru dari AI maupun yang
-// sudah tersimpan di Convex.
 type DisplayResult = {
   score: number;
   pronunciationScore: number;
@@ -83,12 +87,8 @@ const STATUS_LABELS: Record<WordHighlightStatus, string> = {
   missing: "Terlewat",
 };
 
-// Harakat/tanda baca Arab yang menempel pada huruf sebelumnya. Set yang sama
-// dipakai backend saat normalisasi, sehingga jumlah klaster huruf tampilan
-// selalu sama dengan jumlah huruf hasil analisis.
 const ARABIC_MARKS = /[\u0640\u064B-\u065F\u0670\u06D6-\u06ED]/;
 
-// Pecah satu kata tampilan (dengan harakat) menjadi klaster per huruf dasar.
 function splitLetterClusters(word: string): string[] {
   const clusters: string[] = [];
   for (const ch of word) {
@@ -101,28 +101,56 @@ function splitLetterClusters(word: string): string[] {
   return clusters;
 }
 
-// Transliterasi latin sederhana per huruf hijaiyah (gaya Indonesia).
 const LETTER_LATIN: Record<string, string> = {
-  "ا": "a", "أ": "a", "إ": "i", "آ": "aa", "ٱ": "a", "ء": "'", "ؤ": "'u", "ئ": "'i",
-  "ب": "b", "ت": "t", "ث": "ts", "ج": "j", "ح": "h", "خ": "kh",
-  "د": "d", "ذ": "dz", "ر": "r", "ز": "z", "س": "s", "ش": "sy",
-  "ص": "sh", "ض": "dh", "ط": "th", "ظ": "zh", "ع": "'", "غ": "gh",
-  "ف": "f", "ق": "q", "ك": "k", "ل": "l", "م": "m", "ن": "n",
-  "و": "w", "ه": "h", "ة": "h", "ي": "y", "ى": "a",
+  ا: "a",
+  أ: "a",
+  إ: "i",
+  آ: "aa",
+  ٱ: "a",
+  ء: "'",
+  ؤ: "'u",
+  ئ: "'i",
+  ب: "b",
+  ت: "t",
+  ث: "ts",
+  ج: "j",
+  ح: "h",
+  خ: "kh",
+  د: "d",
+  ذ: "dz",
+  ر: "r",
+  ز: "z",
+  س: "s",
+  ش: "sy",
+  ص: "sh",
+  ض: "dh",
+  ط: "th",
+  ظ: "zh",
+  ع: "'",
+  غ: "gh",
+  ف: "f",
+  ق: "q",
+  ك: "k",
+  ل: "l",
+  م: "m",
+  ن: "n",
+  و: "w",
+  ه: "h",
+  ة: "h",
+  ي: "y",
+  ى: "a",
 };
 
-// Perkiraan pelafalan satu klaster huruf (huruf dasar + harakatnya),
-// misal "حِ" → "hi", "رَّ" → "rra".
 function clusterPronunciation(cluster: string): string {
   const base = cluster[0] ?? "";
   let latin = LETTER_LATIN[base] ?? base;
-  if (cluster.includes("ّ")) latin = latin + latin; // tasydid
-  if (cluster.includes("َ")) return latin + "a"; // fathah
-  if (cluster.includes("ِ")) return latin + "i"; // kasrah
-  if (cluster.includes("ُ")) return latin + "u"; // dhammah
-  if (cluster.includes("ً")) return latin + "an"; // fathatain
-  if (cluster.includes("ٍ")) return latin + "in"; // kasratain
-  if (cluster.includes("ٌ")) return latin + "un"; // dhammatain
+  if (cluster.includes("ّ")) latin = latin + latin;
+  if (cluster.includes("َ")) return latin + "a";
+  if (cluster.includes("ِ")) return latin + "i";
+  if (cluster.includes("ُ")) return latin + "u";
+  if (cluster.includes("ً")) return latin + "an";
+  if (cluster.includes("ٍ")) return latin + "in";
+  if (cluster.includes("ٌ")) return latin + "un";
   return latin;
 }
 
@@ -144,9 +172,15 @@ export default function NgajiAiPracticeScreen() {
   const [analyzing, setAnalyzing] = useState(false);
   const [analysis, setAnalysis] = useState<DisplayResult | null>(null);
 
-  const [playingSource, setPlayingSource] = useState<"qari" | "me" | null>(null);
+  const [playingSource, setPlayingSource] = useState<"qari" | "me" | null>(
+    null,
+  );
   const soundRef = useRef<Audio.Sound | null>(null);
+  const isPlayingRef = useRef(false); // Untuk melacak status pemutaran berantai
 
+  const [bismillahAudioUrl, setBismillahAudioUrl] = useState<string | null>(
+    null,
+  );
   const [showResultPanel, setShowResultPanel] = useState(false);
   const [wordDetail, setWordDetail] = useState<{
     item: WordStatusItem;
@@ -157,8 +191,20 @@ export default function NgajiAiPracticeScreen() {
   const saveResult = useMutation(api.ngajiAi.saveResult);
   const savedResults = useQuery(
     api.ngajiAi.getSurahResults,
-    userData?._id ? { userId: userData._id, surahNumber } : "skip"
+    userData?._id ? { userId: userData._id, surahNumber } : "skip",
   );
+
+  // Fetch Bismillah Audio dari Ayat 1 Al-Fatihah
+  useEffect(() => {
+    fetch(`${QURAN_API_BASE}/ayah/1/${QURAN_EDITION_AUDIO}`)
+      .then((res) => res.json())
+      .then((json) => {
+        if (json.code === 200 && json.data?.audio) {
+          setBismillahAudioUrl(json.data.audio);
+        }
+      })
+      .catch((err) => console.error("Failed to load Bismillah audio:", err));
+  }, []);
 
   useEffect(() => {
     if (!Number.isFinite(surahNumber)) return;
@@ -178,9 +224,9 @@ export default function NgajiAiPracticeScreen() {
     })();
   }, [surahNumber]);
 
-  // Bersihkan audio yang sedang diputar saat keluar layar.
   useEffect(() => {
     return () => {
+      isPlayingRef.current = false;
       soundRef.current?.unloadAsync().catch(() => {});
     };
   }, []);
@@ -210,17 +256,20 @@ export default function NgajiAiPracticeScreen() {
   const totalAyahs = surahDetail?.ayahs.length ?? 0;
   const qariAudioUrl = audioDetail?.ayahs[ayahIndex]?.audio ?? null;
 
-  const savedResult = currentAyah ? savedMap.get(currentAyah.numberInSurah) : undefined;
-  // Analisis yang baru saja dilakukan menang atas hasil tersimpan.
+  const savedResult = currentAyah
+    ? savedMap.get(currentAyah.numberInSurah)
+    : undefined;
   const currentResult = analysis ?? savedResult ?? null;
 
   const doneCount = savedMap.size;
   const allDone = totalAyahs > 0 && doneCount >= totalAyahs;
-  const surahAvg = doneCount > 0
-    ? Math.round(
-        Array.from(savedMap.values()).reduce((acc, r) => acc + r.score, 0) / doneCount
-      )
-    : 0;
+  const surahAvg =
+    doneCount > 0
+      ? Math.round(
+          Array.from(savedMap.values()).reduce((acc, r) => acc + r.score, 0) /
+            doneCount,
+        )
+      : 0;
 
   function resetAyahState() {
     setAnalysis(null);
@@ -236,6 +285,7 @@ export default function NgajiAiPracticeScreen() {
   }
 
   async function stopPlayback() {
+    isPlayingRef.current = false;
     setPlayingSource(null);
     if (soundRef.current) {
       const sound = soundRef.current;
@@ -247,29 +297,87 @@ export default function NgajiAiPracticeScreen() {
     }
   }
 
-  async function playAudio(uri: string, source: "qari" | "me") {
+  // Dukungan untuk memutar daftar audio berurutan (playlist)
+  async function playAudio(uris: string | string[], source: "qari" | "me") {
     if (playingSource === source) {
       await stopPlayback();
       return;
     }
     await stopPlayback();
+
+    const playlist = Array.isArray(uris) ? uris : [uris];
+    if (playlist.length === 0) return;
+
     try {
-      await Audio.setAudioModeAsync({ allowsRecordingIOS: false, playsInSilentModeIOS: true });
-      const { sound } = await Audio.Sound.createAsync({ uri }, { shouldPlay: true });
-      soundRef.current = sound;
-      setPlayingSource(source);
-      sound.setOnPlaybackStatusUpdate((status) => {
-        if (status.isLoaded && status.didJustFinish) {
-          setPlayingSource(null);
-          soundRef.current = null;
-          sound.unloadAsync().catch(() => {});
-        }
+      await Audio.setAudioModeAsync({
+        allowsRecordingIOS: false,
+        playsInSilentModeIOS: true,
       });
+      isPlayingRef.current = true;
+      setPlayingSource(source);
+
+      for (let i = 0; i < playlist.length; i++) {
+        if (!isPlayingRef.current) break; // Berhenti jika user menekan Stop
+
+        const uri = playlist[i];
+        const { sound } = await Audio.Sound.createAsync(
+          { uri },
+          { shouldPlay: true },
+        );
+
+        // Memastikan tidak terlanjur ter-stop saat loading
+        if (!isPlayingRef.current) {
+          sound.unloadAsync().catch(() => {});
+          break;
+        }
+
+        soundRef.current = sound;
+
+        // Tunggu audio selesai sebelum lanjut ke audio berikutnya
+        await new Promise<void>((resolve) => {
+          sound.setOnPlaybackStatusUpdate((status) => {
+            if (status.isLoaded && status.didJustFinish) {
+              sound.unloadAsync().catch(() => {});
+              resolve();
+            } else if (!status.isLoaded && status.error) {
+              console.error("Audio playback error:", status.error);
+              resolve(); // Teruskan loop walaupun ada error
+            }
+          });
+        });
+      }
     } catch (error) {
       console.error("Playback error", error);
-      setPlayingSource(null);
+    } finally {
+      // Pastikan status dikembalikan ke awal jika mencapai akhir playlist
+      if (isPlayingRef.current) {
+        setPlayingSource(null);
+        soundRef.current = null;
+        isPlayingRef.current = false;
+      }
     }
   }
+
+  const handlePlayQari = () => {
+    if (!qariAudioUrl) return;
+    const uris = [];
+
+    // Syarat Bismillah:
+    // 1. Ayat pertama dari surah berjalan (ayahIndex === 0)
+    // 2. Bukan Surah Al-Fatihah (karena ayat 1 Al-Fatihah sudah termasuk bismillah)
+    // 3. Bukan Surah At-Taubah (Surah 9)
+    if (
+      ayahIndex === 0 &&
+      surahNumber !== 1 &&
+      surahNumber !== 9 &&
+      bismillahAudioUrl
+    ) {
+      uris.push(bismillahAudioUrl);
+    }
+
+    uris.push(qariAudioUrl);
+    playAudio(uris, "qari");
+  };
 
   async function startRecording() {
     try {
@@ -286,7 +394,7 @@ export default function NgajiAiPracticeScreen() {
       });
 
       const { recording: rec } = await Audio.Recording.createAsync(
-        Audio.RecordingOptionsPresets.HIGH_QUALITY
+        Audio.RecordingOptionsPresets.HIGH_QUALITY,
       );
       setRecording(rec);
       setIsRecording(true);
@@ -316,22 +424,22 @@ export default function NgajiAiPracticeScreen() {
       await Audio.setAudioModeAsync({ allowsRecordingIOS: false });
     }
 
-    // Langsung analisis begitu rekaman selesai, seperti alur demo ngaji.ai.
     if (uri) {
       await runAnalysis(uri);
     }
   }
 
-  // Di web hasil rekaman berupa blob: URI yang tidak bisa dibaca
-  // expo-file-system, jadi konversi base64 lewat fetch + FileReader.
-  async function uriToBase64(uri: string): Promise<{ base64: string; mimeType: string }> {
+  async function uriToBase64(
+    uri: string,
+  ): Promise<{ base64: string; mimeType: string }> {
     if (Platform.OS === "web") {
       const response = await fetch(uri);
       const blob = await response.blob();
       const dataUrl = await new Promise<string>((resolve, reject) => {
         const reader = new FileReader();
         reader.onloadend = () => resolve(String(reader.result ?? ""));
-        reader.onerror = () => reject(reader.error ?? new Error("Gagal membaca audio"));
+        reader.onerror = () =>
+          reject(reader.error ?? new Error("Gagal membaca audio"));
         reader.readAsDataURL(blob);
       });
       const base64 = dataUrl.split(",")[1] ?? "";
@@ -421,9 +529,12 @@ export default function NgajiAiPracticeScreen() {
   const wordStatusMap = useMemo(
     () =>
       new Map<number, WordStatusItem>(
-        (currentResult?.wordStatuses ?? []).map((item) => [item.displayIndex, item])
+        (currentResult?.wordStatuses ?? []).map((item) => [
+          item.displayIndex,
+          item,
+        ]),
       ),
-    [currentResult]
+    [currentResult],
   );
 
   const getWordStyleByStatus = (status?: WordHighlightStatus) => {
@@ -450,7 +561,6 @@ export default function NgajiAiPracticeScreen() {
 
   return (
     <View style={st.container}>
-      {/* Header hijau ala demo ngaji.ai */}
       <View style={[st.header, { paddingTop: insets.top + 10 }]}>
         <View style={st.headerRow}>
           <Pressable style={st.backBtn} onPress={() => router.back()}>
@@ -464,7 +574,9 @@ export default function NgajiAiPracticeScreen() {
           </View>
           <View style={st.doneBadge}>
             <FontAwesome name="check" size={11} color="#fff" />
-            <Text style={st.doneBadgeText}>{doneCount}/{totalAyahs}</Text>
+            <Text style={st.doneBadgeText}>
+              {doneCount}/{totalAyahs}
+            </Text>
           </View>
         </View>
         <View style={st.progressTrack}>
@@ -482,7 +594,6 @@ export default function NgajiAiPracticeScreen() {
           </View>
         ) : null}
 
-        {/* Kartu ayat dengan highlight per kata */}
         <View style={st.ayahCard}>
           <View style={st.ayahHeaderRow}>
             <Text style={st.ayahLabel}>Mushaf Utsmani</Text>
@@ -516,24 +627,32 @@ export default function NgajiAiPracticeScreen() {
                   <Pressable
                     key={`word-${idx}`}
                     disabled={!hasIssue}
-                    onPress={() => item && setWordDetail({ item, displayWord: word })}
+                    onPress={() =>
+                      item && setWordDetail({ item, displayWord: word })
+                    }
                   >
                     {letters && item?.status !== "missing" ? (
-                      // Pewarnaan per huruf ala ngaji.ai: huruf benar hijau,
-                      // huruf salah oranye. Span bersarang tetap menjaga
-                      // sambungan huruf Arab.
                       <Text style={[st.ayahWord, st.wordNeutral]}>
                         {clusters.map((cluster, ci) => (
                           <Text
                             key={`c-${ci}`}
-                            style={letters[ci].correct ? st.wordCorrect : st.wordPartial}
+                            style={
+                              letters[ci].correct
+                                ? st.wordCorrect
+                                : st.wordPartial
+                            }
                           >
                             {cluster}
                           </Text>
                         ))}{" "}
                       </Text>
                     ) : (
-                      <Text style={[st.ayahWord, getWordStyleByStatus(item?.status)]}>
+                      <Text
+                        style={[
+                          st.ayahWord,
+                          getWordStyleByStatus(item?.status),
+                        ]}
+                      >
                         {word}{" "}
                       </Text>
                     )}
@@ -559,24 +678,33 @@ export default function NgajiAiPracticeScreen() {
                 <View style={[st.legendDot, { backgroundColor: "#D32F2F" }]} />
                 <Text style={st.legendText}>Terlewat/salah</Text>
               </View>
-              <Text style={st.legendHint}>Ketuk kata berwarna untuk detail</Text>
+              <Text style={st.legendHint}>
+                Ketuk kata berwarna untuk detail
+              </Text>
             </View>
           ) : null}
         </View>
 
-        {/* Baris aksi audio: qari referensi & rekaman sendiri */}
         <View style={st.audioRow}>
           {qariAudioUrl ? (
             <Pressable
-              style={[st.audioBtn, playingSource === "qari" && st.audioBtnActive]}
-              onPress={() => playAudio(qariAudioUrl, "qari")}
+              style={[
+                st.audioBtn,
+                playingSource === "qari" && st.audioBtnActive,
+              ]}
+              onPress={handlePlayQari}
             >
               <FontAwesome
                 name={playingSource === "qari" ? "stop" : "volume-up"}
                 size={13}
                 color={playingSource === "qari" ? "#fff" : Colors.primary}
               />
-              <Text style={[st.audioBtnText, playingSource === "qari" && { color: "#fff" }]}>
+              <Text
+                style={[
+                  st.audioBtnText,
+                  playingSource === "qari" && { color: "#fff" },
+                ]}
+              >
                 Contoh Qari
               </Text>
             </Pressable>
@@ -591,7 +719,12 @@ export default function NgajiAiPracticeScreen() {
                 size={13}
                 color={playingSource === "me" ? "#fff" : Colors.primary}
               />
-              <Text style={[st.audioBtnText, playingSource === "me" && { color: "#fff" }]}>
+              <Text
+                style={[
+                  st.audioBtnText,
+                  playingSource === "me" && { color: "#fff" },
+                ]}
+              >
                 Rekamanku
               </Text>
             </Pressable>
@@ -603,7 +736,10 @@ export default function NgajiAiPracticeScreen() {
             >
               <FontAwesome name="star" size={13} color="#F9A825" />
               <Text style={st.audioBtnText}>
-                Penilaian: <Text style={{ color: scoreColor(currentResult.score) }}>{currentResult.score}</Text>
+                Penilaian:{" "}
+                <Text style={{ color: scoreColor(currentResult.score) }}>
+                  {currentResult.score}
+                </Text>
               </Text>
               <FontAwesome
                 name={showResultPanel ? "chevron-up" : "chevron-down"}
@@ -614,25 +750,33 @@ export default function NgajiAiPracticeScreen() {
           ) : null}
         </View>
 
-        {/* Panel hasil koreksi */}
         {showResultPanel && currentResult ? (
           <View style={st.resultCard}>
             <View style={st.resultHeaderRow}>
               <Text style={st.resultTitle}>Hasil Koreksi AI</Text>
               {currentResult.bestScore !== undefined ? (
-                <Text style={st.bestScoreText}>Terbaik: {currentResult.bestScore}</Text>
+                <Text style={st.bestScoreText}>
+                  Terbaik: {currentResult.bestScore}
+                </Text>
               ) : null}
             </View>
 
             <View style={st.scoreRow}>
               <View style={[st.scoreItem, { backgroundColor: "#F1F8E9" }]}>
-                <Text style={[st.scoreValue, { color: scoreColor(currentResult.score) }]}>
+                <Text
+                  style={[
+                    st.scoreValue,
+                    { color: scoreColor(currentResult.score) },
+                  ]}
+                >
                   {currentResult.score}
                 </Text>
                 <Text style={st.scoreLabel}>Total</Text>
               </View>
               <View style={st.scoreItem}>
-                <Text style={st.scoreValue}>{currentResult.pronunciationScore}</Text>
+                <Text style={st.scoreValue}>
+                  {currentResult.pronunciationScore}
+                </Text>
                 <Text style={st.scoreLabel}>Makharij</Text>
               </View>
               <View style={st.scoreItem}>
@@ -646,15 +790,21 @@ export default function NgajiAiPracticeScreen() {
             </View>
 
             <Text style={st.smallTitle}>Transkripsi AI</Text>
-            <Text style={st.transcriptText}>{currentResult.transcript || "(kosong)"}</Text>
+            <Text style={st.transcriptText}>
+              {currentResult.transcript || "(kosong)"}
+            </Text>
 
             <Text style={st.smallTitle}>Koreksi Utama</Text>
             {currentResult.mistakes.length === 0 ? (
-              <Text style={st.okText}>Tidak ada kesalahan signifikan terdeteksi. Masya Allah!</Text>
+              <Text style={st.okText}>
+                Tidak ada kesalahan signifikan terdeteksi. Masya Allah!
+              </Text>
             ) : (
               currentResult.mistakes.map((m, idx) => (
                 <View key={`${m.wordIndex}-${idx}`} style={st.mistakeItem}>
-                  <Text style={st.mistakeText}>{idx + 1}. {m.note}</Text>
+                  <Text style={st.mistakeText}>
+                    {idx + 1}. {m.note}
+                  </Text>
                   <Text style={st.mistakeDetail}>
                     Target: {m.expected || "-"} | Terbaca: {m.recognized || "-"}
                   </Text>
@@ -663,7 +813,11 @@ export default function NgajiAiPracticeScreen() {
             )}
 
             <View style={st.tipBox}>
-              <FontAwesome name="lightbulb-o" size={14} color={Colors.warning} />
+              <FontAwesome
+                name="lightbulb-o"
+                size={14}
+                color={Colors.warning}
+              />
               <Text style={st.tipText}>{currentResult.recommendation}</Text>
             </View>
 
@@ -677,12 +831,13 @@ export default function NgajiAiPracticeScreen() {
         {analyzing ? (
           <View style={st.analyzingBox}>
             <ActivityIndicator color={Colors.primary} />
-            <Text style={st.analyzingText}>AI sedang menganalisis bacaanmu...</Text>
+            <Text style={st.analyzingText}>
+              AI sedang menganalisis bacaanmu...
+            </Text>
           </View>
         ) : null}
       </ScrollView>
 
-      {/* Kontrol bawah: navigasi ayat + tombol rekam */}
       <View style={[st.bottomBar, { paddingBottom: insets.bottom + 12 }]}>
         <Pressable
           style={[st.navBtn, ayahIndex === 0 && st.navBtnDisabled]}
@@ -711,7 +866,11 @@ export default function NgajiAiPracticeScreen() {
                 color="#fff"
               />
               <Text style={st.recordText}>
-                {isRecording ? "Berhenti & Analisis" : currentResult ? "Rekam Ulang" : "Rekam"}
+                {isRecording
+                  ? "Berhenti & Analisis"
+                  : currentResult
+                    ? "Rekam Ulang"
+                    : "Rekam"}
               </Text>
             </>
           )}
@@ -730,7 +889,6 @@ export default function NgajiAiPracticeScreen() {
         </Pressable>
       </View>
 
-      {/* Detail koreksi per huruf, meniru modal demo ngaji.ai */}
       <Modal
         visible={wordDetail !== null}
         transparent
@@ -739,101 +897,110 @@ export default function NgajiAiPracticeScreen() {
       >
         <Pressable style={st.modalOverlay} onPress={() => setWordDetail(null)}>
           <Pressable style={st.wordDetailCard} onPress={() => {}}>
-            {wordDetail ? (() => {
-              const { item, displayWord } = wordDetail;
-              const clusters = splitLetterClusters(displayWord);
-              const letters =
-                item.letters && item.letters.length === clusters.length
-                  ? item.letters
-                  : null;
-              const wrongIndexes = letters
-                ? letters
-                    .map((l, i) => (l.correct ? -1 : i))
-                    .filter((i) => i >= 0)
-                : [];
+            {wordDetail
+              ? (() => {
+                  const { item, displayWord } = wordDetail;
+                  const clusters = splitLetterClusters(displayWord);
+                  const letters =
+                    item.letters && item.letters.length === clusters.length
+                      ? item.letters
+                      : null;
+                  const wrongIndexes = letters
+                    ? letters
+                        .map((l, i) => (l.correct ? -1 : i))
+                        .filter((i) => i >= 0)
+                    : [];
 
-              return (
-                <>
-                  <View style={st.wordDetailHero}>
-                    <View style={st.wordDetailWordBox}>
-                      {letters ? (
-                        <Text style={st.wordDetailArabic}>
-                          {clusters.map((cluster, ci) => (
-                            <Text
-                              key={`dc-${ci}`}
-                              style={
-                                letters[ci].correct
-                                  ? st.wordCorrect
-                                  : st.wordPartial
-                              }
-                            >
-                              {cluster}
+                  return (
+                    <>
+                      <View style={st.wordDetailHero}>
+                        <View style={st.wordDetailWordBox}>
+                          {letters ? (
+                            <Text style={st.wordDetailArabic}>
+                              {clusters.map((cluster, ci) => (
+                                <Text
+                                  key={`dc-${ci}`}
+                                  style={
+                                    letters[ci].correct
+                                      ? st.wordCorrect
+                                      : st.wordPartial
+                                  }
+                                >
+                                  {cluster}
+                                </Text>
+                              ))}
                             </Text>
-                          ))}
-                        </Text>
-                      ) : (
-                        <Text style={[st.wordDetailArabic, st.wordPartial]}>
-                          {displayWord}
-                        </Text>
-                      )}
-                    </View>
-                    <View style={st.wordDetailCountChip}>
-                      <FontAwesome name="times-circle" size={14} color="#F57C00" />
-                      <Text style={st.wordDetailCountText}>
-                        {letters
-                          ? `${wrongIndexes.length} dari ${clusters.length} huruf`
-                          : STATUS_LABELS[item.status]}
-                      </Text>
-                    </View>
-                  </View>
-
-                  <ScrollView style={st.wordDetailBody}>
-                    {letters && wrongIndexes.length > 0 ? (
-                      wrongIndexes.map((ci) => (
-                        <View key={`wrong-${ci}`} style={st.letterCard}>
-                          <View style={st.letterCardTop}>
-                            <View style={st.letterTile}>
-                              <Text style={st.letterTileText}>
-                                {clusters[ci]?.[0] ?? letters[ci].letter}
-                              </Text>
-                            </View>
-                            <Text style={st.letterCardText}>
-                              Pelafalan huruf ini belum tepat
+                          ) : (
+                            <Text style={[st.wordDetailArabic, st.wordPartial]}>
+                              {displayWord}
                             </Text>
-                          </View>
-                          <View style={st.letterCorrectRow}>
-                            <FontAwesome
-                              name="check-circle"
-                              size={16}
-                              color={Colors.primary}
-                            />
-                            <Text style={st.letterCorrectText}>
-                              Pelafalan yang benar adalah{" "}
-                              <Text style={st.letterCorrectBold}>
-                                {clusterPronunciation(clusters[ci])}
-                              </Text>
-                            </Text>
-                          </View>
+                          )}
                         </View>
-                      ))
-                    ) : (
-                      <View style={st.letterCard}>
-                        <Text style={st.letterCardText}>{item.note}</Text>
-                        {item.recognized ? (
-                          <Text style={st.wordDetailRecognized}>
-                            Terbaca oleh AI: {item.recognized}
+                        <View style={st.wordDetailCountChip}>
+                          <FontAwesome
+                            name="times-circle"
+                            size={14}
+                            color="#F57C00"
+                          />
+                          <Text style={st.wordDetailCountText}>
+                            {letters
+                              ? `${wrongIndexes.length} dari ${clusters.length} huruf`
+                              : STATUS_LABELS[item.status]}
                           </Text>
-                        ) : null}
+                        </View>
                       </View>
-                    )}
-                  </ScrollView>
 
-                  <Pressable style={st.wordDetailClose} onPress={() => setWordDetail(null)}>
-                    <Text style={st.wordDetailCloseText}>Tutup</Text>
-                  </Pressable>
-                </>
-              );
-            })() : null}
+                      <ScrollView style={st.wordDetailBody}>
+                        {letters && wrongIndexes.length > 0 ? (
+                          wrongIndexes.map((ci) => (
+                            <View key={`wrong-${ci}`} style={st.letterCard}>
+                              <View style={st.letterCardTop}>
+                                <View style={st.letterTile}>
+                                  <Text style={st.letterTileText}>
+                                    {clusters[ci]?.[0] ?? letters[ci].letter}
+                                  </Text>
+                                </View>
+                                <Text style={st.letterCardText}>
+                                  Pelafalan huruf ini belum tepat
+                                </Text>
+                              </View>
+                              <View style={st.letterCorrectRow}>
+                                <FontAwesome
+                                  name="check-circle"
+                                  size={16}
+                                  color={Colors.primary}
+                                />
+                                <Text style={st.letterCorrectText}>
+                                  Pelafalan yang benar adalah{" "}
+                                  <Text style={st.letterCorrectBold}>
+                                    {clusterPronunciation(clusters[ci])}
+                                  </Text>
+                                </Text>
+                              </View>
+                            </View>
+                          ))
+                        ) : (
+                          <View style={st.letterCard}>
+                            <Text style={st.letterCardText}>{item.note}</Text>
+                            {item.recognized ? (
+                              <Text style={st.wordDetailRecognized}>
+                                Terbaca oleh AI: {item.recognized}
+                              </Text>
+                            ) : null}
+                          </View>
+                        )}
+                      </ScrollView>
+
+                      <Pressable
+                        style={st.wordDetailClose}
+                        onPress={() => setWordDetail(null)}
+                      >
+                        <Text style={st.wordDetailCloseText}>Tutup</Text>
+                      </Pressable>
+                    </>
+                  );
+                })()
+              : null}
           </Pressable>
         </Pressable>
       </Modal>

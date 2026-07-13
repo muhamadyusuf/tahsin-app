@@ -1,46 +1,51 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import ConfirmModal from "@/components/ConfirmModal";
+import { api } from "@/convex/_generated/api";
+import { getPageData, PageAyah, PageData } from "@/lib/alquran-api";
+import { useAuthContext } from "@/lib/auth-context";
 import {
-  View,
-  Text,
-  StyleSheet,
-  ActivityIndicator,
-  TouchableOpacity,
-  Modal,
-  ScrollView,
-  FlatList,
-  Platform,
-  StatusBar,
-  TextInput,
-  Pressable,
-  Animated,
-  Easing,
-  PanResponder,
-  Dimensions,
-  useWindowDimensions,
-} from "react-native";
-import { useRouter, useNavigation } from "expo-router";
-import { useSafeAreaInsets } from "react-native-safe-area-context";
-import FontAwesome from "@expo/vector-icons/FontAwesome";
-import { BlurView } from "expo-blur";
-import { LinearGradient } from "expo-linear-gradient";
-import Slider from "@react-native-community/slider";
-import AsyncStorage from "@react-native-async-storage/async-storage";
-import { Audio } from "expo-av";
-import {
+  AUDIO_EDITIONS,
   Colors,
+  getDisplayWidth,
   QURAN_API_BASE,
   QURAN_EDITION_AUDIO,
   QURAN_EDITION_TRANSLATION,
-  AUDIO_EDITIONS,
-  getDisplayWidth,
   WEB_MAX_WIDTH,
 } from "@/lib/constants";
-import { getPageData, PageData, PageAyah } from "@/lib/alquran-api";
 import { colorizeArabicText, TAJWID_RULES } from "@/lib/tajwid";
+import FontAwesome from "@expo/vector-icons/FontAwesome";
+import AsyncStorage from "@react-native-async-storage/async-storage";
+import Slider from "@react-native-community/slider";
 import { useMutation, useQuery } from "convex/react";
-import { api } from "@/convex/_generated/api";
-import { useAuthContext } from "@/lib/auth-context";
-import ConfirmModal from "@/components/ConfirmModal";
+import { Audio } from "expo-av";
+import { BlurView } from "expo-blur";
+import { LinearGradient } from "expo-linear-gradient";
+import { useNavigation, useRouter } from "expo-router";
+import React, {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
+import {
+  ActivityIndicator,
+  Animated,
+  Easing,
+  FlatList,
+  Modal,
+  PanResponder,
+  Platform,
+  Pressable,
+  ScrollView,
+  StatusBar,
+  StyleSheet,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  useWindowDimensions,
+  View
+} from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 const COVER_PAGE = 0;
 const DESKTOP_BREAKPOINT = 900;
@@ -99,9 +104,7 @@ function getHizbInfo(hizbQuarter: number): {
   const quarter = ((hizbQuarter - 1) % 4) + 1;
   const qLabels = ["", "¼", "½", "¾"];
   const label =
-    quarter === 1
-      ? `Hizb ${hizb}`
-      : `Hizb ${hizb} ${qLabels[quarter - 1]}`;
+    quarter === 1 ? `Hizb ${hizb}` : `Hizb ${hizb} ${qLabels[quarter - 1]}`;
   const arabicLabel =
     quarter === 1
       ? `الحزب ${toArabicNumeral(hizb)}`
@@ -149,7 +152,13 @@ function getJuzArabicLabel(juzNum: number): string {
 /** Ornamental surah-divider banner — double border + corner jewels + double
  * hairline side rules, echoing the decorative surah headers of a printed
  * Uthmani mushaf. */
-function SurahHeaderBanner({ name, fontSize }: { name: string; fontSize: number }) {
+function SurahHeaderBanner({
+  name,
+  fontSize,
+}: {
+  name: string;
+  fontSize: number;
+}) {
   // Scaled down from the body font size — the banner is a divider, not
   // another line of ayah text, so it reads better smaller and tighter.
   const bannerFontSize = Math.round(fontSize * 0.72);
@@ -160,7 +169,9 @@ function SurahHeaderBanner({ name, fontSize }: { name: string; fontSize: number 
       </View>
       <View style={s.surahBannerBoxOuter}>
         <View style={s.surahBannerBoxInner}>
-          <Text style={[s.surahNameText, { fontSize: bannerFontSize }]}>{name}</Text>
+          <Text style={[s.surahNameText, { fontSize: bannerFontSize }]}>
+            {name}
+          </Text>
         </View>
         <View style={[s.surahBannerCorner, s.surahBannerCornerTL]} />
         <View style={[s.surahBannerCorner, s.surahBannerCornerTR]} />
@@ -225,7 +236,7 @@ interface MushafWord {
   charType: "word" | "end";
   textUthmani: string;
   lineNumber: number;
-  verseKey: string;   // e.g. "2:6"
+  verseKey: string; // e.g. "2:6"
   surahNumber: number;
   verseNumber: number; // numberInSurah
 }
@@ -239,144 +250,1077 @@ const MUSHAF_LINES_PER_PAGE = 15;
 
 // Standard Uthmani mushaf: surah number → starting page
 const SURAH_PAGE: Record<number, number> = {
-  1:1,2:2,3:50,4:77,5:106,6:128,7:151,8:177,9:187,10:208,11:221,12:235,13:249,
-  14:255,15:262,16:267,17:282,18:293,19:305,20:312,21:322,22:332,23:342,24:350,
-  25:359,26:367,27:377,28:385,29:396,30:404,31:411,32:415,33:418,34:428,35:434,
-  36:440,37:446,38:453,39:458,40:467,41:477,42:483,43:489,44:496,45:499,46:502,
-  47:507,48:511,49:515,50:518,51:520,52:523,53:526,54:528,55:531,56:534,57:537,
-  58:542,59:545,60:549,61:551,62:553,63:554,64:556,65:558,66:560,67:562,68:564,
-  69:566,70:568,71:570,72:572,73:574,74:575,75:577,76:578,77:580,78:582,79:583,
-  80:585,81:586,82:587,83:587,84:589,85:590,86:591,87:591,88:592,89:593,90:594,
-  91:595,92:595,93:596,94:596,95:597,96:597,97:598,98:598,99:599,100:599,101:600,
-  102:600,103:601,104:601,105:601,106:602,107:602,108:602,109:603,110:603,111:603,
-  112:604,113:604,114:604,
+  1: 1,
+  2: 2,
+  3: 50,
+  4: 77,
+  5: 106,
+  6: 128,
+  7: 151,
+  8: 177,
+  9: 187,
+  10: 208,
+  11: 221,
+  12: 235,
+  13: 249,
+  14: 255,
+  15: 262,
+  16: 267,
+  17: 282,
+  18: 293,
+  19: 305,
+  20: 312,
+  21: 322,
+  22: 332,
+  23: 342,
+  24: 350,
+  25: 359,
+  26: 367,
+  27: 377,
+  28: 385,
+  29: 396,
+  30: 404,
+  31: 411,
+  32: 415,
+  33: 418,
+  34: 428,
+  35: 434,
+  36: 440,
+  37: 446,
+  38: 453,
+  39: 458,
+  40: 467,
+  41: 477,
+  42: 483,
+  43: 489,
+  44: 496,
+  45: 499,
+  46: 502,
+  47: 507,
+  48: 511,
+  49: 515,
+  50: 518,
+  51: 520,
+  52: 523,
+  53: 526,
+  54: 528,
+  55: 531,
+  56: 534,
+  57: 537,
+  58: 542,
+  59: 545,
+  60: 549,
+  61: 551,
+  62: 553,
+  63: 554,
+  64: 556,
+  65: 558,
+  66: 560,
+  67: 562,
+  68: 564,
+  69: 566,
+  70: 568,
+  71: 570,
+  72: 572,
+  73: 574,
+  74: 575,
+  75: 577,
+  76: 578,
+  77: 580,
+  78: 582,
+  79: 583,
+  80: 585,
+  81: 586,
+  82: 587,
+  83: 587,
+  84: 589,
+  85: 590,
+  86: 591,
+  87: 591,
+  88: 592,
+  89: 593,
+  90: 594,
+  91: 595,
+  92: 595,
+  93: 596,
+  94: 596,
+  95: 597,
+  96: 597,
+  97: 598,
+  98: 598,
+  99: 599,
+  100: 599,
+  101: 600,
+  102: 600,
+  103: 601,
+  104: 601,
+  105: 601,
+  106: 602,
+  107: 602,
+  108: 602,
+  109: 603,
+  110: 603,
+  111: 603,
+  112: 604,
+  113: 604,
+  114: 604,
 };
 
 // Surah metadata for main index
-export const SURAH_META: { num: number; name: string; english: string; arti: string; type: string; ayahs: number }[] = [
-  { num: 1, name: "سُورَةُ ٱلْفَاتِحَةِ", english: "Al-Fatihah", arti: "Pembukaan", type: "Makkiyah", ayahs: 7 },
-  { num: 2, name: "سُورَةُ ٱلْبَقَرَةِ", english: "Al-Baqarah", arti: "Sapi Betina", type: "Madaniyah", ayahs: 286 },
-  { num: 3, name: "سُورَةُ آلِ عِمْرَانَ", english: "Ali 'Imran", arti: "Keluarga Imran", type: "Madaniyah", ayahs: 200 },
-  { num: 4, name: "سُورَةُ ٱلنِّسَاءِ", english: "An-Nisa'", arti: "Perempuan", type: "Madaniyah", ayahs: 176 },
-  { num: 5, name: "سُورَةُ ٱلْمَائِدَةِ", english: "Al-Ma'idah", arti: "Hidangan", type: "Madaniyah", ayahs: 120 },
-  { num: 6, name: "سُورَةُ ٱلْأَنْعَامِ", english: "Al-An'am", arti: "Binatang Ternak", type: "Makkiyah", ayahs: 165 },
-  { num: 7, name: "سُورَةُ ٱلْأَعْرَافِ", english: "Al-A'raf", arti: "Tempat Tertinggi", type: "Makkiyah", ayahs: 206 },
-  { num: 8, name: "سُورَةُ ٱلْأَنْفَالِ", english: "Al-Anfal", arti: "Rampasan Perang", type: "Madaniyah", ayahs: 75 },
-  { num: 9, name: "سُورَةُ ٱلتَّوْبَةِ", english: "At-Taubah", arti: "Pengampunan", type: "Madaniyah", ayahs: 129 },
-  { num: 10, name: "سُورَةُ يُونُسَ", english: "Yunus", arti: "Yunus", type: "Makkiyah", ayahs: 109 },
-  { num: 11, name: "سُورَةُ هُودٍ", english: "Hud", arti: "Hud", type: "Makkiyah", ayahs: 123 },
-  { num: 12, name: "سُورَةُ يُوسُفَ", english: "Yusuf", arti: "Yusuf", type: "Makkiyah", ayahs: 111 },
-  { num: 13, name: "سُورَةُ ٱلرَّعْدِ", english: "Ar-Ra'd", arti: "Guruh", type: "Madaniyah", ayahs: 43 },
-  { num: 14, name: "سُورَةُ إِبْرَاهِيمَ", english: "Ibrahim", arti: "Ibrahim", type: "Makkiyah", ayahs: 52 },
-  { num: 15, name: "سُورَةُ ٱلْحِجْرِ", english: "Al-Hijr", arti: "Hijr", type: "Makkiyah", ayahs: 99 },
-  { num: 16, name: "سُورَةُ ٱلنَّحْلِ", english: "An-Nahl", arti: "Lebah", type: "Makkiyah", ayahs: 128 },
-  { num: 17, name: "سُورَةُ ٱلْإِسْرَاءِ", english: "Al-Isra'", arti: "Memperjalankan Malam Hari", type: "Makkiyah", ayahs: 111 },
-  { num: 18, name: "سُورَةُ ٱلْكَهْفِ", english: "Al-Kahf", arti: "Gua", type: "Makkiyah", ayahs: 110 },
-  { num: 19, name: "سُورَةُ مَرْيَمَ", english: "Maryam", arti: "Maryam", type: "Makkiyah", ayahs: 98 },
-  { num: 20, name: "سُورَةُ طه", english: "Taha", arti: "Ta-ha", type: "Makkiyah", ayahs: 135 },
-  { num: 21, name: "سُورَةُ ٱلْأَنْبِيَاءِ", english: "Al-Anbiya'", arti: "Para Nabi", type: "Makkiyah", ayahs: 112 },
-  { num: 22, name: "سُورَةُ ٱلْحَجِّ", english: "Al-Hajj", arti: "Haji", type: "Madaniyah", ayahs: 78 },
-  { num: 23, name: "سُورَةُ ٱلْمُؤْمِنِينَ", english: "Al-Mu'minun", arti: "Orang-Orang Mukmin", type: "Makkiyah", ayahs: 118 },
-  { num: 24, name: "سُورَةُ ٱلنُّورِ", english: "An-Nur", arti: "Cahaya", type: "Madaniyah", ayahs: 64 },
-  { num: 25, name: "سُورَةُ ٱلْفُرْقَانِ", english: "Al-Furqan", arti: "Pembeda", type: "Makkiyah", ayahs: 77 },
-  { num: 26, name: "سُورَةُ ٱلشُّعَرَاءِ", english: "Asy-Syu'ara'", arti: "Para Penyair", type: "Makkiyah", ayahs: 227 },
-  { num: 27, name: "سُورَةُ ٱلنَّمْلِ", english: "An-Naml", arti: "Semut", type: "Makkiyah", ayahs: 93 },
-  { num: 28, name: "سُورَةُ ٱلْقَصَصِ", english: "Al-Qasas", arti: "Kisah-Kisah", type: "Makkiyah", ayahs: 88 },
-  { num: 29, name: "سُورَةُ ٱلْعَنْكَبُوتِ", english: "Al-'Ankabut", arti: "Laba-Laba", type: "Makkiyah", ayahs: 69 },
-  { num: 30, name: "سُورَةُ ٱلرُّومِ", english: "Ar-Rum", arti: "Romawi", type: "Makkiyah", ayahs: 60 },
-  { num: 31, name: "سُورَةُ لُقْمَانَ", english: "Luqman", arti: "Luqman", type: "Makkiyah", ayahs: 34 },
-  { num: 32, name: "سُورَةُ ٱلسَّجْدَةِ", english: "As-Sajdah", arti: "Sajdah", type: "Makkiyah", ayahs: 30 },
-  { num: 33, name: "سُورَةُ ٱلْأَحْزَابِ", english: "Al-Ahzab", arti: "Golongan yang Bersekutu", type: "Madaniyah", ayahs: 73 },
-  { num: 34, name: "سُورَةُ سَبَإٍ", english: "Saba'", arti: "Saba'", type: "Makkiyah", ayahs: 54 },
-  { num: 35, name: "سُورَةُ فَاطِرٍ", english: "Fatir", arti: "Pencipta", type: "Makkiyah", ayahs: 45 },
-  { num: 36, name: "سُورَةُ يس", english: "Yasin", arti: "Ya-sin", type: "Makkiyah", ayahs: 83 },
-  { num: 37, name: "سُورَةُ ٱلصَّافَّاتِ", english: "As-Saffat", arti: "Barisan-Barisan", type: "Makkiyah", ayahs: 182 },
-  { num: 38, name: "سُورَةُ ص", english: "Sad", arti: "Sad", type: "Makkiyah", ayahs: 88 },
-  { num: 39, name: "سُورَةُ ٱلزُّمَرِ", english: "Az-Zumar", arti: "Rombongan", type: "Makkiyah", ayahs: 75 },
-  { num: 40, name: "سُورَةُ غَافِرٍ", english: "Ghafir", arti: "Maha Pengampun", type: "Makkiyah", ayahs: 85 },
-  { num: 41, name: "سُورَةُ فُصِّلَتْ", english: "Fussilat", arti: "Dijelaskan", type: "Makkiyah", ayahs: 54 },
-  { num: 42, name: "سُورَةُ ٱلشُّورَىٰ", english: "Asy-Syura", arti: "Musyawarah", type: "Makkiyah", ayahs: 53 },
-  { num: 43, name: "سُورَةُ ٱلزُّخْرُفِ", english: "Az-Zukhruf", arti: "Perhiasan", type: "Makkiyah", ayahs: 89 },
-  { num: 44, name: "سُورَةُ ٱلدُّخَانِ", english: "Ad-Dukhan", arti: "Kabut", type: "Makkiyah", ayahs: 59 },
-  { num: 45, name: "سُورَةُ ٱلْجَاثِيَةِ", english: "Al-Jasiyah", arti: "Berlutut", type: "Makkiyah", ayahs: 37 },
-  { num: 46, name: "سُورَةُ ٱلْأَحْقَافِ", english: "Al-Ahqaf", arti: "Bukit Pasir", type: "Makkiyah", ayahs: 35 },
-  { num: 47, name: "سُورَةُ مُحَمَّدٍ", english: "Muhammad", arti: "Muhammad", type: "Madaniyah", ayahs: 38 },
-  { num: 48, name: "سُورَةُ ٱلْفَتْحِ", english: "Al-Fath", arti: "Kemenangan", type: "Madaniyah", ayahs: 29 },
-  { num: 49, name: "سُورَةُ ٱلْحُجُرَاتِ", english: "Al-Hujurat", arti: "Kamar-Kamar", type: "Madaniyah", ayahs: 18 },
-  { num: 50, name: "سُورَةُ ق", english: "Qaf", arti: "Qaf", type: "Makkiyah", ayahs: 45 },
-  { num: 51, name: "سُورَةُ ٱلذَّارِيَاتِ", english: "Az-Zariyat", arti: "Angin yang Menerbangkan", type: "Makkiyah", ayahs: 60 },
-  { num: 52, name: "سُورَةُ ٱلطُّورِ", english: "At-Tur", arti: "Bukit", type: "Makkiyah", ayahs: 49 },
-  { num: 53, name: "سُورَةُ ٱلنَّجْمِ", english: "An-Najm", arti: "Bintang", type: "Makkiyah", ayahs: 62 },
-  { num: 54, name: "سُورَةُ ٱلْقَمَرِ", english: "Al-Qamar", arti: "Bulan", type: "Makkiyah", ayahs: 55 },
-  { num: 55, name: "سُورَةُ ٱلرَّحْمَٰنِ", english: "Ar-Rahman", arti: "Maha Pengasih", type: "Madaniyah", ayahs: 78 },
-  { num: 56, name: "سُورَةُ ٱلْوَاقِعَةِ", english: "Al-Waqi'ah", arti: "Hari Kiamat", type: "Makkiyah", ayahs: 96 },
-  { num: 57, name: "سُورَةُ ٱلْحَدِيدِ", english: "Al-Hadid", arti: "Besi", type: "Madaniyah", ayahs: 29 },
-  { num: 58, name: "سُورَةُ ٱلْمُجَادَلَةِ", english: "Al-Mujadalah", arti: "Gugatan", type: "Madaniyah", ayahs: 22 },
-  { num: 59, name: "سُورَةُ ٱلْحَشْرِ", english: "Al-Hasyr", arti: "Pengusiran", type: "Madaniyah", ayahs: 24 },
-  { num: 60, name: "سُورَةُ ٱلْمُمْتَحَنَةِ", english: "Al-Mumtahanah", arti: "Wanita yang Diuji", type: "Madaniyah", ayahs: 13 },
-  { num: 61, name: "سُورَةُ ٱلصَّفِّ", english: "As-Saff", arti: "Barisan", type: "Madaniyah", ayahs: 14 },
-  { num: 62, name: "سُورَةُ ٱلْجُمُعَةِ", english: "Al-Jumu'ah", arti: "Jumat", type: "Madaniyah", ayahs: 11 },
-  { num: 63, name: "سُورَةُ ٱلْمُنَافِقِينَ", english: "Al-Munafiqun", arti: "Orang-Orang Munafik", type: "Madaniyah", ayahs: 11 },
-  { num: 64, name: "سُورَةُ ٱلتَّغَابُنِ", english: "At-Tagabun", arti: "Pengungkapan Kesalahan", type: "Madaniyah", ayahs: 18 },
-  { num: 65, name: "سُورَةُ ٱلطَّلَاقِ", english: "At-Talaq", arti: "Talak", type: "Madaniyah", ayahs: 12 },
-  { num: 66, name: "سُورَةُ ٱلتَّحْرِيمِ", english: "At-Tahrim", arti: "Pengharaman", type: "Madaniyah", ayahs: 12 },
-  { num: 67, name: "سُورَةُ ٱلْمُلْكِ", english: "Al-Mulk", arti: "Kerajaan", type: "Makkiyah", ayahs: 30 },
-  { num: 68, name: "سُورَةُ ٱلْقَلَمِ", english: "Al-Qalam", arti: "Pena", type: "Makkiyah", ayahs: 52 },
-  { num: 69, name: "سُورَةُ ٱلْحَاقَّةِ", english: "Al-Haqqah", arti: "Hari Kiamat", type: "Makkiyah", ayahs: 52 },
-  { num: 70, name: "سُورَةُ ٱلْمَعَارِجِ", english: "Al-Ma'arij", arti: "Tempat Naik", type: "Makkiyah", ayahs: 44 },
-  { num: 71, name: "سُورَةُ نُوحٍ", english: "Nuh", arti: "Nuh", type: "Makkiyah", ayahs: 28 },
-  { num: 72, name: "سُورَةُ ٱلْجِنِّ", english: "Al-Jinn", arti: "Jin", type: "Makkiyah", ayahs: 28 },
-  { num: 73, name: "سُورَةُ ٱلْمُزَّمِّلِ", english: "Al-Muzzammil", arti: "Orang yang Berselimut", type: "Makkiyah", ayahs: 20 },
-  { num: 74, name: "سُورَةُ ٱلْمُدَّثِّرِ", english: "Al-Muddassir", arti: "Orang yang Berkemul", type: "Makkiyah", ayahs: 56 },
-  { num: 75, name: "سُورَةُ ٱلْقِيَامَةِ", english: "Al-Qiyamah", arti: "Hari Kiamat", type: "Makkiyah", ayahs: 40 },
-  { num: 76, name: "سُورَةُ ٱلْإِنْسَانِ", english: "Al-Insan", arti: "Manusia", type: "Madaniyah", ayahs: 31 },
-  { num: 77, name: "سُورَةُ ٱلْمُرْسَلَاتِ", english: "Al-Mursalat", arti: "Malaikat yang Diutus", type: "Makkiyah", ayahs: 50 },
-  { num: 78, name: "سُورَةُ ٱلنَّبَإِ", english: "An-Naba'", arti: "Berita", type: "Makkiyah", ayahs: 40 },
-  { num: 79, name: "سُورَةُ ٱلنَّازِعَاتِ", english: "An-Nazi'at", arti: "Malaikat yang Mencabut", type: "Makkiyah", ayahs: 46 },
-  { num: 80, name: "سُورَةُ عَبَسَ", english: "'Abasa", arti: "Bermuka Masam", type: "Makkiyah", ayahs: 42 },
-  { num: 81, name: "سُورَةُ ٱلتَّكْوِيرِ", english: "At-Takwir", arti: "Penggulungan", type: "Makkiyah", ayahs: 29 },
-  { num: 82, name: "سُورَةُ ٱلْإِنْفِطَارِ", english: "Al-Infitar", arti: "Terbelah", type: "Makkiyah", ayahs: 19 },
-  { num: 83, name: "سُورَةُ ٱلْمُطَفِّفِينَ", english: "Al-Mutaffifin", arti: "Orang-Orang yang Curang", type: "Makkiyah", ayahs: 36 },
-  { num: 84, name: "سُورَةُ ٱلْإِنْشِقَاقِ", english: "Al-Insyiqaq", arti: "Terbelah", type: "Makkiyah", ayahs: 25 },
-  { num: 85, name: "سُورَةُ ٱلْبُرُوجِ", english: "Al-Buruj", arti: "Gugusan Bintang", type: "Makkiyah", ayahs: 22 },
-  { num: 86, name: "سُورَةُ ٱلطَّارِقِ", english: "At-Tariq", arti: "Yang Datang pada Malam Hari", type: "Makkiyah", ayahs: 17 },
-  { num: 87, name: "سُورَةُ ٱلْأَعْلَىٰ", english: "Al-A'la", arti: "Yang Maha Tinggi", type: "Makkiyah", ayahs: 19 },
-  { num: 88, name: "سُورَةُ ٱلْغَاشِيَةِ", english: "Al-Gasyiyah", arti: "Hari Kiamat", type: "Makkiyah", ayahs: 26 },
-  { num: 89, name: "سُورَةُ ٱلْفَجْرِ", english: "Al-Fajr", arti: "Fajar", type: "Makkiyah", ayahs: 30 },
-  { num: 90, name: "سُورَةُ ٱلْبَلَدِ", english: "Al-Balad", arti: "Negeri", type: "Makkiyah", ayahs: 20 },
-  { num: 91, name: "سُورَةُ ٱلشَّمْسِ", english: "Asy-Syams", arti: "Matahari", type: "Makkiyah", ayahs: 15 },
-  { num: 92, name: "سُورَةُ ٱللَّيْلِ", english: "Al-Lail", arti: "Malam", type: "Makkiyah", ayahs: 21 },
-  { num: 93, name: "سُورَةُ ٱلضُّحَىٰ", english: "Ad-Duha", arti: "Duha", type: "Makkiyah", ayahs: 11 },
-  { num: 94, name: "سُورَةُ ٱلشَّرْحِ", english: "Asy-Syarh", arti: "Kelapangan", type: "Makkiyah", ayahs: 8 },
-  { num: 95, name: "سُورَةُ ٱلتِّينِ", english: "At-Tin", arti: "Buah Tin", type: "Makkiyah", ayahs: 8 },
-  { num: 96, name: "سُورَةُ ٱلْعَلَقِ", english: "Al-'Alaq", arti: "Segumpal Darah", type: "Makkiyah", ayahs: 19 },
-  { num: 97, name: "سُورَةُ ٱلْقَدْرِ", english: "Al-Qadr", arti: "Kemuliaan", type: "Makkiyah", ayahs: 5 },
-  { num: 98, name: "سُورَةُ ٱلْبَيِّنَةِ", english: "Al-Bayyinah", arti: "Bukti yang Nyata", type: "Madaniyah", ayahs: 8 },
-  { num: 99, name: "سُورَةُ ٱلزَّلْزَلَةِ", english: "Az-Zalzalah", arti: "Guncangan", type: "Madaniyah", ayahs: 8 },
-  { num: 100, name: "سُورَةُ ٱلْعَادِيَاتِ", english: "Al-'Adiyat", arti: "Kuda yang Berlari Kencang", type: "Makkiyah", ayahs: 11 },
-  { num: 101, name: "سُورَةُ ٱلْقَارِعَةِ", english: "Al-Qari'ah", arti: "Hari Kiamat", type: "Makkiyah", ayahs: 11 },
-  { num: 102, name: "سُورَةُ ٱلتَّكَاثُرِ", english: "At-Takasur", arti: "Bermegah-Megahan", type: "Makkiyah", ayahs: 8 },
-  { num: 103, name: "سُورَةُ ٱلْعَصْرِ", english: "Al-'Asr", arti: "Asar", type: "Makkiyah", ayahs: 3 },
-  { num: 104, name: "سُورَةُ ٱلْهُمَزَةِ", english: "Al-Humazah", arti: "Pengumpat", type: "Makkiyah", ayahs: 9 },
-  { num: 105, name: "سُورَةُ ٱلْفِيلِ", english: "Al-Fil", arti: "Gajah", type: "Makkiyah", ayahs: 5 },
-  { num: 106, name: "سُورَةُ قُرَيْشٍ", english: "Quraisy", arti: "Quraisy", type: "Makkiyah", ayahs: 4 },
-  { num: 107, name: "سُورَةُ ٱلْمَاعُونِ", english: "Al-Ma'un", arti: "Bantuan", type: "Makkiyah", ayahs: 7 },
-  { num: 108, name: "سُورَةُ ٱلْكَوْثَرِ", english: "Al-Kausar", arti: "Nikmat yang Banyak", type: "Makkiyah", ayahs: 3 },
-  { num: 109, name: "سُورَةُ ٱلْكَافِرِينَ", english: "Al-Kafirun", arti: "Orang-Orang Kafir", type: "Makkiyah", ayahs: 6 },
-  { num: 110, name: "سُورَةُ ٱلنَّصْرِ", english: "An-Nasr", arti: "Pertolongan", type: "Madaniyah", ayahs: 3 },
-  { num: 111, name: "سُورَةُ ٱلْمَسَدِ", english: "Al-Masad", arti: "Sabut", type: "Makkiyah", ayahs: 5 },
-  { num: 112, name: "سُورَةُ ٱلْإِخْلَاصِ", english: "Al-Ikhlas", arti: "Ikhlas", type: "Makkiyah", ayahs: 4 },
-  { num: 113, name: "سُورَةُ ٱلْفَلَقِ", english: "Al-Falaq", arti: "Waktu Subuh", type: "Makkiyah", ayahs: 5 },
-  { num: 114, name: "سُورَةُ ٱلنَّاسِ", english: "An-Nas", arti: "Manusia", type: "Makkiyah", ayahs: 6 },
+export const SURAH_META: {
+  num: number;
+  name: string;
+  english: string;
+  arti: string;
+  type: string;
+  ayahs: number;
+}[] = [
+  {
+    num: 1,
+    name: "سُورَةُ ٱلْفَاتِحَةِ",
+    english: "Al-Fatihah",
+    arti: "Pembukaan",
+    type: "Makkiyah",
+    ayahs: 7,
+  },
+  {
+    num: 2,
+    name: "سُورَةُ ٱلْبَقَرَةِ",
+    english: "Al-Baqarah",
+    arti: "Sapi Betina",
+    type: "Madaniyah",
+    ayahs: 286,
+  },
+  {
+    num: 3,
+    name: "سُورَةُ آلِ عِمْرَانَ",
+    english: "Ali 'Imran",
+    arti: "Keluarga Imran",
+    type: "Madaniyah",
+    ayahs: 200,
+  },
+  {
+    num: 4,
+    name: "سُورَةُ ٱلنِّسَاءِ",
+    english: "An-Nisa'",
+    arti: "Perempuan",
+    type: "Madaniyah",
+    ayahs: 176,
+  },
+  {
+    num: 5,
+    name: "سُورَةُ ٱلْمَائِدَةِ",
+    english: "Al-Ma'idah",
+    arti: "Hidangan",
+    type: "Madaniyah",
+    ayahs: 120,
+  },
+  {
+    num: 6,
+    name: "سُورَةُ ٱلْأَنْعَامِ",
+    english: "Al-An'am",
+    arti: "Binatang Ternak",
+    type: "Makkiyah",
+    ayahs: 165,
+  },
+  {
+    num: 7,
+    name: "سُورَةُ ٱلْأَعْرَافِ",
+    english: "Al-A'raf",
+    arti: "Tempat Tertinggi",
+    type: "Makkiyah",
+    ayahs: 206,
+  },
+  {
+    num: 8,
+    name: "سُورَةُ ٱلْأَنْفَالِ",
+    english: "Al-Anfal",
+    arti: "Rampasan Perang",
+    type: "Madaniyah",
+    ayahs: 75,
+  },
+  {
+    num: 9,
+    name: "سُورَةُ ٱلتَّوْبَةِ",
+    english: "At-Taubah",
+    arti: "Pengampunan",
+    type: "Madaniyah",
+    ayahs: 129,
+  },
+  {
+    num: 10,
+    name: "سُورَةُ يُونُسَ",
+    english: "Yunus",
+    arti: "Yunus",
+    type: "Makkiyah",
+    ayahs: 109,
+  },
+  {
+    num: 11,
+    name: "سُورَةُ هُودٍ",
+    english: "Hud",
+    arti: "Hud",
+    type: "Makkiyah",
+    ayahs: 123,
+  },
+  {
+    num: 12,
+    name: "سُورَةُ يُوسُفَ",
+    english: "Yusuf",
+    arti: "Yusuf",
+    type: "Makkiyah",
+    ayahs: 111,
+  },
+  {
+    num: 13,
+    name: "سُورَةُ ٱلرَّعْدِ",
+    english: "Ar-Ra'd",
+    arti: "Guruh",
+    type: "Madaniyah",
+    ayahs: 43,
+  },
+  {
+    num: 14,
+    name: "سُورَةُ إِبْرَاهِيمَ",
+    english: "Ibrahim",
+    arti: "Ibrahim",
+    type: "Makkiyah",
+    ayahs: 52,
+  },
+  {
+    num: 15,
+    name: "سُورَةُ ٱلْحِجْرِ",
+    english: "Al-Hijr",
+    arti: "Hijr",
+    type: "Makkiyah",
+    ayahs: 99,
+  },
+  {
+    num: 16,
+    name: "سُورَةُ ٱلنَّحْلِ",
+    english: "An-Nahl",
+    arti: "Lebah",
+    type: "Makkiyah",
+    ayahs: 128,
+  },
+  {
+    num: 17,
+    name: "سُورَةُ ٱلْإِسْرَاءِ",
+    english: "Al-Isra'",
+    arti: "Memperjalankan Malam Hari",
+    type: "Makkiyah",
+    ayahs: 111,
+  },
+  {
+    num: 18,
+    name: "سُورَةُ ٱلْكَهْفِ",
+    english: "Al-Kahf",
+    arti: "Gua",
+    type: "Makkiyah",
+    ayahs: 110,
+  },
+  {
+    num: 19,
+    name: "سُورَةُ مَرْيَمَ",
+    english: "Maryam",
+    arti: "Maryam",
+    type: "Makkiyah",
+    ayahs: 98,
+  },
+  {
+    num: 20,
+    name: "سُورَةُ طه",
+    english: "Taha",
+    arti: "Ta-ha",
+    type: "Makkiyah",
+    ayahs: 135,
+  },
+  {
+    num: 21,
+    name: "سُورَةُ ٱلْأَنْبِيَاءِ",
+    english: "Al-Anbiya'",
+    arti: "Para Nabi",
+    type: "Makkiyah",
+    ayahs: 112,
+  },
+  {
+    num: 22,
+    name: "سُورَةُ ٱلْحَجِّ",
+    english: "Al-Hajj",
+    arti: "Haji",
+    type: "Madaniyah",
+    ayahs: 78,
+  },
+  {
+    num: 23,
+    name: "سُورَةُ ٱلْمُؤْمِنِينَ",
+    english: "Al-Mu'minun",
+    arti: "Orang-Orang Mukmin",
+    type: "Makkiyah",
+    ayahs: 118,
+  },
+  {
+    num: 24,
+    name: "سُورَةُ ٱلنُّورِ",
+    english: "An-Nur",
+    arti: "Cahaya",
+    type: "Madaniyah",
+    ayahs: 64,
+  },
+  {
+    num: 25,
+    name: "سُورَةُ ٱلْفُرْقَانِ",
+    english: "Al-Furqan",
+    arti: "Pembeda",
+    type: "Makkiyah",
+    ayahs: 77,
+  },
+  {
+    num: 26,
+    name: "سُورَةُ ٱلشُّعَرَاءِ",
+    english: "Asy-Syu'ara'",
+    arti: "Para Penyair",
+    type: "Makkiyah",
+    ayahs: 227,
+  },
+  {
+    num: 27,
+    name: "سُورَةُ ٱلنَّمْلِ",
+    english: "An-Naml",
+    arti: "Semut",
+    type: "Makkiyah",
+    ayahs: 93,
+  },
+  {
+    num: 28,
+    name: "سُورَةُ ٱلْقَصَصِ",
+    english: "Al-Qasas",
+    arti: "Kisah-Kisah",
+    type: "Makkiyah",
+    ayahs: 88,
+  },
+  {
+    num: 29,
+    name: "سُورَةُ ٱلْعَنْكَبُوتِ",
+    english: "Al-'Ankabut",
+    arti: "Laba-Laba",
+    type: "Makkiyah",
+    ayahs: 69,
+  },
+  {
+    num: 30,
+    name: "سُورَةُ ٱلرُّومِ",
+    english: "Ar-Rum",
+    arti: "Romawi",
+    type: "Makkiyah",
+    ayahs: 60,
+  },
+  {
+    num: 31,
+    name: "سُورَةُ لُقْمَانَ",
+    english: "Luqman",
+    arti: "Luqman",
+    type: "Makkiyah",
+    ayahs: 34,
+  },
+  {
+    num: 32,
+    name: "سُورَةُ ٱلسَّجْدَةِ",
+    english: "As-Sajdah",
+    arti: "Sajdah",
+    type: "Makkiyah",
+    ayahs: 30,
+  },
+  {
+    num: 33,
+    name: "سُورَةُ ٱلْأَحْزَابِ",
+    english: "Al-Ahzab",
+    arti: "Golongan yang Bersekutu",
+    type: "Madaniyah",
+    ayahs: 73,
+  },
+  {
+    num: 34,
+    name: "سُورَةُ سَبَإٍ",
+    english: "Saba'",
+    arti: "Saba'",
+    type: "Makkiyah",
+    ayahs: 54,
+  },
+  {
+    num: 35,
+    name: "سُورَةُ فَاطِرٍ",
+    english: "Fatir",
+    arti: "Pencipta",
+    type: "Makkiyah",
+    ayahs: 45,
+  },
+  {
+    num: 36,
+    name: "سُورَةُ يس",
+    english: "Yasin",
+    arti: "Ya-sin",
+    type: "Makkiyah",
+    ayahs: 83,
+  },
+  {
+    num: 37,
+    name: "سُورَةُ ٱلصَّافَّاتِ",
+    english: "As-Saffat",
+    arti: "Barisan-Barisan",
+    type: "Makkiyah",
+    ayahs: 182,
+  },
+  {
+    num: 38,
+    name: "سُورَةُ ص",
+    english: "Sad",
+    arti: "Sad",
+    type: "Makkiyah",
+    ayahs: 88,
+  },
+  {
+    num: 39,
+    name: "سُورَةُ ٱلزُّمَرِ",
+    english: "Az-Zumar",
+    arti: "Rombongan",
+    type: "Makkiyah",
+    ayahs: 75,
+  },
+  {
+    num: 40,
+    name: "سُورَةُ غَافِرٍ",
+    english: "Ghafir",
+    arti: "Maha Pengampun",
+    type: "Makkiyah",
+    ayahs: 85,
+  },
+  {
+    num: 41,
+    name: "سُورَةُ فُصِّلَتْ",
+    english: "Fussilat",
+    arti: "Dijelaskan",
+    type: "Makkiyah",
+    ayahs: 54,
+  },
+  {
+    num: 42,
+    name: "سُورَةُ ٱلشُّورَىٰ",
+    english: "Asy-Syura",
+    arti: "Musyawarah",
+    type: "Makkiyah",
+    ayahs: 53,
+  },
+  {
+    num: 43,
+    name: "سُورَةُ ٱلزُّخْرُفِ",
+    english: "Az-Zukhruf",
+    arti: "Perhiasan",
+    type: "Makkiyah",
+    ayahs: 89,
+  },
+  {
+    num: 44,
+    name: "سُورَةُ ٱلدُّخَانِ",
+    english: "Ad-Dukhan",
+    arti: "Kabut",
+    type: "Makkiyah",
+    ayahs: 59,
+  },
+  {
+    num: 45,
+    name: "سُورَةُ ٱلْجَاثِيَةِ",
+    english: "Al-Jasiyah",
+    arti: "Berlutut",
+    type: "Makkiyah",
+    ayahs: 37,
+  },
+  {
+    num: 46,
+    name: "سُورَةُ ٱلْأَحْقَافِ",
+    english: "Al-Ahqaf",
+    arti: "Bukit Pasir",
+    type: "Makkiyah",
+    ayahs: 35,
+  },
+  {
+    num: 47,
+    name: "سُورَةُ مُحَمَّدٍ",
+    english: "Muhammad",
+    arti: "Muhammad",
+    type: "Madaniyah",
+    ayahs: 38,
+  },
+  {
+    num: 48,
+    name: "سُورَةُ ٱلْفَتْحِ",
+    english: "Al-Fath",
+    arti: "Kemenangan",
+    type: "Madaniyah",
+    ayahs: 29,
+  },
+  {
+    num: 49,
+    name: "سُورَةُ ٱلْحُجُرَاتِ",
+    english: "Al-Hujurat",
+    arti: "Kamar-Kamar",
+    type: "Madaniyah",
+    ayahs: 18,
+  },
+  {
+    num: 50,
+    name: "سُورَةُ ق",
+    english: "Qaf",
+    arti: "Qaf",
+    type: "Makkiyah",
+    ayahs: 45,
+  },
+  {
+    num: 51,
+    name: "سُورَةُ ٱلذَّارِيَاتِ",
+    english: "Az-Zariyat",
+    arti: "Angin yang Menerbangkan",
+    type: "Makkiyah",
+    ayahs: 60,
+  },
+  {
+    num: 52,
+    name: "سُورَةُ ٱلطُّورِ",
+    english: "At-Tur",
+    arti: "Bukit",
+    type: "Makkiyah",
+    ayahs: 49,
+  },
+  {
+    num: 53,
+    name: "سُورَةُ ٱلنَّجْمِ",
+    english: "An-Najm",
+    arti: "Bintang",
+    type: "Makkiyah",
+    ayahs: 62,
+  },
+  {
+    num: 54,
+    name: "سُورَةُ ٱلْقَمَرِ",
+    english: "Al-Qamar",
+    arti: "Bulan",
+    type: "Makkiyah",
+    ayahs: 55,
+  },
+  {
+    num: 55,
+    name: "سُورَةُ ٱلرَّحْمَٰنِ",
+    english: "Ar-Rahman",
+    arti: "Maha Pengasih",
+    type: "Madaniyah",
+    ayahs: 78,
+  },
+  {
+    num: 56,
+    name: "سُورَةُ ٱلْوَاقِعَةِ",
+    english: "Al-Waqi'ah",
+    arti: "Hari Kiamat",
+    type: "Makkiyah",
+    ayahs: 96,
+  },
+  {
+    num: 57,
+    name: "سُورَةُ ٱلْحَدِيدِ",
+    english: "Al-Hadid",
+    arti: "Besi",
+    type: "Madaniyah",
+    ayahs: 29,
+  },
+  {
+    num: 58,
+    name: "سُورَةُ ٱلْمُجَادَلَةِ",
+    english: "Al-Mujadalah",
+    arti: "Gugatan",
+    type: "Madaniyah",
+    ayahs: 22,
+  },
+  {
+    num: 59,
+    name: "سُورَةُ ٱلْحَشْرِ",
+    english: "Al-Hasyr",
+    arti: "Pengusiran",
+    type: "Madaniyah",
+    ayahs: 24,
+  },
+  {
+    num: 60,
+    name: "سُورَةُ ٱلْمُمْتَحَنَةِ",
+    english: "Al-Mumtahanah",
+    arti: "Wanita yang Diuji",
+    type: "Madaniyah",
+    ayahs: 13,
+  },
+  {
+    num: 61,
+    name: "سُورَةُ ٱلصَّفِّ",
+    english: "As-Saff",
+    arti: "Barisan",
+    type: "Madaniyah",
+    ayahs: 14,
+  },
+  {
+    num: 62,
+    name: "سُورَةُ ٱلْجُمُعَةِ",
+    english: "Al-Jumu'ah",
+    arti: "Jumat",
+    type: "Madaniyah",
+    ayahs: 11,
+  },
+  {
+    num: 63,
+    name: "سُورَةُ ٱلْمُنَافِقِينَ",
+    english: "Al-Munafiqun",
+    arti: "Orang-Orang Munafik",
+    type: "Madaniyah",
+    ayahs: 11,
+  },
+  {
+    num: 64,
+    name: "سُورَةُ ٱلتَّغَابُنِ",
+    english: "At-Tagabun",
+    arti: "Pengungkapan Kesalahan",
+    type: "Madaniyah",
+    ayahs: 18,
+  },
+  {
+    num: 65,
+    name: "سُورَةُ ٱلطَّلَاقِ",
+    english: "At-Talaq",
+    arti: "Talak",
+    type: "Madaniyah",
+    ayahs: 12,
+  },
+  {
+    num: 66,
+    name: "سُورَةُ ٱلتَّحْرِيمِ",
+    english: "At-Tahrim",
+    arti: "Pengharaman",
+    type: "Madaniyah",
+    ayahs: 12,
+  },
+  {
+    num: 67,
+    name: "سُورَةُ ٱلْمُلْكِ",
+    english: "Al-Mulk",
+    arti: "Kerajaan",
+    type: "Makkiyah",
+    ayahs: 30,
+  },
+  {
+    num: 68,
+    name: "سُورَةُ ٱلْقَلَمِ",
+    english: "Al-Qalam",
+    arti: "Pena",
+    type: "Makkiyah",
+    ayahs: 52,
+  },
+  {
+    num: 69,
+    name: "سُورَةُ ٱلْحَاقَّةِ",
+    english: "Al-Haqqah",
+    arti: "Hari Kiamat",
+    type: "Makkiyah",
+    ayahs: 52,
+  },
+  {
+    num: 70,
+    name: "سُورَةُ ٱلْمَعَارِجِ",
+    english: "Al-Ma'arij",
+    arti: "Tempat Naik",
+    type: "Makkiyah",
+    ayahs: 44,
+  },
+  {
+    num: 71,
+    name: "سُورَةُ نُوحٍ",
+    english: "Nuh",
+    arti: "Nuh",
+    type: "Makkiyah",
+    ayahs: 28,
+  },
+  {
+    num: 72,
+    name: "سُورَةُ ٱلْجِنِّ",
+    english: "Al-Jinn",
+    arti: "Jin",
+    type: "Makkiyah",
+    ayahs: 28,
+  },
+  {
+    num: 73,
+    name: "سُورَةُ ٱلْمُزَّمِّلِ",
+    english: "Al-Muzzammil",
+    arti: "Orang yang Berselimut",
+    type: "Makkiyah",
+    ayahs: 20,
+  },
+  {
+    num: 74,
+    name: "سُورَةُ ٱلْمُدَّثِّرِ",
+    english: "Al-Muddassir",
+    arti: "Orang yang Berkemul",
+    type: "Makkiyah",
+    ayahs: 56,
+  },
+  {
+    num: 75,
+    name: "سُورَةُ ٱلْقِيَامَةِ",
+    english: "Al-Qiyamah",
+    arti: "Hari Kiamat",
+    type: "Makkiyah",
+    ayahs: 40,
+  },
+  {
+    num: 76,
+    name: "سُورَةُ ٱلْإِنْسَانِ",
+    english: "Al-Insan",
+    arti: "Manusia",
+    type: "Madaniyah",
+    ayahs: 31,
+  },
+  {
+    num: 77,
+    name: "سُورَةُ ٱلْمُرْسَلَاتِ",
+    english: "Al-Mursalat",
+    arti: "Malaikat yang Diutus",
+    type: "Makkiyah",
+    ayahs: 50,
+  },
+  {
+    num: 78,
+    name: "سُورَةُ ٱلنَّبَإِ",
+    english: "An-Naba'",
+    arti: "Berita",
+    type: "Makkiyah",
+    ayahs: 40,
+  },
+  {
+    num: 79,
+    name: "سُورَةُ ٱلنَّازِعَاتِ",
+    english: "An-Nazi'at",
+    arti: "Malaikat yang Mencabut",
+    type: "Makkiyah",
+    ayahs: 46,
+  },
+  {
+    num: 80,
+    name: "سُورَةُ عَبَسَ",
+    english: "'Abasa",
+    arti: "Bermuka Masam",
+    type: "Makkiyah",
+    ayahs: 42,
+  },
+  {
+    num: 81,
+    name: "سُورَةُ ٱلتَّكْوِيرِ",
+    english: "At-Takwir",
+    arti: "Penggulungan",
+    type: "Makkiyah",
+    ayahs: 29,
+  },
+  {
+    num: 82,
+    name: "سُورَةُ ٱلْإِنْفِطَارِ",
+    english: "Al-Infitar",
+    arti: "Terbelah",
+    type: "Makkiyah",
+    ayahs: 19,
+  },
+  {
+    num: 83,
+    name: "سُورَةُ ٱلْمُطَفِّفِينَ",
+    english: "Al-Mutaffifin",
+    arti: "Orang-Orang yang Curang",
+    type: "Makkiyah",
+    ayahs: 36,
+  },
+  {
+    num: 84,
+    name: "سُورَةُ ٱلْإِنْشِقَاقِ",
+    english: "Al-Insyiqaq",
+    arti: "Terbelah",
+    type: "Makkiyah",
+    ayahs: 25,
+  },
+  {
+    num: 85,
+    name: "سُورَةُ ٱلْبُرُوجِ",
+    english: "Al-Buruj",
+    arti: "Gugusan Bintang",
+    type: "Makkiyah",
+    ayahs: 22,
+  },
+  {
+    num: 86,
+    name: "سُورَةُ ٱلطَّارِقِ",
+    english: "At-Tariq",
+    arti: "Yang Datang pada Malam Hari",
+    type: "Makkiyah",
+    ayahs: 17,
+  },
+  {
+    num: 87,
+    name: "سُورَةُ ٱلْأَعْلَىٰ",
+    english: "Al-A'la",
+    arti: "Yang Maha Tinggi",
+    type: "Makkiyah",
+    ayahs: 19,
+  },
+  {
+    num: 88,
+    name: "سُورَةُ ٱلْغَاشِيَةِ",
+    english: "Al-Gasyiyah",
+    arti: "Hari Kiamat",
+    type: "Makkiyah",
+    ayahs: 26,
+  },
+  {
+    num: 89,
+    name: "سُورَةُ ٱلْفَجْرِ",
+    english: "Al-Fajr",
+    arti: "Fajar",
+    type: "Makkiyah",
+    ayahs: 30,
+  },
+  {
+    num: 90,
+    name: "سُورَةُ ٱلْبَلَدِ",
+    english: "Al-Balad",
+    arti: "Negeri",
+    type: "Makkiyah",
+    ayahs: 20,
+  },
+  {
+    num: 91,
+    name: "سُورَةُ ٱلشَّمْسِ",
+    english: "Asy-Syams",
+    arti: "Matahari",
+    type: "Makkiyah",
+    ayahs: 15,
+  },
+  {
+    num: 92,
+    name: "سُورَةُ ٱللَّيْلِ",
+    english: "Al-Lail",
+    arti: "Malam",
+    type: "Makkiyah",
+    ayahs: 21,
+  },
+  {
+    num: 93,
+    name: "سُورَةُ ٱلضُّحَىٰ",
+    english: "Ad-Duha",
+    arti: "Duha",
+    type: "Makkiyah",
+    ayahs: 11,
+  },
+  {
+    num: 94,
+    name: "سُورَةُ ٱلشَّرْحِ",
+    english: "Asy-Syarh",
+    arti: "Kelapangan",
+    type: "Makkiyah",
+    ayahs: 8,
+  },
+  {
+    num: 95,
+    name: "سُورَةُ ٱلتِّينِ",
+    english: "At-Tin",
+    arti: "Buah Tin",
+    type: "Makkiyah",
+    ayahs: 8,
+  },
+  {
+    num: 96,
+    name: "سُورَةُ ٱلْعَلَقِ",
+    english: "Al-'Alaq",
+    arti: "Segumpal Darah",
+    type: "Makkiyah",
+    ayahs: 19,
+  },
+  {
+    num: 97,
+    name: "سُورَةُ ٱلْقَدْرِ",
+    english: "Al-Qadr",
+    arti: "Kemuliaan",
+    type: "Makkiyah",
+    ayahs: 5,
+  },
+  {
+    num: 98,
+    name: "سُورَةُ ٱلْبَيِّنَةِ",
+    english: "Al-Bayyinah",
+    arti: "Bukti yang Nyata",
+    type: "Madaniyah",
+    ayahs: 8,
+  },
+  {
+    num: 99,
+    name: "سُورَةُ ٱلزَّلْزَلَةِ",
+    english: "Az-Zalzalah",
+    arti: "Guncangan",
+    type: "Madaniyah",
+    ayahs: 8,
+  },
+  {
+    num: 100,
+    name: "سُورَةُ ٱلْعَادِيَاتِ",
+    english: "Al-'Adiyat",
+    arti: "Kuda yang Berlari Kencang",
+    type: "Makkiyah",
+    ayahs: 11,
+  },
+  {
+    num: 101,
+    name: "سُورَةُ ٱلْقَارِعَةِ",
+    english: "Al-Qari'ah",
+    arti: "Hari Kiamat",
+    type: "Makkiyah",
+    ayahs: 11,
+  },
+  {
+    num: 102,
+    name: "سُورَةُ ٱلتَّكَاثُرِ",
+    english: "At-Takasur",
+    arti: "Bermegah-Megahan",
+    type: "Makkiyah",
+    ayahs: 8,
+  },
+  {
+    num: 103,
+    name: "سُورَةُ ٱلْعَصْرِ",
+    english: "Al-'Asr",
+    arti: "Asar",
+    type: "Makkiyah",
+    ayahs: 3,
+  },
+  {
+    num: 104,
+    name: "سُورَةُ ٱلْهُمَزَةِ",
+    english: "Al-Humazah",
+    arti: "Pengumpat",
+    type: "Makkiyah",
+    ayahs: 9,
+  },
+  {
+    num: 105,
+    name: "سُورَةُ ٱلْفِيلِ",
+    english: "Al-Fil",
+    arti: "Gajah",
+    type: "Makkiyah",
+    ayahs: 5,
+  },
+  {
+    num: 106,
+    name: "سُورَةُ قُرَيْشٍ",
+    english: "Quraisy",
+    arti: "Quraisy",
+    type: "Makkiyah",
+    ayahs: 4,
+  },
+  {
+    num: 107,
+    name: "سُورَةُ ٱلْمَاعُونِ",
+    english: "Al-Ma'un",
+    arti: "Bantuan",
+    type: "Makkiyah",
+    ayahs: 7,
+  },
+  {
+    num: 108,
+    name: "سُورَةُ ٱلْكَوْثَرِ",
+    english: "Al-Kausar",
+    arti: "Nikmat yang Banyak",
+    type: "Makkiyah",
+    ayahs: 3,
+  },
+  {
+    num: 109,
+    name: "سُورَةُ ٱلْكَافِرِينَ",
+    english: "Al-Kafirun",
+    arti: "Orang-Orang Kafir",
+    type: "Makkiyah",
+    ayahs: 6,
+  },
+  {
+    num: 110,
+    name: "سُورَةُ ٱلنَّصْرِ",
+    english: "An-Nasr",
+    arti: "Pertolongan",
+    type: "Madaniyah",
+    ayahs: 3,
+  },
+  {
+    num: 111,
+    name: "سُورَةُ ٱلْمَسَدِ",
+    english: "Al-Masad",
+    arti: "Sabut",
+    type: "Makkiyah",
+    ayahs: 5,
+  },
+  {
+    num: 112,
+    name: "سُورَةُ ٱلْإِخْلَاصِ",
+    english: "Al-Ikhlas",
+    arti: "Ikhlas",
+    type: "Makkiyah",
+    ayahs: 4,
+  },
+  {
+    num: 113,
+    name: "سُورَةُ ٱلْفَلَقِ",
+    english: "Al-Falaq",
+    arti: "Waktu Subuh",
+    type: "Makkiyah",
+    ayahs: 5,
+  },
+  {
+    num: 114,
+    name: "سُورَةُ ٱلنَّاسِ",
+    english: "An-Nas",
+    arti: "Manusia",
+    type: "Makkiyah",
+    ayahs: 6,
+  },
 ];
-
-
 
 // Juz → starting surah number (approximate, for display in index)
 const JUZ_START_SURAH: Record<number, number> = {
-  1:1,2:2,3:2,4:3,5:4,6:4,7:5,8:6,9:7,10:8,11:9,12:11,13:12,14:15,15:17,
-  16:18,17:21,18:23,19:25,20:27,21:29,22:33,23:36,24:39,25:41,26:46,27:51,
-  28:58,29:67,30:78,
+  1: 1,
+  2: 2,
+  3: 2,
+  4: 3,
+  5: 4,
+  6: 4,
+  7: 5,
+  8: 6,
+  9: 7,
+  10: 8,
+  11: 9,
+  12: 11,
+  13: 12,
+  14: 15,
+  15: 17,
+  16: 18,
+  17: 21,
+  18: 23,
+  19: 25,
+  20: 27,
+  21: 29,
+  22: 33,
+  23: 36,
+  24: 39,
+  25: 41,
+  26: 46,
+  27: 51,
+  28: 58,
+  29: 67,
+  30: 78,
 };
 
 const READ_TRACK_DELAY_MS = 2000;
@@ -391,11 +1335,15 @@ export default function MushafView({ initialPage = 0 }: Props) {
   const navigation = useNavigation();
   const insets = useSafeAreaInsets();
   const { userData } = useAuthContext();
-  const updateReadingPosition = useMutation(api.mushafProgress.updateReadingPosition);
-  const finishReadingSession = useMutation(api.mushafProgress.finishReadingSession);
+  const updateReadingPosition = useMutation(
+    api.mushafProgress.updateReadingPosition,
+  );
+  const finishReadingSession = useMutation(
+    api.mushafProgress.finishReadingSession,
+  );
   const savedPosition = useQuery(
     api.mushafProgress.getReadingPosition,
-    userData?._id ? { userId: userData._id } : "skip"
+    userData?._id ? { userId: userData._id } : "skip",
   );
   // Whether the user has agreed to track this reading session — asked once
   // per Mushaf visit via readingConsentVisible. Pages visited during the
@@ -406,7 +1354,10 @@ export default function MushafView({ initialPage = 0 }: Props) {
   const [readingConsentVisible, setReadingConsentVisible] = useState(false);
   const hasPromptedRef = useRef(false);
   const sessionPagesRef = useRef(
-    new Map<number, { page: number; surahNumber: number; surahName: string; juz: number }>()
+    new Map<
+      number,
+      { page: number; surahNumber: number; surahName: string; juz: number }
+    >(),
   );
   const [finishConfirmVisible, setFinishConfirmVisible] = useState(false);
   const pendingNavActionRef = useRef<any>(null);
@@ -414,7 +1365,7 @@ export default function MushafView({ initialPage = 0 }: Props) {
   const { width: windowWidth, height: windowHeight } = useWindowDimensions();
   const isDesktop = Platform.OS === "web" && windowWidth >= DESKTOP_BREAKPOINT;
   const [page, setPage] = useState(
-    Math.max(COVER_PAGE, Math.min(TOTAL_PAGES, initialPage))
+    Math.max(COVER_PAGE, Math.min(TOTAL_PAGES, initialPage)),
   );
   const isCover = page === COVER_PAGE;
   const [data, setData] = useState<PageData | null>(null);
@@ -453,9 +1404,7 @@ export default function MushafView({ initialPage = 0 }: Props) {
   const [audioSettingsVisible, setAudioSettingsVisible] = useState(false);
 
   // Ayah context menu
-  const [selectedAyah, setSelectedAyah] = useState<SelectedAyah | null>(
-    null
-  );
+  const [selectedAyah, setSelectedAyah] = useState<SelectedAyah | null>(null);
   const [menuVisible, setMenuVisible] = useState(false);
 
   // Translation / Tafsir
@@ -467,7 +1416,9 @@ export default function MushafView({ initialPage = 0 }: Props) {
   const [infoAyahLabel, setInfoAyahLabel] = useState("");
 
   // Desktop side panel translations
-  const [pageTranslations, setPageTranslations] = useState<PageTranslation[]>([]);
+  const [pageTranslations, setPageTranslations] = useState<PageTranslation[]>(
+    [],
+  );
   const [translationsLoading, setTranslationsLoading] = useState(false);
 
   // Desktop panel visibility
@@ -487,7 +1438,7 @@ export default function MushafView({ initialPage = 0 }: Props) {
     let mounted = true;
     Audio.Sound.createAsync(
       require("../assets/sounds/floraphonic-newspaper.mp3"),
-      { volume: 0.55 }
+      { volume: 0.55 },
     )
       .then(({ sound }) => {
         if (mounted) pageTurnSoundRef.current = sound;
@@ -543,7 +1494,7 @@ export default function MushafView({ initialPage = 0 }: Props) {
         if (finished) setTurningPage(null);
       });
     },
-    [page, swipeX, turnX, playPageTurnSound]
+    [page, swipeX, turnX, playPageTurnSound],
   );
 
   // Fade transition for non-adjacent jumps (juz/surah index, slider,
@@ -570,8 +1521,40 @@ export default function MushafView({ initialPage = 0 }: Props) {
         }).start();
       });
     },
-    [page, pageFade, playPageTurnSound]
+    [page, pageFade, playPageTurnSound],
   );
+
+  // ===== Keyboard Navigation (Web/Desktop) =====
+  useEffect(() => {
+    if (Platform.OS !== "web") return;
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // Prevent navigation if typing in an input (e.g., search bar)
+      if (
+        e.target instanceof HTMLInputElement ||
+        e.target instanceof HTMLTextAreaElement
+      ) {
+        return;
+      }
+
+      if (e.key === "ArrowLeft") {
+        // Left Arrow -> Next Page (RTL flow)
+        if (page < TOTAL_PAGES) {
+          animateToPage(page + 1, 1);
+        }
+      } else if (e.key === "ArrowRight") {
+        // Right Arrow -> Prev Page (RTL flow)
+        if (page > COVER_PAGE) {
+          animateToPage(page - 1, -1);
+        }
+      }
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => {
+      window.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [page, animateToPage]);
 
   const panResponder = useMemo(
     () =>
@@ -620,7 +1603,7 @@ export default function MushafView({ initialPage = 0 }: Props) {
           });
         },
       }),
-    [animateToPage, page, swipeX]
+    [animateToPage, page, swipeX],
   );
 
   // ===== Bookmarks persistence =====
@@ -661,7 +1644,8 @@ export default function MushafView({ initialPage = 0 }: Props) {
   // Ask once per visit whether to auto-track this session, offering to
   // resume from the last known reading position if one exists.
   useEffect(() => {
-    if (!userData?._id || savedPosition === undefined || hasPromptedRef.current) return;
+    if (!userData?._id || savedPosition === undefined || hasPromptedRef.current)
+      return;
     hasPromptedRef.current = true;
     setReadingConsentVisible(true);
   }, [userData?._id, savedPosition]);
@@ -687,7 +1671,11 @@ export default function MushafView({ initialPage = 0 }: Props) {
   // written to Tilawah Harian.
   useEffect(() => {
     const unsubscribe = navigation.addListener("beforeRemove", (e: any) => {
-      if (!trackingConsent || sessionPagesRef.current.size === 0 || sessionSavedRef.current) {
+      if (
+        !trackingConsent ||
+        sessionPagesRef.current.size === 0 ||
+        sessionSavedRef.current
+      ) {
         return;
       }
       e.preventDefault();
@@ -710,7 +1698,11 @@ export default function MushafView({ initialPage = 0 }: Props) {
     if (userData?._id && sessionPagesRef.current.size > 0) {
       const pages = Array.from(sessionPagesRef.current.values());
       try {
-        await finishReadingSession({ userId: userData._id, tanggal: todayISO(), pages });
+        await finishReadingSession({
+          userId: userData._id,
+          tanggal: todayISO(),
+          pages,
+        });
       } catch {}
     }
     sessionPagesRef.current.clear();
@@ -756,45 +1748,51 @@ export default function MushafView({ initialPage = 0 }: Props) {
   /** Fetch (or return cached) word-level data for a page. Shared by the
    * current-page loader, adjacent-page preloader, and the neighbor-line-info
    * lookup used to detect surah headers pushed onto the previous page. */
-  const fetchWordsForPage = useCallback(async (p: number): Promise<MushafWord[]> => {
-    if (p < 1 || p > TOTAL_PAGES) return [];
-    if (wordsCache.current[p]) return wordsCache.current[p];
-    try {
-      const resp = await fetch(
-        `https://api.quran.com/api/v4/verses/by_page/${p}?words=true&word_fields=text_uthmani,line_number,char_type_name&per_page=50`
-      );
-      const json = await resp.json();
-      if (!json.verses) return [];
-      const words: MushafWord[] = [];
-      for (const verse of json.verses) {
-        const parts = verse.verse_key.split(':');
-        const sNum = parseInt(parts[0]);
-        const vNum = parseInt(parts[1]);
-        for (const w of verse.words) {
-          if (w.char_type_name === 'word' || w.char_type_name === 'end') {
-            words.push({
-              id: w.id,
-              charType: w.char_type_name as 'word' | 'end',
-              textUthmani: w.text_uthmani,
-              lineNumber: w.line_number,
-              verseKey: verse.verse_key,
-              surahNumber: sNum,
-              verseNumber: vNum,
-            });
+  const fetchWordsForPage = useCallback(
+    async (p: number): Promise<MushafWord[]> => {
+      if (p < 1 || p > TOTAL_PAGES) return [];
+      if (wordsCache.current[p]) return wordsCache.current[p];
+      try {
+        const resp = await fetch(
+          `https://api.quran.com/api/v4/verses/by_page/${p}?words=true&word_fields=text_uthmani,line_number,char_type_name&per_page=50`,
+        );
+        const json = await resp.json();
+        if (!json.verses) return [];
+        const words: MushafWord[] = [];
+        for (const verse of json.verses) {
+          const parts = verse.verse_key.split(":");
+          const sNum = parseInt(parts[0]);
+          const vNum = parseInt(parts[1]);
+          for (const w of verse.words) {
+            if (w.char_type_name === "word" || w.char_type_name === "end") {
+              words.push({
+                id: w.id,
+                charType: w.char_type_name as "word" | "end",
+                textUthmani: w.text_uthmani,
+                lineNumber: w.line_number,
+                verseKey: verse.verse_key,
+                surahNumber: sNum,
+                verseNumber: vNum,
+              });
+            }
           }
         }
+        wordsCache.current[p] = words;
+        return words;
+      } catch {
+        return [];
       }
-      wordsCache.current[p] = words;
-      return words;
-    } catch {
-      return [];
-    }
-  }, []);
+    },
+    [],
+  );
 
   /** Pre-cache word data for adjacent pages so transitions feel instant */
-  const preloadWords = useCallback(async (p: number) => {
-    await fetchWordsForPage(p);
-  }, [fetchWordsForPage]);
+  const preloadWords = useCallback(
+    async (p: number) => {
+      await fetchWordsForPage(p);
+    },
+    [fetchWordsForPage],
+  );
 
   useEffect(() => {
     if (page >= 1) load(page);
@@ -826,7 +1824,10 @@ export default function MushafView({ initialPage = 0 }: Props) {
 
   // Fetch word-level data from quran.com API for exact mushaf line breaks
   useEffect(() => {
-    if (page < 1) { setPageWords([]); return; }
+    if (page < 1) {
+      setPageWords([]);
+      return;
+    }
     if (wordsCache.current[page]) {
       setPageWords(wordsCache.current[page]);
       setWordsLoading(false);
@@ -854,7 +1855,14 @@ export default function MushafView({ initialPage = 0 }: Props) {
   }>({ prevMaxLine: null, nextMinLine: null, nextFirstSurah: null });
 
   useEffect(() => {
-    if (page < 1) { setNeighborLineInfo({ prevMaxLine: null, nextMinLine: null, nextFirstSurah: null }); return; }
+    if (page < 1) {
+      setNeighborLineInfo({
+        prevMaxLine: null,
+        nextMinLine: null,
+        nextFirstSurah: null,
+      });
+      return;
+    }
     let cancelled = false;
     (async () => {
       const [prevWords, nextWords] = await Promise.all([
@@ -863,18 +1871,33 @@ export default function MushafView({ initialPage = 0 }: Props) {
       ]);
       if (cancelled) return;
       setNeighborLineInfo({
-        prevMaxLine: prevWords.length ? Math.max(...prevWords.map((w) => w.lineNumber)) : null,
-        nextMinLine: nextWords.length ? Math.min(...nextWords.map((w) => w.lineNumber)) : null,
+        prevMaxLine: prevWords.length
+          ? Math.max(...prevWords.map((w) => w.lineNumber))
+          : null,
+        nextMinLine: nextWords.length
+          ? Math.min(...nextWords.map((w) => w.lineNumber))
+          : null,
         nextFirstSurah: nextWords.length ? nextWords[0].surahNumber : null,
       });
     })();
-    return () => { cancelled = true; };
+    return () => {
+      cancelled = true;
+    };
   }, [page, fetchWordsForPage]);
 
   useEffect(() => {
-    if (page >= 1 && page > 1) { preload(page - 1); preloadWords(page - 1); }
-    if (page < TOTAL_PAGES) { preload(page + 1); preloadWords(page + 1); }
-    if (page === COVER_PAGE) { preload(1); preloadWords(1); }
+    if (page >= 1 && page > 1) {
+      preload(page - 1);
+      preloadWords(page - 1);
+    }
+    if (page < TOTAL_PAGES) {
+      preload(page + 1);
+      preloadWords(page + 1);
+    }
+    if (page === COVER_PAGE) {
+      preload(1);
+      preloadWords(1);
+    }
   }, [page, preload, preloadWords]);
 
   // Keep repeatCountRef in sync
@@ -898,7 +1921,9 @@ export default function MushafView({ initialPage = 0 }: Props) {
   const PAGE_CHROME_W = 30; // pageOuter + pageBorder + pageContent horizontal padding/border
   const mushafContentWidthPx = useMemo(() => {
     const effectiveWidth =
-      Platform.OS === "web" ? Math.min(windowWidth, WEB_MAX_WIDTH) : windowWidth;
+      Platform.OS === "web"
+        ? Math.min(windowWidth, WEB_MAX_WIDTH)
+        : windowWidth;
     return effectiveWidth - PAGE_CHROME_W;
   }, [windowWidth]);
 
@@ -916,8 +1941,9 @@ export default function MushafView({ initialPage = 0 }: Props) {
       (insets.top || TOP_INSET) +
       58 + // clearance for floating top row
       (insets.bottom || 0) +
-      FLOATING_TOOLBAR_H + 24 + // clearance for floating bottom toolbar
-      52;  // page header inside border
+      FLOATING_TOOLBAR_H +
+      24 + // clearance for floating bottom toolbar
+      52; // page header inside border
     const availH = windowHeight - reservedH;
     const lineH = availH / 15;
     const heightBasedSize = Math.min(Math.max(lineH * 0.54, 16), 26);
@@ -933,13 +1959,17 @@ export default function MushafView({ initialPage = 0 }: Props) {
     const contentWidth = mushafContentWidthPx;
     const widthBasedCeiling = (contentWidth * 20) / 392;
 
-    return Math.round(Math.min(heightBasedSize, Math.max(widthBasedCeiling, 12)));
+    return Math.round(
+      Math.min(heightBasedSize, Math.max(widthBasedCeiling, 12)),
+    );
   }, [isDesktop, windowHeight, windowWidth, insets]);
 
   // Offscreen canvas for measuring exact rendered line widths on web, where
   // RN's adjustsFontSizeToFit/numberOfLines safety net (see below) doesn't
   // exist. Lazily created once.
-  const measureCtxRef = useRef<CanvasRenderingContext2D | null | undefined>(undefined);
+  const measureCtxRef = useRef<CanvasRenderingContext2D | null | undefined>(
+    undefined,
+  );
   const getMeasureCtx = () => {
     if (measureCtxRef.current !== undefined) return measureCtxRef.current;
     if (Platform.OS !== "web" || typeof document === "undefined") {
@@ -962,47 +1992,54 @@ export default function MushafView({ initialPage = 0 }: Props) {
    * canvas (same font/size actually used) and shrink only the lines that
    * would overflow — same floor (0.55) as the native safety net.
    */
-  const computeLineFontScale = useCallback((words: MushafWord[]) => {
-    const map = new Map<number, number>();
-    if (Platform.OS !== "web" || words.length === 0) return map;
-    const ctx = getMeasureCtx();
-    if (!ctx) return map;
+  const computeLineFontScale = useCallback(
+    (words: MushafWord[]) => {
+      const map = new Map<number, number>();
+      if (Platform.OS !== "web" || words.length === 0) return map;
+      const ctx = getMeasureCtx();
+      if (!ctx) return map;
 
-    const lineMap = new Map<number, MushafWord[]>();
-    for (const w of words) {
-      const arr = lineMap.get(w.lineNumber) ?? [];
-      arr.push(w);
-      lineMap.set(w.lineNumber, arr);
-    }
+      const lineMap = new Map<number, MushafWord[]>();
+      for (const w of words) {
+        const arr = lineMap.get(w.lineNumber) ?? [];
+        arr.push(w);
+        lineMap.set(w.lineNumber, arr);
+      }
 
-    for (const [lineNum, lineWords] of lineMap) {
-      let total = 0;
-      ctx.font = `${mushafFontSize}px AmiriQuran`;
-      for (let i = 0; i < lineWords.length; i++) {
-        const w = lineWords[i];
-        const isLast = i === lineWords.length - 1;
-        const nextIsEnd = !isLast && lineWords[i + 1].charType === "end";
-        if (w.charType === "end") {
-          ctx.font = `600 ${Math.round(mushafFontSize * 0.35)}px AmiriQuran`;
-          total += ctx.measureText(` ﴿${toArabicNumeral(w.verseNumber)}﴾ `).width;
-          ctx.font = `${mushafFontSize}px AmiriQuran`;
-        } else {
-          total += ctx.measureText(w.textUthmani + (!isLast && !nextIsEnd ? " " : "")).width;
+      for (const [lineNum, lineWords] of lineMap) {
+        let total = 0;
+        ctx.font = `${mushafFontSize}px AmiriQuran`;
+        for (let i = 0; i < lineWords.length; i++) {
+          const w = lineWords[i];
+          const isLast = i === lineWords.length - 1;
+          const nextIsEnd = !isLast && lineWords[i + 1].charType === "end";
+          if (w.charType === "end") {
+            ctx.font = `600 ${Math.round(mushafFontSize * 0.35)}px AmiriQuran`;
+            total += ctx.measureText(
+              ` ﴿${toArabicNumeral(w.verseNumber)}﴾ `,
+            ).width;
+            ctx.font = `${mushafFontSize}px AmiriQuran`;
+          } else {
+            total += ctx.measureText(
+              w.textUthmani + (!isLast && !nextIsEnd ? " " : ""),
+            ).width;
+          }
+        }
+        // Small safety margin: canvas text shaping can slightly underestimate
+        // RN's native text engine for complex Arabic ligatures.
+        const measured = total * 1.04;
+        if (measured > mushafContentWidthPx) {
+          map.set(lineNum, Math.max(mushafContentWidthPx / measured, 0.55));
         }
       }
-      // Small safety margin: canvas text shaping can slightly underestimate
-      // RN's native text engine for complex Arabic ligatures.
-      const measured = total * 1.04;
-      if (measured > mushafContentWidthPx) {
-        map.set(lineNum, Math.max(mushafContentWidthPx / measured, 0.55));
-      }
-    }
-    return map;
-  }, [mushafFontSize, mushafContentWidthPx]);
+      return map;
+    },
+    [mushafFontSize, mushafContentWidthPx],
+  );
 
   const lineFontScale = useMemo(
     () => computeLineFontScale(pageWords),
-    [pageWords, computeLineFontScale]
+    [pageWords, computeLineFontScale],
   );
 
   // Fetch page-level translations for desktop side panel
@@ -1020,18 +2057,23 @@ export default function MushafView({ initialPage = 0 }: Props) {
     (async () => {
       try {
         const resp = await fetch(
-          `${QURAN_API_BASE}/page/${page}/${QURAN_EDITION_TRANSLATION}`
+          `${QURAN_API_BASE}/page/${page}/${QURAN_EDITION_TRANSLATION}`,
         );
         const json = await resp.json();
         if (json.code === 200 && json.data?.ayahs) {
           const translations: PageTranslation[] = json.data.ayahs.map(
-            (a: { number: number; text: string; surah: { number: number; name: string }; numberInSurah: number }) => ({
+            (a: {
+              number: number;
+              text: string;
+              surah: { number: number; name: string };
+              numberInSurah: number;
+            }) => ({
               number: a.number,
               surahNumber: a.surah.number,
               surahName: a.surah.name,
               numberInSurah: a.numberInSurah,
               text: a.text,
-            })
+            }),
           );
           translationCache.current[page] = translations;
           setPageTranslations(translations);
@@ -1052,13 +2094,11 @@ export default function MushafView({ initialPage = 0 }: Props) {
     (async () => {
       try {
         const resp = await fetch(
-          `${QURAN_API_BASE}/page/${page}/${audioEdition}`
+          `${QURAN_API_BASE}/page/${page}/${audioEdition}`,
         );
         const json = await resp.json();
         if (json.code === 200 && json.data?.ayahs) {
-          setAudioUrls(
-            json.data.ayahs.map((a: { audio: string }) => a.audio)
-          );
+          setAudioUrls(json.data.ayahs.map((a: { audio: string }) => a.audio));
         }
       } catch {}
     })();
@@ -1113,7 +2153,7 @@ export default function MushafView({ initialPage = 0 }: Props) {
     try {
       const { sound } = await Audio.Sound.createAsync(
         { uri: audioUrls[idx] },
-        { shouldPlay: true }
+        { shouldPlay: true },
       );
       soundRef.current = sound;
       setAudioLoading(false);
@@ -1207,10 +2247,7 @@ export default function MushafView({ initialPage = 0 }: Props) {
     // We bookmark the page with the ayah info
     const existing = bookmarks.find((b) => b.page === page);
     if (!existing) {
-      saveBookmarks([
-        ...bookmarks,
-        { page, surahName, timestamp: Date.now() },
-      ]);
+      saveBookmarks([...bookmarks, { page, surahName, timestamp: Date.now() }]);
     }
     closeMenu();
   };
@@ -1218,16 +2255,14 @@ export default function MushafView({ initialPage = 0 }: Props) {
   const handleShowTranslation = async () => {
     if (!selectedAyah) return;
     const a = selectedAyah.ayah;
-    setInfoAyahLabel(
-      `${a.surah.englishName} : ${a.numberInSurah}`
-    );
+    setInfoAyahLabel(`${a.surah.englishName} : ${a.numberInSurah}`);
     closeMenu();
     setTranslationText("");
     setTranslationVisible(true);
     setInfoLoading(true);
     try {
       const resp = await fetch(
-        `${QURAN_API_BASE}/ayah/${a.number}/${QURAN_EDITION_TRANSLATION}`
+        `${QURAN_API_BASE}/ayah/${a.number}/${QURAN_EDITION_TRANSLATION}`,
       );
       const json = await resp.json();
       if (json.code === 200 && json.data?.text) {
@@ -1245,16 +2280,14 @@ export default function MushafView({ initialPage = 0 }: Props) {
   const handleShowTafsir = async () => {
     if (!selectedAyah) return;
     const a = selectedAyah.ayah;
-    setInfoAyahLabel(
-      `${a.surah.englishName} : ${a.numberInSurah}`
-    );
+    setInfoAyahLabel(`${a.surah.englishName} : ${a.numberInSurah}`);
     closeMenu();
     setTafsirText("");
     setTafsirVisible(true);
     setInfoLoading(true);
     try {
       const resp = await fetch(
-        `${QURAN_API_BASE}/ayah/${a.number}/${TAFSIR_EDITION}`
+        `${QURAN_API_BASE}/ayah/${a.number}/${TAFSIR_EDITION}`,
       );
       const json = await resp.json();
       if (json.code === 200 && json.data?.text) {
@@ -1296,7 +2329,7 @@ export default function MushafView({ initialPage = 0 }: Props) {
     pg: number,
     words: MushafWord[],
     pgData: PageData | null,
-    interactive: boolean
+    interactive: boolean,
   ) => {
     if (interactive && wordsLoading && words.length === 0) {
       return (
@@ -1331,7 +2364,8 @@ export default function MushafView({ initialPage = 0 }: Props) {
     // Only the FIRST surah in surahsAtTop gets rendered at the very top of the page
     // (when minLine > 1, meaning lines 1-2 are reserved for surah header + bismillah).
     // All other surah changes within the page are mid-page transitions.
-    const topRenderedSurah = surahsAtTop.length > 0 && minLine > 1 ? surahsAtTop[0] : -1;
+    const topRenderedSurah =
+      surahsAtTop.length > 0 && minLine > 1 ? surahsAtTop[0] : -1;
 
     const content: React.ReactNode[] = [];
 
@@ -1346,7 +2380,7 @@ export default function MushafView({ initialPage = 0 }: Props) {
         <Text style={s.mushafPageHeaderSurah} numberOfLines={1}>
           {pgData?.ayahs[0]?.surah.name ?? ""}
         </Text>
-      </View>
+      </View>,
     );
     content.push(<View key="pg-hdr-line" style={s.mushafPageHeaderLine} />);
 
@@ -1368,14 +2402,21 @@ export default function MushafView({ initialPage = 0 }: Props) {
           nInfo.prevMaxLine === MUSHAF_LINES_PER_PAGE - 1;
         if (!bannerPushedToPrevPage) {
           content.push(
-            <SurahHeaderBanner key="top-surah-hdr" name={sInfo.name} fontSize={mushafFontSize} />
+            <SurahHeaderBanner
+              key="top-surah-hdr"
+              name={sInfo.name}
+              fontSize={mushafFontSize}
+            />,
           );
         }
         if (needsBismillah) {
           content.push(
-            <Text key="top-bismillah" style={[s.bismillah, {fontSize: mushafFontSize}]}>
+            <Text
+              key="top-bismillah"
+              style={[s.bismillah, { fontSize: mushafFontSize }]}
+            >
               بِسْمِ ٱللَّهِ ٱلرَّحْمَـٰنِ ٱلرَّحِيمِ
-            </Text>
+            </Text>,
           );
         }
       }
@@ -1392,7 +2433,10 @@ export default function MushafView({ initialPage = 0 }: Props) {
       // Compare against topRenderedSurah (not all surahsAtTop) so pages with
       // multiple short surahs (e.g. page 604: Al-Ikhlas, Al-Falaq, An-Nas)
       // correctly get headers for the 2nd and 3rd surahs.
-      if (firstWordSurah !== prevSurahNum && firstWordSurah !== topRenderedSurah) {
+      if (
+        firstWordSurah !== prevSurahNum &&
+        firstWordSurah !== topRenderedSurah
+      ) {
         const sInfo = SURAH_META.find((sm) => sm.num === firstWordSurah);
         if (sInfo) {
           content.push(
@@ -1400,13 +2444,16 @@ export default function MushafView({ initialPage = 0 }: Props) {
               key={`mid-surah-${firstWordSurah}`}
               name={sInfo.name}
               fontSize={mushafFontSize}
-            />
+            />,
           );
           if (firstWordSurah !== 1 && firstWordSurah !== 9) {
             content.push(
-              <Text key={`mid-bismillah-${firstWordSurah}`} style={[s.bismillah, {fontSize: mushafFontSize}]}>
+              <Text
+                key={`mid-bismillah-${firstWordSurah}`}
+                style={[s.bismillah, { fontSize: mushafFontSize }]}
+              >
                 بِسْمِ ٱللَّهِ ٱلرَّحْمَـٰنِ ٱلرَّحِيمِ
-              </Text>
+              </Text>,
             );
           }
         }
@@ -1417,7 +2464,9 @@ export default function MushafView({ initialPage = 0 }: Props) {
       const isActiveLine =
         interactive &&
         playingAyahIdx !== null &&
-        lineWords.some((w) => verseKeyToAyahIdx.get(w.verseKey) === playingAyahIdx);
+        lineWords.some(
+          (w) => verseKeyToAyahIdx.get(w.verseKey) === playingAyahIdx,
+        );
 
       // Shrink only the lines that actually need it (see lineFontScale above
       // for why — web measures exactly, native falls back to
@@ -1436,7 +2485,11 @@ export default function MushafView({ initialPage = 0 }: Props) {
           // numberOfLines alone would truncate (hide) ayah text instead.
           // Web instead uses the canvas-measured lineFontScale above.
           {...(Platform.OS !== "web"
-            ? { numberOfLines: 1, adjustsFontSizeToFit: true, minimumFontScale: 0.55 }
+            ? {
+                numberOfLines: 1,
+                adjustsFontSizeToFit: true,
+                minimumFontScale: 0.55,
+              }
             : {})}
           style={[
             s.mushafLineText,
@@ -1475,7 +2528,9 @@ export default function MushafView({ initialPage = 0 }: Props) {
                       : undefined
                   }
                 >
-                  {" ﴿"}{toArabicNumeral(w.verseNumber)}{"﴾ "}
+                  {" ﴿"}
+                  {toArabicNumeral(w.verseNumber)}
+                  {"﴾ "}
                 </Text>
               );
             }
@@ -1486,7 +2541,10 @@ export default function MushafView({ initialPage = 0 }: Props) {
                 style={[
                   s.mushafLineWord,
                   isActive && s.mushafWordActive,
-                  showTajwid && { color: colorizeArabicText(w.textUthmani)[0]?.color ?? M.text },
+                  showTajwid && {
+                    color:
+                      colorizeArabicText(w.textUthmani)[0]?.color ?? M.text,
+                  },
                 ]}
                 onPress={
                   interactive
@@ -1503,7 +2561,7 @@ export default function MushafView({ initialPage = 0 }: Props) {
               </Text>
             );
           })}
-        </Text>
+        </Text>,
       );
     }
 
@@ -1531,7 +2589,7 @@ export default function MushafView({ initialPage = 0 }: Props) {
               key={`trailing-surah-hdr-${nextSurah}`}
               name={sInfo.name}
               fontSize={mushafFontSize}
-            />
+            />,
           );
         }
       }
@@ -1541,7 +2599,8 @@ export default function MushafView({ initialPage = 0 }: Props) {
   };
 
   /** The live, interactive page currently being read */
-  const renderMushafLines = () => renderMushafLinesFor(page, pageWords, data, true);
+  const renderMushafLines = () =>
+    renderMushafLinesFor(page, pageWords, data, true);
 
   /** Static, non-interactive copy of an arbitrary cached page — used for the
    * outgoing turning leaf and the neighbor revealed behind a drag. */
@@ -1550,7 +2609,7 @@ export default function MushafView({ initialPage = 0 }: Props) {
       pg,
       wordsCache.current[pg] ?? [],
       cache.current[pg] ?? null,
-      false
+      false,
     );
 
   // ===== Render desktop translation panel =====
@@ -1570,7 +2629,9 @@ export default function MushafView({ initialPage = 0 }: Props) {
           return (
             <View key={a.number} style={s.desktopTranslationAyah}>
               <View style={s.desktopTranslationNum}>
-                <Text style={s.desktopTranslationNumText}>{a.numberInSurah}</Text>
+                <Text style={s.desktopTranslationNumText}>
+                  {a.numberInSurah}
+                </Text>
               </View>
               <Text style={s.desktopTranslationText}>{t?.text ?? ""}</Text>
             </View>
@@ -1618,60 +2679,60 @@ export default function MushafView({ initialPage = 0 }: Props) {
         <View style={s.mushafPageHeaderLine} />
 
         {groups.map((g, gi) => (
-      <View key={`g-${gi}`}>
-        {g.startsNewSurah && (
-          <SurahHeaderBanner name={g.surahName} fontSize={mushafFontSize} />
-        )}
-        {g.startsNewSurah && g.surahNumber !== 9 && g.surahNumber !== 1 && (
-          <Text style={[s.bismillah, {fontSize: mushafFontSize}]}>
-            بِسْمِ ٱللَّهِ ٱلرَّحْمَـٰنِ ٱلرَّحِيمِ
-          </Text>
-        )}
+          <View key={`g-${gi}`}>
+            {g.startsNewSurah && (
+              <SurahHeaderBanner name={g.surahName} fontSize={mushafFontSize} />
+            )}
+            {g.startsNewSurah && g.surahNumber !== 9 && g.surahNumber !== 1 && (
+              <Text style={[s.bismillah, { fontSize: mushafFontSize }]}>
+                بِسْمِ ٱللَّهِ ٱلرَّحْمَـٰنِ ٱلرَّحِيمِ
+              </Text>
+            )}
 
-        <Text style={s.ayahText}>
-          {g.ayahs.map((a) => {
-            const idx = ayahCounter++;
-            // Strip bismillah prefix from first ayah (already rendered separately)
-            const rawText =
-              a.numberInSurah === 1 &&
-              g.surahNumber !== 1 &&
-              g.surahNumber !== 9
-                ? stripBismillah(a.text)
-                : a.text;
-            const segs = showTajwid
-              ? colorizeArabicText(rawText)
-              : [{ text: rawText, color: null }];
-            const isActive = playingAyahIdx === idx;
-            const showHizbMark = hizbBoundaries.has(a.number);
-            return (
-              <React.Fragment key={a.number}>
-                {/* {showHizbMark && (
+            <Text style={s.ayahText}>
+              {g.ayahs.map((a) => {
+                const idx = ayahCounter++;
+                // Strip bismillah prefix from first ayah (already rendered separately)
+                const rawText =
+                  a.numberInSurah === 1 &&
+                  g.surahNumber !== 1 &&
+                  g.surahNumber !== 9
+                    ? stripBismillah(a.text)
+                    : a.text;
+                const segs = showTajwid
+                  ? colorizeArabicText(rawText)
+                  : [{ text: rawText, color: null }];
+                const isActive = playingAyahIdx === idx;
+                const showHizbMark = hizbBoundaries.has(a.number);
+                return (
+                  <React.Fragment key={a.number}>
+                    {/* {showHizbMark && (
                   <Text style={s.hizbInline}>{" ۞ "}</Text>
                 )} */}
-                {segs.map((seg, si) => (
-                  <Text
-                    key={si}
-                    style={[
-                      seg.color ? { color: seg.color } : undefined,
-                      isActive && s.activeAyahText,
-                    ]}
-                    onPress={() => onAyahPress(a, idx)}
-                  >
-                    {seg.text}
-                  </Text>
-                ))}
-                <Text
-                  style={[s.marker, isActive && s.activeMarker]}
-                  onPress={() => onAyahPress(a, idx)}
-                >
-                  {" ﴿" + toArabicNumeral(a.numberInSurah) + "﴾ "}
-                </Text>
-              </React.Fragment>
-            );
-          })}
-        </Text>
-      </View>
-    ))}
+                    {segs.map((seg, si) => (
+                      <Text
+                        key={si}
+                        style={[
+                          seg.color ? { color: seg.color } : undefined,
+                          isActive && s.activeAyahText,
+                        ]}
+                        onPress={() => onAyahPress(a, idx)}
+                      >
+                        {seg.text}
+                      </Text>
+                    ))}
+                    <Text
+                      style={[s.marker, isActive && s.activeMarker]}
+                      onPress={() => onAyahPress(a, idx)}
+                    >
+                      {" ﴿" + toArabicNumeral(a.numberInSurah) + "﴾ "}
+                    </Text>
+                  </React.Fragment>
+                );
+              })}
+            </Text>
+          </View>
+        ))}
       </>
     );
   };
@@ -1729,9 +2790,7 @@ export default function MushafView({ initialPage = 0 }: Props) {
 
                     {/* Latin title */}
                     <Text style={s.coverLatinTitle}>Al-Quran Al-Karim</Text>
-                    <Text style={s.coverSubtitle}>
-                      Aplikasi Tahsin
-                    </Text>
+                    <Text style={s.coverSubtitle}>Aplikasi Tahsin</Text>
 
                     {/* Bottom ornament */}
                     <Text style={s.coverOrnamentBottom}>❁ ❁ ❁</Text>
@@ -1760,7 +2819,12 @@ export default function MushafView({ initialPage = 0 }: Props) {
           </View>
 
           {/* Minimal bottom bar for cover */}
-          <View style={[s.toolbar, { backgroundColor: "#1B5E20", paddingBottom: insets.bottom + 8 }]}>
+          <View
+            style={[
+              s.toolbar,
+              { backgroundColor: "#1B5E20", paddingBottom: insets.bottom + 8 },
+            ]}
+          >
             {/* <TouchableOpacity
               style={s.navBtn}
               onPress={() => setPage(1)}
@@ -1772,10 +2836,7 @@ export default function MushafView({ initialPage = 0 }: Props) {
                 Sampul
               </Text>
             </View>
-            <TouchableOpacity
-              style={s.backBtn}
-              onPress={() => router.back()}
-            >
+            <TouchableOpacity style={s.backBtn} onPress={() => router.back()}>
               <FontAwesome name="times" size={18} color="#E8F5E9" />
             </TouchableOpacity>
           </View>
@@ -1786,7 +2847,7 @@ export default function MushafView({ initialPage = 0 }: Props) {
               Placed top-left so it never sits under the reading thumb/swipe zone,
               and stays visible at all times (not tied to showBars) so the mushaf
               can always be closed. */}
-          {!isDesktop && (
+          {!isDesktop &&
             ""
             // <View
             //   pointerEvents="box-none"
@@ -1825,7 +2886,7 @@ export default function MushafView({ initialPage = 0 }: Props) {
             //     />
             //   </TouchableOpacity>
             // </View>
-          )}
+          }
 
           {/* Bookmark ribbon indicator — pushed below the floating top row on mobile */}
           {isBookmarked && (
@@ -1841,105 +2902,139 @@ export default function MushafView({ initialPage = 0 }: Props) {
           )}
 
           {/* Page content area — image loads immediately */}
-            <View style={isDesktop ? s.desktopLayout : { flex: 1 }}>
-              {/* Left: Translation Panel with toggle */}
-              {isDesktop && (
-                <View style={s.desktopLeftContainer}>
-                  {leftPanelOpen && (
-                    <ScrollView
-                      style={s.desktopTranslationPanel}
-                      contentContainerStyle={s.desktopTranslationContent}
-                      showsVerticalScrollIndicator={false}
-                    >
-                      <Text style={s.desktopTranslationTitle}>Terjemahan</Text>
-                      {translationsLoading ? (
-                        <View style={s.desktopTranslationLoading}>
-                          <ActivityIndicator size="small" color={M.border} />
-                        </View>
-                      ) : (
-                        renderTranslationPanel()
-                      )}
-                    </ScrollView>
-                  )}
-                  <TouchableOpacity
-                    style={s.desktopLeftToggle}
-                    onPress={() => setLeftPanelOpen((v) => !v)}
+          <View style={isDesktop ? s.desktopLayout : { flex: 1 }}>
+            {/* Left: Translation Panel with toggle */}
+            {isDesktop && (
+              <View style={s.desktopLeftContainer}>
+                {leftPanelOpen && (
+                  <ScrollView
+                    style={s.desktopTranslationPanel}
+                    contentContainerStyle={s.desktopTranslationContent}
+                    showsVerticalScrollIndicator={false}
                   >
-                    <FontAwesome
-                      name={leftPanelOpen ? "chevron-left" : "chevron-right"}
-                      size={11}
-                      color={M.toolbarText}
-                    />
-                  </TouchableOpacity>
-                </View>
-              )}
-
-              {/* Center: Mushaf Page */}
-              <Pressable
-                style={[
-                  s.pageOuter,
-                  isDesktop && s.desktopPageArea,
-                  !isDesktop && {
-                    // paddingTop: (insets.top || TOP_INSET) + 58,
-                    // paddingBottom: insets.bottom + FLOATING_TOOLBAR_H + 24,
-                    paddingTop: 10,
-                    paddingBottom: insets.bottom + FLOATING_TOOLBAR_H + 10,
-                  },
-                ]}
-                {...panResponder.panHandlers}
-              >
-                <View style={isDesktop ? s.desktopPageTurnStage : s.pageTurnStage}>
-                  <Animated.View
-                    pointerEvents="none"
-                    style={[
-                      s.pageTurnShadow,
-                      {
-                        opacity: Animated.add(swipeX, turnX).interpolate({
-                          inputRange: [-SCREEN_WIDTH, 0, SCREEN_WIDTH],
-                          outputRange: [0.25, 0, 0.25],
-                        }),
-                      },
-                    ]}
+                    <Text style={s.desktopTranslationTitle}>Terjemahan</Text>
+                    {translationsLoading ? (
+                      <View style={s.desktopTranslationLoading}>
+                        <ActivityIndicator size="small" color={M.border} />
+                      </View>
+                    ) : (
+                      renderTranslationPanel()
+                    )}
+                  </ScrollView>
+                )}
+                <TouchableOpacity
+                  style={s.desktopLeftToggle}
+                  onPress={() => setLeftPanelOpen((v) => !v)}
+                >
+                  <FontAwesome
+                    name={leftPanelOpen ? "chevron-left" : "chevron-right"}
+                    size={11}
+                    color={M.toolbarText}
                   />
+                </TouchableOpacity>
+              </View>
+            )}
 
-                  {/* Neighbor page revealed behind the current page while the
+            {/* Center: Mushaf Page */}
+            <Pressable
+              style={[
+                s.pageOuter,
+                isDesktop && s.desktopPageArea,
+                !isDesktop && {
+                  // paddingTop: (insets.top || TOP_INSET) + 58,
+                  // paddingBottom: insets.bottom + FLOATING_TOOLBAR_H + 24,
+                  paddingTop: 10,
+                  paddingBottom: insets.bottom + FLOATING_TOOLBAR_H + 10,
+                },
+              ]}
+              {...panResponder.panHandlers}
+            >
+              <View
+                style={isDesktop ? s.desktopPageTurnStage : s.pageTurnStage}
+              >
+                <Animated.View
+                  pointerEvents="none"
+                  style={[
+                    s.pageTurnShadow,
+                    {
+                      opacity: Animated.add(swipeX, turnX).interpolate({
+                        inputRange: [-SCREEN_WIDTH, 0, SCREEN_WIDTH],
+                        outputRange: [0.25, 0, 0.25],
+                      }),
+                    },
+                  ]}
+                />
+
+                {/* Neighbor page revealed behind the current page while the
                       finger drags it aside — laid out at its final position so
                       when the turn commits, nothing shifts. */}
-                  {dragRevealPage !== null && dragRevealPage !== page && (
-                    <View
-                      pointerEvents="none"
-                      style={[
-                        s.pageBorder,
-                        isDesktop && s.desktopPageBorder,
-                        s.pageLayerFill,
-                      ]}
-                    >
-                      <ScrollView
-                        contentContainerStyle={s.pageContent}
-                        scrollEnabled={false}
-                        showsVerticalScrollIndicator={false}
-                      >
-                        {renderStaticMushafPage(dragRevealPage)}
-                      </ScrollView>
-                    </View>
-                  )}
-
-                  {/* Live page. Moves only while the finger drags it (swipeX);
-                      after a turn commits it renders at rest — the incoming
-                      page never slides or settles. */}
-                  <Animated.View
+                {dragRevealPage !== null && dragRevealPage !== page && (
+                  <View
+                    pointerEvents="none"
                     style={[
                       s.pageBorder,
                       isDesktop && s.desktopPageBorder,
+                      s.pageLayerFill,
+                    ]}
+                  >
+                    <ScrollView
+                      contentContainerStyle={s.pageContent}
+                      scrollEnabled={false}
+                      showsVerticalScrollIndicator={false}
+                    >
+                      {renderStaticMushafPage(dragRevealPage)}
+                    </ScrollView>
+                  </View>
+                )}
+
+                {/* Live page. Moves only while the finger drags it (swipeX);
+                      after a turn commits it renders at rest — the incoming
+                      page never slides or settles. */}
+                <Animated.View
+                  style={[
+                    s.pageBorder,
+                    isDesktop && s.desktopPageBorder,
+                    {
+                      opacity: pageFade,
+                      transform: [
+                        { perspective: 1200 },
+                        { translateX: swipeX },
+                        {
+                          rotateY: swipeX.interpolate({
+                            inputRange: [-SCREEN_WIDTH, 0, SCREEN_WIDTH],
+                            outputRange: ["-14deg", "0deg", "14deg"],
+                          }),
+                        },
+                      ],
+                    },
+                  ]}
+                >
+                  <ScrollView
+                    contentContainerStyle={s.pageContent}
+                    showsVerticalScrollIndicator={false}
+                  >
+                    {renderMushafLines()}
+                  </ScrollView>
+                </Animated.View>
+
+                {/* Outgoing leaf: static copy of the page just left,
+                      turning away on top of the already-settled new page. */}
+                {turningPage !== null && turningPage >= 1 && (
+                  <Animated.View
+                    pointerEvents="none"
+                    style={[
+                      s.pageBorder,
+                      isDesktop && s.desktopPageBorder,
+                      s.pageLayerFill,
+                      s.turningLeaf,
                       {
-                        opacity: pageFade,
                         transform: [
                           { perspective: 1200 },
-                          { translateX: swipeX },
+                          { translateX: turnX },
                           {
-                            rotateY: swipeX.interpolate({
+                            rotateY: turnX.interpolate({
                               inputRange: [-SCREEN_WIDTH, 0, SCREEN_WIDTH],
-                              outputRange: ["-14deg", "0deg", "14deg"],
+                              outputRange: ["-16deg", "0deg", "16deg"],
                             }),
                           },
                         ],
@@ -1948,203 +3043,200 @@ export default function MushafView({ initialPage = 0 }: Props) {
                   >
                     <ScrollView
                       contentContainerStyle={s.pageContent}
+                      scrollEnabled={false}
                       showsVerticalScrollIndicator={false}
                     >
-                      {renderMushafLines()}
+                      {renderStaticMushafPage(turningPage)}
                     </ScrollView>
                   </Animated.View>
+                )}
+              </View>
+              {/* <Text style={s.swipeHint}>Geser kiri/kanan untuk pindah halaman</Text> */}
+            </Pressable>
 
-                  {/* Outgoing leaf: static copy of the page just left,
-                      turning away on top of the already-settled new page. */}
-                  {turningPage !== null && turningPage >= 1 && (
-                    <Animated.View
-                      pointerEvents="none"
-                      style={[
-                        s.pageBorder,
-                        isDesktop && s.desktopPageBorder,
-                        s.pageLayerFill,
-                        s.turningLeaf,
-                        {
-                          transform: [
-                            { perspective: 1200 },
-                            { translateX: turnX },
-                            {
-                              rotateY: turnX.interpolate({
-                                inputRange: [-SCREEN_WIDTH, 0, SCREEN_WIDTH],
-                                outputRange: ["-16deg", "0deg", "16deg"],
-                              }),
-                            },
-                          ],
-                        },
-                      ]}
-                    >
-                      <ScrollView
-                        contentContainerStyle={s.pageContent}
-                        scrollEnabled={false}
-                        showsVerticalScrollIndicator={false}
+            {/* Right: Sidebar with header + tools (desktop only) */}
+            {isDesktop && (
+              <View style={s.desktopRightContainer}>
+                <TouchableOpacity
+                  style={s.desktopRightToggle}
+                  onPress={() => setRightPanelOpen((v) => !v)}
+                >
+                  <FontAwesome
+                    name={rightPanelOpen ? "chevron-right" : "chevron-left"}
+                    size={11}
+                    color={M.toolbarText}
+                  />
+                </TouchableOpacity>
+                {rightPanelOpen && (
+                  <View style={s.desktopSidebar}>
+                    {/* Back + Info */}
+                    <View style={s.desktopSidebarTop}>
+                      <TouchableOpacity
+                        style={s.desktopSidebarBackBtn}
+                        onPress={() => router.push("/")}
                       >
-                        {renderStaticMushafPage(turningPage)}
-                      </ScrollView>
-                    </Animated.View>
-                  )}
-                </View>
-                {/* <Text style={s.swipeHint}>Geser kiri/kanan untuk pindah halaman</Text> */}
-              </Pressable>
+                        <FontAwesome
+                          name="arrow-left"
+                          size={16}
+                          color={M.toolbarText}
+                        />
+                      </TouchableOpacity>
+                      <Text style={s.desktopSidebarSurah} numberOfLines={2}>
+                        {surahNames.join(" · ")}
+                      </Text>
+                      <Text style={s.desktopSidebarMeta}>
+                        Hal. {page} · Juz {juz}
+                        {hizbInfo ? ` · ${hizbInfo.label}` : ""}
+                      </Text>
+                      <TouchableOpacity
+                        style={[
+                          s.desktopSidebarBookmarkBtn,
+                          isBookmarked && {
+                            backgroundColor: M.bookmark + "25",
+                          },
+                        ]}
+                        onPress={toggleBookmark}
+                      >
+                        <FontAwesome
+                          name={isBookmarked ? "bookmark" : "bookmark-o"}
+                          size={14}
+                          color={M.bookmark}
+                        />
+                        <Text style={s.desktopSidebarBookmarkText}>
+                          {isBookmarked ? "Hapus Bookmark" : "Bookmark Halaman"}
+                        </Text>
+                      </TouchableOpacity>
+                    </View>
 
-              {/* Right: Sidebar with header + tools (desktop only) */}
-              {isDesktop && (
-                <View style={s.desktopRightContainer}>
-                  <TouchableOpacity
-                    style={s.desktopRightToggle}
-                    onPress={() => setRightPanelOpen((v) => !v)}
-                  >
-                    <FontAwesome
-                      name={rightPanelOpen ? "chevron-right" : "chevron-left"}
-                      size={11}
-                      color={M.toolbarText}
-                    />
-                  </TouchableOpacity>
-                  {rightPanelOpen && (
-                    <View style={s.desktopSidebar}>
-                      {/* Back + Info */}
-                      <View style={s.desktopSidebarTop}>
-                        <TouchableOpacity
-                          style={s.desktopSidebarBackBtn}
-                          onPress={() => router.push("/")}
-                        >
-                          <FontAwesome name="arrow-left" size={16} color={M.toolbarText} />
-                        </TouchableOpacity>
-                        <Text style={s.desktopSidebarSurah} numberOfLines={2}>
-                          {surahNames.join(" · ")}
-                        </Text>
-                        <Text style={s.desktopSidebarMeta}>
-                          Hal. {page} · Juz {juz}
-                          {hizbInfo ? ` · ${hizbInfo.label}` : ""}
-                        </Text>
-                        <TouchableOpacity
-                          style={[
-                            s.desktopSidebarBookmarkBtn,
-                            isBookmarked && { backgroundColor: M.bookmark + "25" },
-                          ]}
-                          onPress={toggleBookmark}
-                        >
+                    {/* Audio status */}
+                    {(playingAyahIdx !== null || audioLoading) && (
+                      <View style={s.desktopSidebarAudioBar}>
+                        {audioLoading ? (
+                          <ActivityIndicator size="small" color="#fff" />
+                        ) : (
                           <FontAwesome
-                            name={isBookmarked ? "bookmark" : "bookmark-o"}
-                            size={14}
-                            color={M.bookmark}
+                            name="volume-up"
+                            size={13}
+                            color="#fff"
                           />
-                          <Text style={s.desktopSidebarBookmarkText}>
-                            {isBookmarked ? "Hapus Bookmark" : "Bookmark Halaman"}
-                          </Text>
+                        )}
+                        <Text
+                          style={s.desktopSidebarAudioText}
+                          numberOfLines={1}
+                        >
+                          {isPlayingAll
+                            ? `Ayat ${(playingAyahIdx ?? 0) + 1}/${audioUrls.length}`
+                            : `Ayat ${(playingAyahIdx ?? 0) + 1}`}
+                        </Text>
+                        <TouchableOpacity onPress={stopAudio}>
+                          <FontAwesome name="stop" size={12} color="#fff" />
                         </TouchableOpacity>
                       </View>
+                    )}
 
-                      {/* Audio status */}
-                      {(playingAyahIdx !== null || audioLoading) && (
-                        <View style={s.desktopSidebarAudioBar}>
-                          {audioLoading ? (
-                            <ActivityIndicator size="small" color="#fff" />
-                          ) : (
-                            <FontAwesome name="volume-up" size={13} color="#fff" />
-                          )}
-                          <Text style={s.desktopSidebarAudioText} numberOfLines={1}>
-                            {isPlayingAll
-                              ? `Ayat ${(playingAyahIdx ?? 0) + 1}/${audioUrls.length}`
-                              : `Ayat ${(playingAyahIdx ?? 0) + 1}`}
-                          </Text>
-                          <TouchableOpacity onPress={stopAudio}>
-                            <FontAwesome name="stop" size={12} color="#fff" />
-                          </TouchableOpacity>
+                    {/* Tool buttons */}
+                    <View style={s.desktopSidebarTools}>
+                      <Text style={s.desktopSidebarSection}>
+                        Navigasi & Alat
+                      </Text>
+
+                      <TouchableOpacity
+                        style={s.desktopSidebarToolBtn}
+                        onPress={() => setIndexVisible(true)}
+                      >
+                        <View style={s.desktopSidebarToolIcon}>
+                          <FontAwesome
+                            name="list-ol"
+                            size={16}
+                            color={M.toolbarText}
+                          />
                         </View>
-                      )}
+                        <Text style={s.desktopSidebarToolText}>
+                          Indeks Surah
+                        </Text>
+                      </TouchableOpacity>
 
-                      {/* Tool buttons */}
-                      <View style={s.desktopSidebarTools}>
-                        <Text style={s.desktopSidebarSection}>Navigasi & Alat</Text>
+                      <TouchableOpacity
+                        style={s.desktopSidebarToolBtn}
+                        onPress={() => setAudioSettingsVisible(true)}
+                      >
+                        <View style={s.desktopSidebarToolIcon}>
+                          <FontAwesome
+                            name="cog"
+                            size={16}
+                            color={M.toolbarText}
+                          />
+                        </View>
+                        <Text style={s.desktopSidebarToolText}>
+                          Pengaturan Qari
+                        </Text>
+                      </TouchableOpacity>
 
-                        <TouchableOpacity
-                          style={s.desktopSidebarToolBtn}
-                          onPress={() => setIndexVisible(true)}
-                        >
-                          <View style={s.desktopSidebarToolIcon}>
-                            <FontAwesome name="list-ol" size={16} color={M.toolbarText} />
-                          </View>
-                          <Text style={s.desktopSidebarToolText}>Indeks Surah</Text>
-                        </TouchableOpacity>
-
-                        <TouchableOpacity
-                          style={s.desktopSidebarToolBtn}
-                          onPress={() => setAudioSettingsVisible(true)}
-                        >
-                          <View style={s.desktopSidebarToolIcon}>
-                            <FontAwesome name="cog" size={16} color={M.toolbarText} />
-                          </View>
-                          <Text style={s.desktopSidebarToolText}>Pengaturan Qari</Text>
-                        </TouchableOpacity>
-
-                        <TouchableOpacity
+                      <TouchableOpacity
+                        style={[
+                          s.desktopSidebarToolBtn,
+                          isPlayingAll && s.desktopSidebarToolBtnActive,
+                        ]}
+                        onPress={playAll}
+                      >
+                        <View style={s.desktopSidebarToolIcon}>
+                          <FontAwesome
+                            name={isPlayingAll ? "stop-circle" : "play-circle"}
+                            size={18}
+                            color={isPlayingAll ? M.bookmark : M.toolbarText}
+                          />
+                        </View>
+                        <Text
                           style={[
-                            s.desktopSidebarToolBtn,
-                            isPlayingAll && s.desktopSidebarToolBtnActive,
+                            s.desktopSidebarToolText,
+                            isPlayingAll && { color: M.bookmark },
                           ]}
-                          onPress={playAll}
                         >
-                          <View style={s.desktopSidebarToolIcon}>
-                            <FontAwesome
-                              name={isPlayingAll ? "stop-circle" : "play-circle"}
-                              size={18}
-                              color={isPlayingAll ? M.bookmark : M.toolbarText}
-                            />
-                          </View>
-                          <Text
-                            style={[
-                              s.desktopSidebarToolText,
-                              isPlayingAll && { color: M.bookmark },
-                            ]}
-                          >
-                            {isPlayingAll ? "Hentikan Audio" : "Putar Semua"}
-                          </Text>
-                        </TouchableOpacity>
+                          {isPlayingAll ? "Hentikan Audio" : "Putar Semua"}
+                        </Text>
+                      </TouchableOpacity>
 
-                        <TouchableOpacity
-                          style={s.desktopSidebarToolBtn}
-                          onPress={() => setBookmarksVisible(true)}
-                        >
-                          <View style={s.desktopSidebarToolIcon}>
-                            <FontAwesome
-                              name="bookmark"
-                              size={16}
-                              color={isBookmarked ? M.bookmark : M.toolbarText}
-                            />
-                          </View>
-                          <Text style={s.desktopSidebarToolText}>Daftar Bookmark</Text>
-                        </TouchableOpacity>
+                      <TouchableOpacity
+                        style={s.desktopSidebarToolBtn}
+                        onPress={() => setBookmarksVisible(true)}
+                      >
+                        <View style={s.desktopSidebarToolIcon}>
+                          <FontAwesome
+                            name="bookmark"
+                            size={16}
+                            color={isBookmarked ? M.bookmark : M.toolbarText}
+                          />
+                        </View>
+                        <Text style={s.desktopSidebarToolText}>
+                          Daftar Bookmark
+                        </Text>
+                      </TouchableOpacity>
 
-                        <TouchableOpacity
+                      <TouchableOpacity
+                        style={[
+                          s.desktopSidebarToolBtn,
+                          showTajwid && s.desktopSidebarToolBtnActive,
+                        ]}
+                        onPress={() => setLegendVisible(true)}
+                      >
+                        <View style={s.desktopSidebarToolIcon}>
+                          <FontAwesome
+                            name="paint-brush"
+                            size={16}
+                            color={showTajwid ? "#FF8F00" : M.toolbarText}
+                          />
+                        </View>
+                        <Text
                           style={[
-                            s.desktopSidebarToolBtn,
-                            showTajwid && s.desktopSidebarToolBtnActive,
+                            s.desktopSidebarToolText,
+                            showTajwid && { color: "#FF8F00" },
                           ]}
-                          onPress={() => setLegendVisible(true)}
                         >
-                          <View style={s.desktopSidebarToolIcon}>
-                            <FontAwesome
-                              name="paint-brush"
-                              size={16}
-                              color={showTajwid ? "#FF8F00" : M.toolbarText}
-                            />
-                          </View>
-                          <Text
-                            style={[
-                              s.desktopSidebarToolText,
-                              showTajwid && { color: "#FF8F00" },
-                            ]}
-                          >
-                            Warna Tajwid
-                          </Text>
-                        </TouchableOpacity>
+                          Warna Tajwid
+                        </Text>
+                      </TouchableOpacity>
 
-                        {/* <TouchableOpacity
+                      {/* <TouchableOpacity
                           style={s.desktopSidebarToolBtn}
                           onPress={() => {
                             setSliderValue(page);
@@ -2156,154 +3248,171 @@ export default function MushafView({ initialPage = 0 }: Props) {
                           </View>
                           <Text style={s.desktopSidebarToolText}>Lompat Halaman</Text>
                         </TouchableOpacity> */}
-                      </View>
-
-                      {/* Page Navigation */}
-                      <View style={s.desktopSidebarNav}>
-                        <TouchableOpacity
-                          style={[
-                            s.desktopSidebarNavBtn,
-                            page >= TOTAL_PAGES && { opacity: 0.35 },
-                          ]}
-                          onPress={() => { if (page < TOTAL_PAGES) animateToPage(page + 1, 1); }}
-                          disabled={page >= TOTAL_PAGES}
-                        >
-                          <FontAwesome
-                            name="chevron-left"
-                            size={16}
-                            color={M.toolbarText}
-                          />
-                          <Text style={s.desktopSidebarNavLabel}>Sebelumnya</Text>
-                        </TouchableOpacity>
-
-                        <View style={s.desktopSidebarPageBadge}>
-                          <Text style={s.desktopSidebarPageNum}>
-                            {toArabicNumeral(page)}
-                          </Text>
-                          <Text style={s.desktopSidebarPageLabel}>Halaman</Text>
-                        </View>
-
-                        <TouchableOpacity
-                          style={[
-                            s.desktopSidebarNavBtn,
-                            page <= COVER_PAGE && { opacity: 0.35 },
-                          ]}
-                          onPress={() => { if (page > COVER_PAGE) animateToPage(page - 1, -1); }}
-                          disabled={page <= COVER_PAGE}
-                        >
-                          <FontAwesome
-                            name="chevron-right"
-                            size={16}
-                            color={M.toolbarText}
-                          />
-                          <Text style={s.desktopSidebarNavLabel}>Berikutnya</Text>
-                        </TouchableOpacity>
-                      </View>
                     </View>
-                  )}
-                </View>
-              )}
+
+                    {/* Page Navigation */}
+                    <View style={s.desktopSidebarNav}>
+                      <TouchableOpacity
+                        style={[
+                          s.desktopSidebarNavBtn,
+                          page >= TOTAL_PAGES && { opacity: 0.35 },
+                        ]}
+                        onPress={() => {
+                          if (page < TOTAL_PAGES) animateToPage(page + 1, 1);
+                        }}
+                        disabled={page >= TOTAL_PAGES}
+                      >
+                        <FontAwesome
+                          name="chevron-left"
+                          size={16}
+                          color={M.toolbarText}
+                        />
+                        <Text style={s.desktopSidebarNavLabel}>Sebelumnya</Text>
+                      </TouchableOpacity>
+
+                      <View style={s.desktopSidebarPageBadge}>
+                        <Text style={s.desktopSidebarPageNum}>
+                          {toArabicNumeral(page)}
+                        </Text>
+                        <Text style={s.desktopSidebarPageLabel}>Halaman</Text>
+                      </View>
+
+                      <TouchableOpacity
+                        style={[
+                          s.desktopSidebarNavBtn,
+                          page <= COVER_PAGE && { opacity: 0.35 },
+                        ]}
+                        onPress={() => {
+                          if (page > COVER_PAGE) animateToPage(page - 1, -1);
+                        }}
+                        disabled={page <= COVER_PAGE}
+                      >
+                        <FontAwesome
+                          name="chevron-right"
+                          size={16}
+                          color={M.toolbarText}
+                        />
+                        <Text style={s.desktopSidebarNavLabel}>Berikutnya</Text>
+                      </TouchableOpacity>
+                    </View>
+                  </View>
+                )}
+              </View>
+            )}
+          </View>
+
+          {/* Audio floating bar (mobile only) — floats just above the glass toolbar */}
+          {!isDesktop && (playingAyahIdx !== null || audioLoading) && (
+            <View
+              style={[
+                s.audioBar,
+                { bottom: insets.bottom + FLOATING_TOOLBAR_H + 22 },
+              ]}
+            >
+              {audioLoading && <ActivityIndicator size="small" color="#fff" />}
+              <Text style={s.audioBarText} numberOfLines={1}>
+                {isPlayingAll
+                  ? `Memutar semua — Ayat ${(playingAyahIdx ?? 0) + 1}/${audioUrls.length}`
+                  : `Ayat ${(playingAyahIdx ?? 0) + 1}`}
+              </Text>
+              <TouchableOpacity onPress={stopAudio} style={s.audioBarStop}>
+                <FontAwesome name="stop" size={14} color="#fff" />
+              </TouchableOpacity>
             </View>
-
-      {/* Audio floating bar (mobile only) — floats just above the glass toolbar */}
-      {!isDesktop && (playingAyahIdx !== null || audioLoading) && (
-        <View style={[s.audioBar, { bottom: insets.bottom + FLOATING_TOOLBAR_H + 22 }]}>
-          {audioLoading && (
-            <ActivityIndicator size="small" color="#fff" />
           )}
-          <Text style={s.audioBarText} numberOfLines={1}>
-            {isPlayingAll
-              ? `Memutar semua — Ayat ${(playingAyahIdx ?? 0) + 1}/${audioUrls.length}`
-              : `Ayat ${(playingAyahIdx ?? 0) + 1}`}
-          </Text>
-          <TouchableOpacity onPress={stopAudio} style={s.audioBarStop}>
-            <FontAwesome name="stop" size={14} color="#fff" />
-          </TouchableOpacity>
-        </View>
-      )}
 
-      {/* Bottom toolbar — floating glass pill, ALWAYS visible on mobile
+          {/* Bottom toolbar — floating glass pill, ALWAYS visible on mobile
           (no longer tied to showBars), like an iPhone control-center pill.
           RTL layout: left=next, right=prev. */}
-      {!isDesktop && (
-      <View style={[s.toolbarFloatingWrap, { bottom: insets.bottom + 12 }]}>
-        <View style={s.toolbarFloating}>
-          <BlurView intensity={55} tint="light" style={s.floatingGlassBlur} />
-          <TouchableOpacity
-            style={s.navBtn}
-            onPress={() => { if (page < TOTAL_PAGES) animateToPage(page + 1, 1); }}
-            disabled={page >= TOTAL_PAGES}
-          >
-            <FontAwesome
-              name="chevron-left"
-              size={16}
-              color={page >= TOTAL_PAGES ? "#ccc" : M.toolbarText}
-            />
-          </TouchableOpacity>
+          {!isDesktop && (
+            <View
+              style={[s.toolbarFloatingWrap, { bottom: insets.bottom + 12 }]}
+            >
+              <View style={s.toolbarFloating}>
+                <BlurView
+                  intensity={55}
+                  tint="light"
+                  style={s.floatingGlassBlur}
+                />
+                <TouchableOpacity
+                  style={s.navBtn}
+                  onPress={() => {
+                    if (page < TOTAL_PAGES) animateToPage(page + 1, 1);
+                  }}
+                  disabled={page >= TOTAL_PAGES}
+                >
+                  <FontAwesome
+                    name="chevron-left"
+                    size={16}
+                    color={page >= TOTAL_PAGES ? "#ccc" : M.toolbarText}
+                  />
+                </TouchableOpacity>
 
-          <TouchableOpacity
-            style={s.toolBtn}
-            onPress={() => setIndexVisible(true)}
-          >
-            <FontAwesome name="list-ol" size={15} color={M.toolbarText} />
-            <Text style={s.toolLabel}>Indeks</Text>
-          </TouchableOpacity>
+                <TouchableOpacity
+                  style={s.toolBtn}
+                  onPress={() => setIndexVisible(true)}
+                >
+                  <FontAwesome name="list-ol" size={15} color={M.toolbarText} />
+                  <Text style={s.toolLabel}>Indeks</Text>
+                </TouchableOpacity>
 
-          <TouchableOpacity
-            style={s.toolBtn}
-            onPress={() => setAudioSettingsVisible(true)}
-          >
-            <FontAwesome name="cog" size={15} color={M.toolbarText} />
-            <Text style={s.toolLabel}>Qari</Text>
-          </TouchableOpacity>
+                <TouchableOpacity
+                  style={s.toolBtn}
+                  onPress={() => setAudioSettingsVisible(true)}
+                >
+                  <FontAwesome name="cog" size={15} color={M.toolbarText} />
+                  <Text style={s.toolLabel}>Qari</Text>
+                </TouchableOpacity>
 
-          <TouchableOpacity style={s.toolBtn} onPress={playAll}>
-            <FontAwesome
-              name={isPlayingAll ? "stop-circle" : "play-circle"}
-              size={17}
-              color={isPlayingAll ? M.bookmark : M.toolbarText}
-            />
-            <Text style={s.toolLabel}>Audio</Text>
-          </TouchableOpacity>
+                <TouchableOpacity style={s.toolBtn} onPress={playAll}>
+                  <FontAwesome
+                    name={isPlayingAll ? "stop-circle" : "play-circle"}
+                    size={17}
+                    color={isPlayingAll ? M.bookmark : M.toolbarText}
+                  />
+                  <Text style={s.toolLabel}>Audio</Text>
+                </TouchableOpacity>
 
-          <TouchableOpacity
-            style={s.toolBtn}
-            onPress={() => setBookmarksVisible(true)}
-          >
-            <FontAwesome
-              name="bookmark"
-              size={15}
-              color={isBookmarked ? M.bookmark : M.toolbarText}
-            />
-            <Text style={s.toolLabel}>Bookmark</Text>
-          </TouchableOpacity>
+                <TouchableOpacity
+                  style={s.toolBtn}
+                  onPress={() => setBookmarksVisible(true)}
+                >
+                  <FontAwesome
+                    name="bookmark"
+                    size={15}
+                    color={isBookmarked ? M.bookmark : M.toolbarText}
+                  />
+                  <Text style={s.toolLabel}>Bookmark</Text>
+                </TouchableOpacity>
 
-          <TouchableOpacity
-            style={s.toolBtn}
-            onPress={() => setLegendVisible(true)}
-          >
-            <FontAwesome
-              name="paint-brush"
-              size={15}
-              color={showTajwid ? "#FF8F00" : M.toolbarText}
-            />
-            <Text style={s.toolLabel}>Tajwid</Text>
-          </TouchableOpacity>
+                <TouchableOpacity
+                  style={s.toolBtn}
+                  onPress={() => setLegendVisible(true)}
+                >
+                  <FontAwesome
+                    name="paint-brush"
+                    size={15}
+                    color={showTajwid ? "#FF8F00" : M.toolbarText}
+                  />
+                  <Text style={s.toolLabel}>Tajwid</Text>
+                </TouchableOpacity>
 
-          <TouchableOpacity
-            style={s.navBtn}
-            onPress={() => { if (page > COVER_PAGE) animateToPage(page - 1, -1); }}
-            disabled={page <= COVER_PAGE}
-          >
-            <FontAwesome
-              name="chevron-right"
-              size={16}
-              color={page <= COVER_PAGE ? "#ccc" : M.toolbarText}
-            />
-          </TouchableOpacity>
-        </View>
-      </View>
-      )}
+                <TouchableOpacity
+                  style={s.navBtn}
+                  onPress={() => {
+                    if (page > COVER_PAGE) animateToPage(page - 1, -1);
+                  }}
+                  disabled={page <= COVER_PAGE}
+                >
+                  <FontAwesome
+                    name="chevron-right"
+                    size={16}
+                    color={page <= COVER_PAGE ? "#ccc" : M.toolbarText}
+                  />
+                </TouchableOpacity>
+              </View>
+            </View>
+          )}
         </>
       )}
 
@@ -2327,10 +3436,7 @@ export default function MushafView({ initialPage = 0 }: Props) {
               </Text>
             )}
 
-            <TouchableOpacity
-              style={s.menuItem}
-              onPress={handlePlayFromHere}
-            >
+            <TouchableOpacity style={s.menuItem} onPress={handlePlayFromHere}>
               <View style={s.menuIcon}>
                 <FontAwesome name="play-circle-o" size={22} color={M.border} />
               </View>
@@ -2344,10 +3450,7 @@ export default function MushafView({ initialPage = 0 }: Props) {
               <Text style={s.menuItemText}>Putar Ayat</Text>
             </TouchableOpacity>
 
-            <TouchableOpacity
-              style={s.menuItem}
-              onPress={handleBookmarkAyah}
-            >
+            <TouchableOpacity style={s.menuItem} onPress={handleBookmarkAyah}>
               <View style={s.menuIcon}>
                 <FontAwesome name="bookmark-o" size={22} color={M.bookmark} />
               </View>
@@ -2364,10 +3467,7 @@ export default function MushafView({ initialPage = 0 }: Props) {
               <Text style={s.menuItemText}>Tampilkan Terjemahan</Text>
             </TouchableOpacity>
 
-            <TouchableOpacity
-              style={s.menuItem}
-              onPress={handleShowTafsir}
-            >
+            <TouchableOpacity style={s.menuItem} onPress={handleShowTafsir}>
               <View style={s.menuIcon}>
                 <FontAwesome name="file-text-o" size={22} color={M.hizb} />
               </View>
@@ -2407,9 +3507,7 @@ export default function MushafView({ initialPage = 0 }: Props) {
                 <Text style={s.infoTitle}>Terjemahan</Text>
                 <Text style={s.infoAyahLabel}>{infoAyahLabel}</Text>
               </View>
-              <TouchableOpacity
-                onPress={() => setTranslationVisible(false)}
-              >
+              <TouchableOpacity onPress={() => setTranslationVisible(false)}>
                 <FontAwesome name="close" size={20} color={Colors.text} />
               </TouchableOpacity>
             </View>
@@ -2440,9 +3538,7 @@ export default function MushafView({ initialPage = 0 }: Props) {
                 <Text style={s.infoTitle}>Tafsir Jalalayn</Text>
                 <Text style={s.infoAyahLabel}>{infoAyahLabel}</Text>
               </View>
-              <TouchableOpacity
-                onPress={() => setTafsirVisible(false)}
-              >
+              <TouchableOpacity onPress={() => setTafsirVisible(false)}>
                 <FontAwesome name="close" size={20} color={Colors.text} />
               </TouchableOpacity>
             </View>
@@ -2475,9 +3571,7 @@ export default function MushafView({ initialPage = 0 }: Props) {
             <View style={s.sliderHandle} />
             <Text style={s.sliderTitle}>Geser ke Halaman</Text>
             <View style={s.sliderInfoRow}>
-              <Text style={s.sliderJuz}>
-                Juz {data?.ayahs[0]?.juz ?? 0}
-              </Text>
+              <Text style={s.sliderJuz}>Juz {data?.ayahs[0]?.juz ?? 0}</Text>
               <Text style={s.sliderPageNum}>
                 Hal. {Math.round(sliderValue)}
               </Text>
@@ -2513,29 +3607,46 @@ export default function MushafView({ initialPage = 0 }: Props) {
         visible={indexVisible}
         transparent
         animationType="slide"
-        onRequestClose={() => { setIndexVisible(false); setIndexSearch(""); }}
+        onRequestClose={() => {
+          setIndexVisible(false);
+          setIndexSearch("");
+        }}
       >
         <View style={s.sliderOverlay}>
           <View style={s.indexModal}>
             <View style={s.indexHeader}>
               <TouchableOpacity
                 style={s.indexHeaderBtn}
-                onPress={() => { setIndexVisible(false); setIndexSearch(""); }}
+                onPress={() => {
+                  setIndexVisible(false);
+                  setIndexSearch("");
+                }}
               >
                 <FontAwesome name="book" size={16} color={M.toolbarText} />
               </TouchableOpacity>
               <Text style={s.indexTitle}>Main Index</Text>
               <TouchableOpacity
                 style={s.indexHeaderBtn}
-                onPress={() => { setIndexVisible(false); setIndexSearch(""); }}
+                onPress={() => {
+                  setIndexVisible(false);
+                  setIndexSearch("");
+                }}
               >
-                <FontAwesome name="times-circle-o" size={20} color={M.toolbarText} />
+                <FontAwesome
+                  name="times-circle-o"
+                  size={20}
+                  color={M.toolbarText}
+                />
               </TouchableOpacity>
             </View>
 
             {/* Search bar */}
             <View style={s.indexSearchWrap}>
-              <FontAwesome name="search" size={14} color={Colors.textSecondary} />
+              <FontAwesome
+                name="search"
+                size={14}
+                color={Colors.textSecondary}
+              />
               <TextInput
                 style={s.indexSearchInput}
                 placeholder="Cari surah..."
@@ -2547,7 +3658,11 @@ export default function MushafView({ initialPage = 0 }: Props) {
               />
               {indexSearch.length > 0 && (
                 <TouchableOpacity onPress={() => setIndexSearch("")}>
-                  <FontAwesome name="times-circle" size={16} color={Colors.textSecondary} />
+                  <FontAwesome
+                    name="times-circle"
+                    size={16}
+                    color={Colors.textSecondary}
+                  />
                 </TouchableOpacity>
               )}
             </View>
@@ -2556,8 +3671,16 @@ export default function MushafView({ initialPage = 0 }: Props) {
             <View style={s.indexColHeader}>
               <Text style={[s.indexColText, { width: 36 }]}>Juz</Text>
               <Text style={[s.indexColText, { flex: 1 }]}>Surah</Text>
-              <Text style={[s.indexColText, { width: 44, textAlign: "center" }]}>Ayat</Text>
-              <Text style={[s.indexColText, { width: 44, textAlign: "center" }]}>Hal.</Text>
+              <Text
+                style={[s.indexColText, { width: 44, textAlign: "center" }]}
+              >
+                Ayat
+              </Text>
+              <Text
+                style={[s.indexColText, { width: 44, textAlign: "center" }]}
+              >
+                Hal.
+              </Text>
             </View>
 
             <FlatList
@@ -2580,17 +3703,13 @@ export default function MushafView({ initialPage = 0 }: Props) {
                 // Find the juz for this surah
                 let juzNum = 0;
                 for (let j = 30; j >= 1; j--) {
-                  if (
-                    JUZ_START_SURAH[j] &&
-                    item.num >= JUZ_START_SURAH[j]
-                  ) {
+                  if (JUZ_START_SURAH[j] && item.num >= JUZ_START_SURAH[j]) {
                     juzNum = j;
                     break;
                   }
                 }
                 // Only show juz number for the first surah in that juz
-                const showJuz =
-                  JUZ_START_SURAH[juzNum] === item.num;
+                const showJuz = JUZ_START_SURAH[juzNum] === item.num;
 
                 return (
                   <TouchableOpacity
@@ -2605,7 +3724,9 @@ export default function MushafView({ initialPage = 0 }: Props) {
                       setIndexSearch("");
                     }}
                   >
-                    <Text style={[s.indexJuz, !showJuz && { color: "transparent" }]}>
+                    <Text
+                      style={[s.indexJuz, !showJuz && { color: "transparent" }]}
+                    >
                       {juzNum}
                     </Text>
                     <View style={s.indexSurahCol}>
@@ -2613,7 +3734,8 @@ export default function MushafView({ initialPage = 0 }: Props) {
                         {item.num}. {item.english}
                       </Text>
                       <Text style={s.indexSurahMeta}>
-                        {item.type === "Meccan" ? "Meccan" : "Medinan"} - {item.ayahs} Ayat
+                        {item.type === "Meccan" ? "Meccan" : "Medinan"} -{" "}
+                        {item.ayahs} Ayat
                       </Text>
                     </View>
                     <Text style={s.indexAyahCol}>{item.ayahs}</Text>
@@ -2637,9 +3759,7 @@ export default function MushafView({ initialPage = 0 }: Props) {
           <View style={s.bookmarkModal}>
             <View style={s.bookmarkHeader}>
               <Text style={s.bookmarkTitle}>Bookmark</Text>
-              <TouchableOpacity
-                onPress={() => setBookmarksVisible(false)}
-              >
+              <TouchableOpacity onPress={() => setBookmarksVisible(false)}>
                 <FontAwesome name="close" size={20} color={Colors.text} />
               </TouchableOpacity>
             </View>
@@ -2675,9 +3795,7 @@ export default function MushafView({ initialPage = 0 }: Props) {
                   size={40}
                   color={Colors.border}
                 />
-                <Text style={s.bookmarkEmptyText}>
-                  Belum ada bookmark
-                </Text>
+                <Text style={s.bookmarkEmptyText}>Belum ada bookmark</Text>
               </View>
             ) : (
               <FlatList
@@ -2695,18 +3813,10 @@ export default function MushafView({ initialPage = 0 }: Props) {
                       setBookmarksVisible(false);
                     }}
                   >
-                    <FontAwesome
-                      name="bookmark"
-                      size={16}
-                      color={M.bookmark}
-                    />
+                    <FontAwesome name="bookmark" size={16} color={M.bookmark} />
                     <View style={s.bookmarkInfo}>
-                      <Text style={s.bookmarkSurah}>
-                        {item.surahName}
-                      </Text>
-                      <Text style={s.bookmarkPage}>
-                        Halaman {item.page}
-                      </Text>
+                      <Text style={s.bookmarkSurah}>{item.surahName}</Text>
+                      <Text style={s.bookmarkPage}>Halaman {item.page}</Text>
                     </View>
                     <TouchableOpacity
                       onPress={() => deleteBookmark(item.page)}
@@ -2754,8 +3864,7 @@ export default function MushafView({ initialPage = 0 }: Props) {
                   />
                   <View style={s.legendInfo}>
                     <Text style={s.legendName}>
-                      {r.name}{" "}
-                      <Text style={s.legendArabic}>{r.arabic}</Text>
+                      {r.name} <Text style={s.legendArabic}>{r.arabic}</Text>
                     </Text>
                     <Text style={s.legendDesc}>{r.description}</Text>
                   </View>
@@ -2882,7 +3991,7 @@ export default function MushafView({ initialPage = 0 }: Props) {
 // =====================================================
 // STYLES
 // =====================================================
-const TOP_INSET = Platform.OS === "ios" ? 50 : StatusBar.currentHeight ?? 24;
+const TOP_INSET = Platform.OS === "ios" ? 50 : (StatusBar.currentHeight ?? 24);
 
 const s = StyleSheet.create({
   container: {
@@ -3300,7 +4409,7 @@ const s = StyleSheet.create({
     fontFamily: "AmiriQuran",
     color: M.ayahMarker,
     fontWeight: "600" as const,
-    bottom: 2
+    bottom: 2,
   },
   mushafLineWord: {
     fontFamily: "AmiriQuran",
@@ -3523,7 +4632,10 @@ const s = StyleSheet.create({
     ...StyleSheet.absoluteFillObject,
     borderRadius: 999,
     overflow: "hidden",
-    backgroundColor: Platform.OS === "android" ? "rgba(232,245,233,0.88)" : "rgba(232,245,233,0.55)",
+    backgroundColor:
+      Platform.OS === "android"
+        ? "rgba(232,245,233,0.88)"
+        : "rgba(232,245,233,0.55)",
   },
 
   // Top row holding the floating close button + info pill
@@ -4155,7 +5267,10 @@ const s = StyleSheet.create({
   },
   audioSettingsOverlay: {
     position: "absolute",
-    top: 0, left: 0, right: 0, bottom: 0,
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
     backgroundColor: "rgba(0,0,0,0.45)",
     justifyContent: "center",
     alignItems: "center",
