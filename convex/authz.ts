@@ -17,7 +17,11 @@ type Ctx = QueryCtx | MutationCtx;
 // Email yang otomatis dipromosikan menjadi administrator saat login
 // (bootstrap admin pertama). Juga dipakai sebagai penanda administrator yang
 // stabil karena field `role` berubah-ubah saat pengguna berganti tampilan role.
-export const ADMIN_EMAILS = ["muhamadyusufaa@gmail.com", "badrudin.on@gmail.com"];
+export const ADMIN_EMAILS = [
+  "muhamadyusufaa@gmail.com",
+  "badrudin.on@gmail.com",
+  "muhamadyusuf0012@gmail.com",
+];
 
 /** Profil users milik pemanggil, atau null bila belum login / belum terdaftar. */
 export async function getAuthUser(ctx: Ctx): Promise<Doc<"users"> | null> {

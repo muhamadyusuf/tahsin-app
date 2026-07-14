@@ -74,6 +74,7 @@ export default function RootLayout() {
               <Stack.Screen name="tarbiyah/fiqih" options={{ title: "Fiqih", headerTintColor: Colors.primary }} />
               <Stack.Screen name="materi/[materiId]" options={{ title: "Detail Materi", headerTintColor: Colors.primary }} />
               <Stack.Screen name="materi-reader/[materiId]" options={{ title: "Baca Materi", headerTintColor: Colors.primary }} />
+              <Stack.Screen name="pdf-viewer" options={{ title: "Berkas Materi", headerTintColor: Colors.primary }} />
               <Stack.Screen name="quiz/[materiId]" options={{ title: "Kuis", headerTintColor: Colors.primary }} />
               <Stack.Screen name="tilawah-harian" options={{ title: "Tilawah Harian", headerTintColor: Colors.primary }} />
               <Stack.Screen name="tilawah-header-form" options={{ title: "Header Tilawah", headerTintColor: Colors.primary }} />

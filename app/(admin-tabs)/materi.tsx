@@ -233,6 +233,14 @@ export default function MateriScreen() {
             Ulumul Quran
           </Text>
         </Pressable>
+        <Pressable
+          style={[st.tab, activeType === "fiqih" && st.tabActive]}
+          onPress={() => setActiveType("fiqih")}
+        >
+          <Text style={[st.tabText, activeType === "fiqih" && st.tabTextActive]}>
+            Fiqih
+          </Text>
+        </Pressable>
       </View>
 
       <Pressable

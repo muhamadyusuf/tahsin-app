@@ -22,6 +22,10 @@ export default function DashboardScreen() {
   const { signOut } = useClerk();
   const [logoutModalVisible, setLogoutModalVisible] = React.useState(false);
 
+  // Dashboard dipakai administrator (data global) maupun admin_pengajian
+  // (hanya lembaganya sendiri). Percabangan berbasis role aktif.
+  const isLembaga = userData?.role === "admin_pengajian";
+
   const handleLogout = async () => {
     setLogoutModalVisible(false);
     try {
@@ -32,113 +36,253 @@ export default function DashboardScreen() {
     }
   };
 
+  // Dipakai kedua role: hitungan materi (konten bersama) & lookup nama anggota.
   const allUsers = useQuery(api.users.listAll, {});
   const allMateri = useQuery(api.materi.list, { type: "tahsin" });
   const allUlumul = useQuery(api.materi.list, { type: "ulumul_quran" });
   const allFiqih = useQuery(api.materi.list, { type: "fiqih" });
-  const allLembaga = useQuery(api.adminPengajian.listAll);
+
+  // --- Query khusus administrator (data global) ---
+  const allLembaga = useQuery(
+    api.adminPengajian.listAll,
+    isLembaga ? "skip" : {}
+  );
   const pendingLembagaRequests = useQuery(
     api.adminPengajianRequest.listByStatus,
-    { status: "pending" }
+    isLembaga ? "skip" : { status: "pending" }
   );
 
-  const isLoading =
-    !allUsers || !allMateri || !allUlumul || !allFiqih || !allLembaga;
+  // --- Query khusus admin_pengajian (dibatasi lembaga sendiri) ---
+  const lembaga = useQuery(
+    api.adminPengajian.getByUserId,
+    isLembaga && userData?._id ? { userId: userData._id } : "skip"
+  );
+  const santriList = useQuery(
+    api.santri.listByAdminPengajian,
+    isLembaga && lembaga?._id ? { adminPengajianId: lembaga._id } : "skip"
+  );
+  const ustadzList = useQuery(
+    api.ustadz.listByAdminPengajian,
+    isLembaga && lembaga?._id ? { adminPengajianId: lembaga._id } : "skip"
+  );
+  const kelasList = useQuery(
+    api.kelas.listByAdminPengajian,
+    isLembaga && lembaga?._id ? { adminPengajianId: lembaga._id } : "skip"
+  );
+  const pendingJoinRequests = useQuery(
+    api.lkmJoinRequest.listByAdminPengajian,
+    isLembaga && lembaga?._id
+      ? { adminPengajianId: lembaga._id, status: "pending" as const }
+      : "skip"
+  );
+
+  // Anggota lembaga (santri + ustadz) beserta profil user-nya. Hanya user yang
+  // sudah berafiliasi dengan lembaga ini yang ditampilkan — bukan seluruh user.
+  const affiliatedMembers = React.useMemo(() => {
+    if (!isLembaga || !allUsers) return [];
+    const ustadzUserIds = new Set((ustadzList ?? []).map((u) => u.userId));
+    const memberUserIds = new Set<string>([
+      ...(santriList ?? []).map((s) => s.userId),
+      ...ustadzUserIds,
+    ]);
+    return allUsers
+      .filter((u) => memberUserIds.has(u._id))
+      .map((u) => ({
+        ...u,
+        // Tampilkan sebagai ustadz bila punya keanggotaan ustadz di lembaga ini.
+        displayRole: ustadzUserIds.has(u._id)
+          ? ("ustadz" as const)
+          : ("santri" as const),
+      }));
+  }, [isLembaga, allUsers, santriList, ustadzList]);
+
+  const isLoadingCommon = !allMateri || !allUlumul || !allFiqih;
+
+  const isLoading = isLembaga
+    ? isLoadingCommon ||
+      lembaga === undefined ||
+      (!!lembaga &&
+        (santriList === undefined ||
+          ustadzList === undefined ||
+          kelasList === undefined)) ||
+      !allUsers
+    : isLoadingCommon || !allUsers || !allLembaga;
 
   const stats = isLoading
     ? []
-    : [
+    : isLembaga
+      ? [
+          {
+            icon: "users" as const,
+            label: "Total Anggota",
+            value: affiliatedMembers.length,
+            color: "#1976D2",
+            bg: "#E3F2FD",
+          },
+          {
+            icon: "user-md" as const,
+            label: "Ustadz",
+            value: (ustadzList ?? []).length,
+            color: "#7B1FA2",
+            bg: "#F3E5F5",
+          },
+          {
+            icon: "graduation-cap" as const,
+            label: "Santri",
+            value: (santriList ?? []).length,
+            color: "#388E3C",
+            bg: "#E8F5E9",
+          },
+          {
+            icon: "graduation-cap" as const,
+            label: "Kelas",
+            value: (kelasList ?? []).length,
+            color: "#00695C",
+            bg: "#E0F2F1",
+          },
+          {
+            icon: "user-plus" as const,
+            label: "Pengajuan Baru",
+            value: (pendingJoinRequests ?? []).length,
+            color: "#F57C00",
+            bg: "#FFF3E0",
+          },
+          {
+            icon: "book" as const,
+            label: "Materi Tahsin",
+            value: allMateri!.length,
+            color: "#C62828",
+            bg: "#FFEBEE",
+          },
+        ]
+      : [
+          {
+            icon: "users" as const,
+            label: "Total Pengguna",
+            value: allUsers!.length,
+            color: "#1976D2",
+            bg: "#E3F2FD",
+          },
+          {
+            icon: "user-md" as const,
+            label: "Ustadz",
+            value: allUsers!.filter((u) => u.role === "ustadz").length,
+            color: "#7B1FA2",
+            bg: "#F3E5F5",
+          },
+          {
+            icon: "graduation-cap" as const,
+            label: "Santri",
+            value: allUsers!.filter((u) => u.role === "santri").length,
+            color: "#388E3C",
+            bg: "#E8F5E9",
+          },
+          {
+            icon: "book" as const,
+            label: "Materi Tahsin",
+            value: allMateri!.length,
+            color: "#F57C00",
+            bg: "#FFF3E0",
+          },
+          {
+            icon: "star" as const,
+            label: "Ulumul Quran",
+            value: allUlumul!.length,
+            color: "#C62828",
+            bg: "#FFEBEE",
+          },
+          {
+            icon: "balance-scale" as const,
+            label: "Fiqih",
+            value: allFiqih!.length,
+            color: "#00695C",
+            bg: "#E0F2F1",
+          },
+          {
+            icon: "institution" as const,
+            label: "Lembaga",
+            value: allLembaga!.length,
+            color: "#00695C",
+            bg: "#E0F2F1",
+          },
+        ];
+
+  // Aksi cepat admin_pengajian dibatasi: tanpa Approval LKM (lembaga baru),
+  // tanpa Header Tilawah, dan tanpa Kelola Pengguna global — hanya anggota
+  // lembaganya sendiri.
+  const quickActions = isLembaga
+    ? [
         {
           icon: "users" as const,
-          label: "Total Pengguna",
-          value: allUsers.length,
-          color: "#1976D2",
-          bg: "#E3F2FD",
+          label: "Kelola Anggota",
+          onPress: () => router.push("/(admin-tabs)/anggota"),
         },
         {
-          icon: "user-md" as const,
-          label: "Ustadz",
-          value: allUsers.filter((u) => u.role === "ustadz").length,
-          color: "#7B1FA2",
-          bg: "#F3E5F5",
+          icon: "plus-circle" as const,
+          label: "Tambah Materi",
+          onPress: () => router.push("/materi-form"),
+        },
+        {
+          icon: "check-square-o" as const,
+          label:
+            pendingJoinRequests && pendingJoinRequests.length > 0
+              ? `Approval Santri (${pendingJoinRequests.length})`
+              : "Approval Santri",
+          // Persetujuan pengajuan santri gabung ditangani KelasAdminPanel yang
+          // dirender oleh tab Kelas (bukan lkm-saya = profil lembaga).
+          onPress: () => router.push("/(admin-tabs)/kelas"),
         },
         {
           icon: "graduation-cap" as const,
-          label: "Santri",
-          value: allUsers.filter((u) => u.role === "santri").length,
-          color: "#388E3C",
-          bg: "#E8F5E9",
+          label: "Kelola Kelas",
+          onPress: () => router.push("/(admin-tabs)/kelas"),
         },
         {
-          icon: "book" as const,
-          label: "Materi Tahsin",
-          value: allMateri.length,
-          color: "#F57C00",
-          bg: "#FFF3E0",
+          icon: "exchange" as const,
+          label: "Ganti Role",
+          onPress: () => router.push("/pilih-role"),
+        },
+      ]
+    : [
+        {
+          icon: "user-plus" as const,
+          label: "Kelola Pengguna",
+          onPress: () => router.push("/(admin-tabs)/pengguna"),
         },
         {
-          icon: "star" as const,
-          label: "Ulumul Quran",
-          value: allUlumul.length,
-          color: "#C62828",
-          bg: "#FFEBEE",
-        },
-        {
-          icon: "balance-scale" as const,
-          label: "Fiqih",
-          value: allFiqih.length,
-          color: "#00695C",
-          bg: "#E0F2F1",
+          icon: "plus-circle" as const,
+          label: "Tambah Materi",
+          onPress: () => router.push("/materi-form"),
         },
         {
           icon: "institution" as const,
-          label: "Lembaga",
-          value: allLembaga.length,
-          color: "#00695C",
-          bg: "#E0F2F1",
+          label: "Tambah Lembaga",
+          onPress: () => router.push("/lembaga-form"),
+        },
+        {
+          icon: "check-square-o" as const,
+          label:
+            pendingLembagaRequests && pendingLembagaRequests.length > 0
+              ? `Approval LKM (${pendingLembagaRequests.length})`
+              : "Approval LKM",
+          onPress: () => router.push("/admin-lembaga-requests"),
+        },
+        {
+          icon: "bar-chart" as const,
+          label: "Monitoring",
+          onPress: () => router.push("/(admin-tabs)/monitoring"),
+        },
+        {
+          icon: "picture-o" as const,
+          label: "Header Tilawah",
+          onPress: () => router.push("/tilawah-header-form"),
+        },
+        {
+          icon: "exchange" as const,
+          label: "Ganti Role",
+          onPress: () => router.push("/pilih-role"),
         },
       ];
-
-  const quickActions = [
-    {
-      icon: "user-plus" as const,
-      label: "Kelola Pengguna",
-      onPress: () => router.push("/(admin-tabs)/pengguna"),
-    },
-    {
-      icon: "plus-circle" as const,
-      label: "Tambah Materi",
-      onPress: () => router.push("/materi-form"),
-    },
-    {
-      icon: "institution" as const,
-      label: "Tambah Lembaga",
-      onPress: () => router.push("/lembaga-form"),
-    },
-    {
-      icon: "check-square-o" as const,
-      label:
-        pendingLembagaRequests && pendingLembagaRequests.length > 0
-          ? `Approval LKM (${pendingLembagaRequests.length})`
-          : "Approval LKM",
-      onPress: () => router.push("/admin-lembaga-requests"),
-    },
-    {
-      icon: "bar-chart" as const,
-      label: "Monitoring",
-      onPress: () => router.push("/(admin-tabs)/monitoring"),
-    },
-    {
-      icon: "picture-o" as const,
-      label: "Header Tilawah",
-      onPress: () => router.push("/tilawah-header-form"),
-    },
-    {
-      icon: "exchange" as const,
-      label: "Ganti Role",
-      onPress: () => router.push("/pilih-role"),
-    },
-  ];
 
   return (
     <ScrollView style={st.container} contentContainerStyle={{ paddingBottom: 32 }}>
@@ -198,11 +342,20 @@ export default function DashboardScreen() {
         ))}
       </View>
 
-      {/* Recent Users */}
-      {allUsers && (
+      {/* Recent Users — administrator: seluruh pengguna; admin_pengajian:
+          hanya anggota yang sudah berafiliasi dengan lembaganya. */}
+      {(isLembaga ? affiliatedMembers.length > 0 : !!allUsers) && (
         <>
-          <Text style={st.sectionTitle}>Pengguna Terbaru</Text>
-          {allUsers.slice(-5).reverse().map((u) => (
+          <Text style={st.sectionTitle}>
+            {isLembaga ? "Anggota Terbaru" : "Pengguna Terbaru"}
+          </Text>
+          {(isLembaga
+            ? affiliatedMembers.map((m) => ({ ...m, role: m.displayRole }))
+            : allUsers!
+          )
+            .slice(-5)
+            .reverse()
+            .map((u) => (
             <Pressable
               key={u._id}
               style={({ pressed }) => [st.userRow, pressed && { opacity: 0.7 }]}

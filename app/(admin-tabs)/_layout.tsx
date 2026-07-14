@@ -52,7 +52,9 @@ export default function TabsLayout() {
         name="dashboard"
         options={{
           title: "Dashboard",
-          href: hideTab(!isLembaga),
+          // Ditampilkan untuk administrator maupun admin_pengajian. Isi
+          // dashboard menyesuaikan role (lihat dashboard.tsx): administrator
+          // melihat data global, admin_pengajian hanya lembaganya sendiri.
           tabBarIcon: ({ color, size }) => (
             <FontAwesome name="dashboard" size={size} color={color} />
           ),

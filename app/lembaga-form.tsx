@@ -24,8 +24,9 @@ import { useAuthContext } from "@/lib/auth-context";
 import WilayahPickerModal from "@/components/WilayahPickerModal";
 import LocationMapPicker from "@/components/LocationMapPicker";
 
-export default function LembagaFormScreen() {
-  const { id, userId } = useLocalSearchParams<{ id?: string; userId?: string }>();
+// Body form yang bisa dipakai lewat rute standalone (baca search params) maupun
+// disematkan di dalam tab (mis. "LKM Saya") agar tab bar bawah tetap tampil.
+export function LembagaForm({ id, userId }: { id?: string; userId?: string }) {
   const router = useRouter();
   const { userData } = useAuthContext();
   const isEdit = !!id;
@@ -349,6 +350,12 @@ export default function LembagaFormScreen() {
       />
     </ScrollView>
   );
+}
+
+// Rute standalone: baca parameter dari URL lalu teruskan ke body form.
+export default function LembagaFormScreen() {
+  const { id, userId } = useLocalSearchParams<{ id?: string; userId?: string }>();
+  return <LembagaForm id={id} userId={userId} />;
 }
 
 const st = StyleSheet.create({

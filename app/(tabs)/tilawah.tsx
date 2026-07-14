@@ -22,6 +22,7 @@ import FontAwesome from "@expo/vector-icons/FontAwesome";
 import FontAwesome5 from "@expo/vector-icons/FontAwesome5";
 import { api } from "@/convex/_generated/api";
 import { Colors, getDisplayWidth } from "@/lib/constants";
+import { extractYouTubeId } from "@/lib/youtube";
 import { getAllSurahs, Surah } from "@/lib/alquran-api";
 import { useAuthContext } from "@/lib/auth-context";
 import {
@@ -55,19 +56,6 @@ const width = getDisplayWidth();
 
 // Quick access surahs
 const POPULAR_SURAHS = [36, 67, 56, 18, 55, 1]; // Yasin, Al-Mulk, Al-Waqi'ah, Al-Kahf, Ar-Rahman, Al-Fatihah
-
-function extractYouTubeId(url: string): string | null {
-  const patterns = [
-    /(?:youtube\.com\/watch\?v=|youtu\.be\/|youtube\.com\/embed\/)([^&?#\s]+)/,
-    /youtube\.com\/shorts\/([^&?#\s]+)/,
-    /youtube\.com\/live\/([^&?#\s]+)/,
-  ];
-  for (const pattern of patterns) {
-    const match = url.match(pattern);
-    if (match?.[1]) return match[1];
-  }
-  return null;
-}
 
 function QiblaCompassLive({
   bearing,

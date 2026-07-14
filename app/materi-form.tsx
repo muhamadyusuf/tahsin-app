@@ -67,6 +67,7 @@ export default function MateriFormScreen() {
   const [seq, setSeq] = useState("1");
   const [urlCover, setUrlCover] = useState("");
   const [urlVideo, setUrlVideo] = useState("");
+  const [urlPdf, setUrlPdf] = useState("");
   const [isShow, setIsShow] = useState(true);
   const [materiType, setMateriType] = useState<
     "tahsin" | "ulumul_quran" | "fiqih"
@@ -82,6 +83,7 @@ export default function MateriFormScreen() {
       setSeq(String(existing.seq));
       setUrlCover(existing.urlCover ?? "");
       setUrlVideo(existing.urlVideo ?? "");
+      setUrlPdf(existing.urlPdf ?? "");
       setIsShow(existing.isShow);
       setMateriType(existing.type);
     }
@@ -91,6 +93,15 @@ export default function MateriFormScreen() {
     if (!judul.trim()) {
       Alert.alert("Error", "Judul materi wajib diisi.");
       return;
+    }
+    const pdf = urlPdf.trim();
+    if (pdf) {
+      // Buang query/hash lalu pastikan ekstensi .pdf.
+      const path = pdf.split(/[?#]/)[0].toLowerCase();
+      if (!path.endsWith(".pdf")) {
+        Alert.alert("Error", "Link berkas harus berupa file .pdf");
+        return;
+      }
     }
     if (isLembaga && !isEdit && !ownLembaga) {
       Alert.alert("Error", "Profil lembaga belum dibuat.");
@@ -107,6 +118,7 @@ export default function MateriFormScreen() {
           seq: parseFloat(seq) || 1,
           urlCover: urlCover.trim() || undefined,
           urlVideo: urlVideo.trim() || undefined,
+          urlPdf: urlPdf.trim() || undefined,
           isShow,
         };
         if (isLembaga) {
@@ -124,6 +136,7 @@ export default function MateriFormScreen() {
           parentId: parentId ? (parentId as Id<"materi">) : undefined,
           urlCover: urlCover.trim() || undefined,
           urlVideo: urlVideo.trim() || undefined,
+          urlPdf: urlPdf.trim() || undefined,
           isShow,
           type: materiType,
           submittedBy: userData._id,
@@ -138,6 +151,7 @@ export default function MateriFormScreen() {
           parentId: parentId ? (parentId as Id<"materi">) : undefined,
           urlCover: urlCover.trim() || undefined,
           urlVideo: urlVideo.trim() || undefined,
+          urlPdf: urlPdf.trim() || undefined,
           isShow,
           type: materiType,
         });
@@ -378,10 +392,25 @@ export default function MateriFormScreen() {
         style={st.input}
         value={urlVideo}
         onChangeText={setUrlVideo}
-        placeholder="https://..."
+        placeholder="https://... (YouTube atau link video langsung)"
         placeholderTextColor={Colors.textSecondary}
         autoCapitalize="none"
       />
+
+      <Text style={st.label}>Link Berkas PDF</Text>
+      <TextInput
+        style={st.input}
+        value={urlPdf}
+        onChangeText={setUrlPdf}
+        placeholder="https://.../berkas.pdf"
+        placeholderTextColor={Colors.textSecondary}
+        autoCapitalize="none"
+        keyboardType="url"
+      />
+      <Text style={st.pdfHint}>
+        Harus berupa file .pdf yang dapat diakses publik. Ditampilkan ke santri
+        seperti membuka halaman buku materi.
+      </Text>
 
       <View style={st.switchRow}>
         <View style={{ flex: 1 }}>
@@ -465,6 +494,13 @@ const st = StyleSheet.create({
     color: Colors.text,
     borderWidth: 1,
     borderColor: Colors.border,
+  },
+
+  pdfHint: {
+    fontSize: 12,
+    color: Colors.textSecondary,
+    marginTop: 6,
+    lineHeight: 17,
   },
 
   typeRow: { flexDirection: "row", gap: 8 },

@@ -98,6 +98,8 @@ export default defineSchema({
     deskripsi: v.optional(v.string()),
     urlCover: v.optional(v.string()),
     urlVideo: v.optional(v.string()),
+    // Link berkas PDF materi (harus .pdf) — ditampilkan ke user seperti buku.
+    urlPdf: v.optional(v.string()),
     isShow: v.boolean(),
     type: v.union(
       v.literal("tahsin"),

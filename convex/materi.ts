@@ -126,6 +126,7 @@ export const create = mutation({
     deskripsi: v.optional(v.string()),
     urlCover: v.optional(v.string()),
     urlVideo: v.optional(v.string()),
+    urlPdf: v.optional(v.string()),
     isShow: v.boolean(),
     type: v.union(
       v.literal("tahsin"),
@@ -149,6 +150,7 @@ export const propose = mutation({
     deskripsi: v.optional(v.string()),
     urlCover: v.optional(v.string()),
     urlVideo: v.optional(v.string()),
+    urlPdf: v.optional(v.string()),
     isShow: v.boolean(),
     type: v.union(
       v.literal("tahsin"),
@@ -195,6 +197,7 @@ export const update = mutation({
     deskripsi: v.optional(v.string()),
     urlCover: v.optional(v.string()),
     urlVideo: v.optional(v.string()),
+    urlPdf: v.optional(v.string()),
     isShow: v.optional(v.boolean()),
   },
   handler: async (ctx, args) => {
@@ -216,6 +219,7 @@ export const resubmit = mutation({
     deskripsi: v.optional(v.string()),
     urlCover: v.optional(v.string()),
     urlVideo: v.optional(v.string()),
+    urlPdf: v.optional(v.string()),
     isShow: v.optional(v.boolean()),
   },
   handler: async (ctx, args) => {

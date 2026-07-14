@@ -6,7 +6,6 @@ import {
   ScrollView,
   Image,
   TouchableOpacity,
-  Linking,
   ActivityIndicator,
 } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
@@ -17,6 +16,8 @@ import { api } from "@/convex/_generated/api";
 import { Id } from "@/convex/_generated/dataModel";
 import { Colors } from "@/lib/constants";
 import MarkdownRenderer from "@/components/MarkdownRenderer";
+import MateriPdf from "@/components/MateriPdf";
+import MateriVideo from "@/components/MateriVideo";
 
 export default function MateriReaderScreen() {
   const { materiId } = useLocalSearchParams<{ materiId: string }>();
@@ -100,23 +101,13 @@ export default function MateriReaderScreen() {
         )}
       </View>
 
-      {/* Video */}
-      {materi.urlVideo ? (
-        <TouchableOpacity
-          style={st.videoRow}
-          onPress={() => Linking.openURL(materi.urlVideo!)}
-          activeOpacity={0.8}
-        >
-          <View style={st.videoIcon}>
-            <FontAwesome name="play-circle" size={20} color={Colors.primary} />
-          </View>
-          <View style={st.videoText}>
-            <Text style={st.videoTitle}>Video Penjelasan</Text>
-            <Text style={st.videoSub}>Tonton untuk pemahaman lebih dalam</Text>
-          </View>
-          <FontAwesome name="external-link" size={13} color={Colors.textSecondary} />
-        </TouchableOpacity>
+      {/* Berkas PDF — ditampilkan seperti buku materi */}
+      {materi.urlPdf ? (
+        <MateriPdf url={materi.urlPdf} title={materi.judul} />
       ) : null}
+
+      {/* Video — tampil inline, user cukup play */}
+      {materi.urlVideo ? <MateriVideo url={materi.urlVideo} /> : null}
 
       {/* Quiz info / CTA */}
       {hasQuiz ? (

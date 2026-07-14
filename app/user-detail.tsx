@@ -65,6 +65,16 @@ export default function UserDetailScreen() {
   );
   const allLembaga = useQuery(api.adminPengajian.listAll);
 
+  // Semua hook harus dipanggil sebelum early return di bawah, jika tidak jumlah
+  // hook antar-render berbeda ("Rendered more hooks than during the previous
+  // render") saat `user` selesai dimuat.
+  const ustadzLembaga = useMemo(() => {
+    if (!ustadzProfile || !allLembaga) {
+      return null;
+    }
+    return allLembaga.find((item) => item._id === ustadzProfile.adminPengajianId) ?? null;
+  }, [ustadzProfile, allLembaga]);
+
   if (!user) {
     return (
       <View style={st.center}>
@@ -75,12 +85,6 @@ export default function UserDetailScreen() {
 
   const roleInfo = ROLE_OPTIONS.find((r) => r.value === user.role);
   const totalPages = tilawah?.reduce((s, t) => s + t.jumlahHalaman, 0) ?? 0;
-  const ustadzLembaga = useMemo(() => {
-    if (!ustadzProfile || !allLembaga) {
-      return null;
-    }
-    return allLembaga.find((item) => item._id === ustadzProfile.adminPengajianId) ?? null;
-  }, [ustadzProfile, allLembaga]);
 
   const changeRole = (newRole: BaseRole) => {
     Alert.alert(

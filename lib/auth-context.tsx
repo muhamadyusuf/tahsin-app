@@ -109,6 +109,37 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       });
   }, [isLoaded, isSignedIn, convexAuthed, user, userData, upsertUser]);
 
+  // Sinkronisasi profil sekali per sesi untuk user yang SUDAH ada. upsertUser
+  // di atas hanya jalan saat provisioning awal (userData === null), sehingga
+  // perubahan seperti promosi email administrator (ADMIN_EMAILS) tidak akan
+  // menyentuh akun lama. Sync ringan ini menyelaraskan nama/avatar sekaligus
+  // menyembuhkan role (mis. email yang baru dijadikan admin). Fire-and-forget,
+  // tidak memblokir UI.
+  const syncedRef = useRef(false);
+  useEffect(() => {
+    if (!(isLoaded && isSignedIn && convexAuthed && user && userData)) {
+      return;
+    }
+    if (syncedRef.current) {
+      return;
+    }
+    syncedRef.current = true;
+
+    upsertUser({
+      clerkId: user.id,
+      name:
+        user.fullName ??
+        user.firstName ??
+        user.emailAddresses[0]?.emailAddress ??
+        "User",
+      email: user.emailAddresses[0]?.emailAddress ?? "",
+      phone: user.phoneNumbers[0]?.phoneNumber,
+      avatarUrl: user.imageUrl,
+    }).catch((error) => {
+      console.error("Failed to sync user in Convex:", error);
+    });
+  }, [isLoaded, isSignedIn, convexAuthed, user, userData, upsertUser]);
+
   useEffect(() => {
     if (isLoaded) {
       setIsReady(true);

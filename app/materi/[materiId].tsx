@@ -1,22 +1,24 @@
-import React, { useCallback, useMemo, useRef } from "react";
-import {
-  View,
-  Text,
-  StyleSheet,
-  ScrollView,
-  Pressable,
-  ActivityIndicator,
-  Image,
-} from "react-native";
-import { Audio } from "expo-av";
-import { useLocalSearchParams, useRouter } from "expo-router";
 import FontAwesome from "@expo/vector-icons/FontAwesome";
 import { useQuery } from "convex/react";
+import { Audio } from "expo-av";
+import { useLocalSearchParams, useRouter } from "expo-router";
+import React, { useCallback, useMemo, useRef } from "react";
+import {
+  ActivityIndicator,
+  Image,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  View,
+} from "react-native";
 
 import { api } from "@/convex/_generated/api";
 import { Id } from "@/convex/_generated/dataModel";
-import { Colors } from "@/lib/constants";
 import { useAuthContext } from "@/lib/auth-context";
+import { Colors } from "@/lib/constants";
+import MateriPdf from "@/components/MateriPdf";
+import MateriVideo from "@/components/MateriVideo";
 
 type StageItem = {
   key: string;
@@ -38,22 +40,27 @@ export default function MateriDetailScreen() {
 
   const materi = useQuery(
     api.materi.getById,
-    materiId ? { id: materiId as Id<"materi"> } : "skip"
+    materiId ? { id: materiId as Id<"materi"> } : "skip",
   );
 
   const allMateri = useQuery(
     api.materi.listAllByType,
-    materi?.type ? { type: materi.type } : "skip"
+    materi?.type ? { type: materi.type } : "skip",
   );
 
   const userProgress = useQuery(
     api.quiz.getUserProgress,
-    userData?._id ? { userId: userData._id } : "skip"
+    userData?._id ? { userId: userData._id } : "skip",
   );
 
   const descendants = useMemo(() => {
     if (!materi || !allMateri) {
-      return [] as { id: Id<"materi">; title: string; depth: number; hasChildren: boolean }[];
+      return [] as {
+        id: Id<"materi">;
+        title: string;
+        depth: number;
+        hasChildren: boolean;
+      }[];
     }
 
     const childrenMap = new Map<string, typeof allMateri>();
@@ -69,11 +76,16 @@ export default function MateriDetailScreen() {
     for (const [key, value] of childrenMap.entries()) {
       childrenMap.set(
         key,
-        [...value].sort((a, b) => a.seq - b.seq)
+        [...value].sort((a, b) => a.seq - b.seq),
       );
     }
 
-    const result: { id: Id<"materi">; title: string; depth: number; hasChildren: boolean }[] = [];
+    const result: {
+      id: Id<"materi">;
+      title: string;
+      depth: number;
+      hasChildren: boolean;
+    }[] = [];
 
     const walk = (parentId: Id<"materi">, depth: number) => {
       const children = childrenMap.get(parentId) ?? [];
@@ -97,7 +109,7 @@ export default function MateriDetailScreen() {
 
   const subQuizCounts = useQuery(
     api.quiz.getQuizCountsByMateriIds,
-    descendantIds.length > 0 ? { materiIds: descendantIds } : "skip"
+    descendantIds.length > 0 ? { materiIds: descendantIds } : "skip",
   );
 
   const finalQuizSet = useQuery(
@@ -108,13 +120,11 @@ export default function MateriDetailScreen() {
           userId: userData._id,
           limit: 20,
         }
-      : "skip"
+      : "skip",
   );
 
   const completedIds = new Set(
-    (userProgress ?? [])
-      .filter((p) => p.completedAt)
-      .map((p) => p.materiId)
+    (userProgress ?? []).filter((p) => p.completedAt).map((p) => p.materiId),
   );
 
   const playTapSound = useCallback(async () => {
@@ -125,7 +135,7 @@ export default function MateriDetailScreen() {
       }
       const { sound } = await Audio.Sound.createAsync(
         { uri: TAP_SOUND_URL },
-        { shouldPlay: true, volume: 0.6 }
+        { shouldPlay: true, volume: 0.6 },
       );
       soundRef.current = sound;
     } catch {
@@ -133,7 +143,9 @@ export default function MateriDetailScreen() {
     }
   }, []);
 
-  const quizCountMap = new Map((subQuizCounts ?? []).map((item) => [item.materiId, item.count]));
+  const quizCountMap = new Map(
+    (subQuizCounts ?? []).map((item) => [item.materiId, item.count]),
+  );
 
   const stageItems = useMemo(() => {
     if (!materi) {
@@ -233,7 +245,7 @@ export default function MateriDetailScreen() {
       await playTapSound();
       stage.onPress();
     },
-    [playTapSound]
+    [playTapSound],
   );
 
   if (!materi || allMateri === undefined) {
@@ -247,28 +259,47 @@ export default function MateriDetailScreen() {
   if (!materi) {
     return (
       <View style={styles.center}>
-        <FontAwesome name="exclamation-circle" size={40} color={Colors.textSecondary} />
+        <FontAwesome
+          name="exclamation-circle"
+          size={40}
+          color={Colors.textSecondary}
+        />
         <Text style={styles.errorText}>Materi tidak ditemukan</Text>
       </View>
     );
   }
 
-  const completedSubCount = descendants.filter((sub) => completedIds.has(sub.id)).length;
+  const completedSubCount = descendants.filter((sub) =>
+    completedIds.has(sub.id),
+  ).length;
 
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
       {materi.urlCover ? (
-        <Image source={{ uri: materi.urlCover }} style={styles.cover} resizeMode="cover" />
+        <Image
+          source={{ uri: materi.urlCover }}
+          style={styles.cover}
+          resizeMode="cover"
+        />
       ) : null}
 
       <View style={styles.headerCard}>
         <Text style={styles.title}>{materi.judul}</Text>
         <Text style={styles.description}>
-          {materi.deskripsi ?? "Pelajari materi ini secara bertahap seperti game belajar bahasa."}
+          {materi.deskripsi ??
+            "Pelajari materi ini secara bertahap seperti game belajar bahasa."}
         </Text>
       </View>
 
-      <Text style={styles.sectionTitle}>Peta Belajar Duolingo Mode</Text>
+      {materi.urlPdf ? (
+        <MateriPdf url={materi.urlPdf} title={materi.judul} />
+      ) : null}
+
+      {materi.urlVideo ? <MateriVideo url={materi.urlVideo} /> : null}
+
+      {descendants.length > 0 ? (
+        <>
+      <Text style={styles.sectionTitle}>Peta Belajar</Text>
       <View style={styles.chapterProgressWrap}>
         <Text style={styles.chapterProgressText}>
           Progress node: {completedSubCount}/{descendants.length} selesai
@@ -305,13 +336,25 @@ export default function MateriDetailScreen() {
                   {item.completed ? (
                     <FontAwesome name="check" size={16} color="#fff" />
                   ) : !item.unlocked ? (
-                    <FontAwesome name="lock" size={14} color={Colors.textSecondary} />
+                    <FontAwesome
+                      name="lock"
+                      size={14}
+                      color={Colors.textSecondary}
+                    />
                   ) : item.kind === "materi" ? (
                     <FontAwesome name="book" size={15} color={Colors.primary} />
                   ) : item.kind === "quiz-final" ? (
-                    <FontAwesome name="trophy" size={15} color={Colors.primary} />
+                    <FontAwesome
+                      name="trophy"
+                      size={15}
+                      color={Colors.primary}
+                    />
                   ) : (
-                    <FontAwesome name="question" size={14} color={Colors.primary} />
+                    <FontAwesome
+                      name="question"
+                      size={14}
+                      color={Colors.primary}
+                    />
                   )}
                 </View>
 
@@ -329,6 +372,8 @@ export default function MateriDetailScreen() {
           );
         })}
       </View>
+        </>
+      ) : null}
     </ScrollView>
   );
 }

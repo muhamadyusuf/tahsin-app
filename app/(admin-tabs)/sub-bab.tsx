@@ -25,6 +25,7 @@ interface MateriWithChildren {
   deskripsi?: string;
   urlCover?: string;
   urlVideo?: string;
+  urlPdf?: string;
   isShow: boolean;
   type: MateriType;
   parentId?: Id<"materi">;
@@ -272,6 +273,16 @@ export default function SubBabScreen() {
                                   >
                                     Cover
                                   </Text>
+                                </View>
+                              )}
+                              {subBab.urlPdf && (
+                                <View style={st.metaTag}>
+                                  <FontAwesome
+                                    name="file-pdf-o"
+                                    size={11}
+                                    color={Colors.error}
+                                  />
+                                  <Text style={st.metaTagText}>PDF</Text>
                                 </View>
                               )}
                               <Text style={st.visibilityText}>
