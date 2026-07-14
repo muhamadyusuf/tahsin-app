@@ -1,0 +1,46 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="-160 -140 1344 1344">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#3A9D42"/>
+      <stop offset="1" stop-color="#1B5E20"/>
+    </linearGradient>
+    <linearGradient id="page" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#FFFFFF"/>
+      <stop offset="1" stop-color="#F1E9D2"/>
+    </linearGradient>
+    <mask id="crescent">
+      <rect width="1024" height="1024" fill="black"/>
+      <circle cx="512" cy="332" r="122" fill="white"/>
+      <circle cx="562" cy="306" r="99" fill="black"/>
+    </mask>
+  </defs>
+
+
+  <!-- crescent -->
+  <rect width="1024" height="1024" fill="#F6D46A" mask="url(#crescent)"/>
+
+  <!-- open book -->
+  <g transform="translate(0,-26)">
+    <!-- page shadow/back -->
+    <path d="M512 610 C 420 566 300 556 196 588 L 196 792 C 300 760 420 770 512 812 Z" fill="#D9C79A"/>
+    <path d="M512 610 C 604 566 724 556 828 588 L 828 792 C 724 760 604 770 512 812 Z" fill="#D9C79A"/>
+    <!-- left page -->
+    <path d="M512 592 C 420 548 300 538 196 570 L 196 782 C 300 750 420 760 512 804 Z" fill="url(#page)"/>
+    <!-- right page -->
+    <path d="M512 592 C 604 548 724 538 828 570 L 828 782 C 724 750 604 760 512 804 Z" fill="url(#page)"/>
+    <!-- spine -->
+    <path d="M512 592 L 512 804" stroke="#B7A576" stroke-width="10" stroke-linecap="round" fill="none"/>
+    <!-- text lines left -->
+    <g stroke="#3A9D42" stroke-width="9" stroke-linecap="round" opacity="0.55">
+      <path d="M262 626 C 340 610 420 616 470 636" fill="none"/>
+      <path d="M258 674 C 340 658 420 664 470 684" fill="none"/>
+      <path d="M256 722 C 340 706 420 712 470 732" fill="none"/>
+    </g>
+    <!-- text lines right -->
+    <g stroke="#3A9D42" stroke-width="9" stroke-linecap="round" opacity="0.55">
+      <path d="M762 626 C 684 610 604 616 554 636" fill="none"/>
+      <path d="M766 674 C 684 658 604 664 554 684" fill="none"/>
+      <path d="M768 722 C 684 706 604 712 554 732" fill="none"/>
+    </g>
+  </g>
+</svg>
