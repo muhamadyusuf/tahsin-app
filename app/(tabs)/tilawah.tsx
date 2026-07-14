@@ -288,6 +288,9 @@ export default function TilawahScreen() {
   const [selectedVideo, setSelectedVideo] = useState<{ youtubeUrl: string; judul: string; isLive: boolean } | null>(null);
   const [isFullscreen, setIsFullscreen] = useState(false);
 
+  // Mushaf mode chooser (per surah vs mushaf full)
+  const [mushafModalVisible, setMushafModalVisible] = useState(false);
+
   const scrollY = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
@@ -1348,7 +1351,7 @@ export default function TilawahScreen() {
 
           <TouchableOpacity
             style={styles.categoryCard}
-            onPress={() => router.push("/mushaf")}
+            onPress={() => setMushafModalVisible(true)}
           >
             <View style={[styles.categoryIcon, { backgroundColor: "#FFF3E0" }]}>
               <FontAwesome name="book" size={22} color="#E65100" />
@@ -1747,6 +1750,71 @@ export default function TilawahScreen() {
           )}
         </View>
       </Modal>
+
+      {/* ===== Mushaf mode chooser ===== */}
+      <Modal
+        visible={mushafModalVisible}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setMushafModalVisible(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={[styles.modalSheet, { paddingBottom: insets.bottom + 20 }]}>
+            <View style={styles.modalHeader}>
+              <View>
+                <Text style={styles.modalTitle}>Mushaf Al-Qur'an</Text>
+                <Text style={styles.modalDateText}>Pilih cara membaca Al-Qur'an</Text>
+              </View>
+              <TouchableOpacity
+                style={styles.modalCloseBtn}
+                onPress={() => setMushafModalVisible(false)}
+              >
+                <FontAwesome name="times" size={18} color={Colors.textSecondary} />
+              </TouchableOpacity>
+            </View>
+
+            <TouchableOpacity
+              style={styles.mushafChoiceCard}
+              onPress={() => {
+                setMushafModalVisible(false);
+                setMode("surah-list");
+              }}
+              activeOpacity={0.8}
+            >
+              <View style={[styles.mushafChoiceIcon, { backgroundColor: "#E8F5E9" }]}>
+                <FontAwesome name="list" size={22} color={Colors.primary} />
+              </View>
+              <View style={styles.mushafChoiceTextWrap}>
+                <Text style={styles.mushafChoiceTitle}>Per Surah</Text>
+                <Text style={styles.mushafChoiceDesc}>
+                  Pilih surah dari daftar untuk dibaca
+                </Text>
+              </View>
+              <FontAwesome name="chevron-right" size={14} color={Colors.textSecondary} />
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={styles.mushafChoiceCard}
+              onPress={() => {
+                setMushafModalVisible(false);
+                router.push("/mushaf");
+              }}
+              activeOpacity={0.8}
+            >
+              <View style={[styles.mushafChoiceIcon, { backgroundColor: "#FFF3E0" }]}>
+                <FontAwesome name="book" size={22} color="#E65100" />
+              </View>
+              <View style={styles.mushafChoiceTextWrap}>
+                <Text style={styles.mushafChoiceTitle}>Mushaf Full</Text>
+                <Text style={styles.mushafChoiceDesc}>
+                  Baca mushaf lengkap per halaman
+                </Text>
+              </View>
+              <FontAwesome name="chevron-right" size={14} color={Colors.textSecondary} />
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 }
@@ -2106,6 +2174,37 @@ const styles = StyleSheet.create({
   modalActionBtnText: {
     fontSize: 13,
     fontWeight: "600",
+  },
+  // ===== Mushaf mode chooser =====
+  mushafChoiceCard: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 14,
+    paddingVertical: 14,
+    paddingHorizontal: 14,
+    borderRadius: 14,
+    backgroundColor: Colors.backgroundLight,
+    marginTop: 12,
+  },
+  mushafChoiceIcon: {
+    width: 46,
+    height: 46,
+    borderRadius: 12,
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  mushafChoiceTextWrap: {
+    flex: 1,
+  },
+  mushafChoiceTitle: {
+    fontSize: 15,
+    fontWeight: "700",
+    color: Colors.text,
+  },
+  mushafChoiceDesc: {
+    fontSize: 12,
+    color: Colors.textSecondary,
+    marginTop: 2,
   },
   // ===== Location Picker =====
   pickerBackBtn: {
