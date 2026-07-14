@@ -24,6 +24,13 @@ const ROLE_OPTIONS: { label: string; value: UserRole; color: string; bg: string 
   { label: "Santri", value: "santri", color: "#2E7D32", bg: "#E8F5E9" },
 ];
 
+// Role dasar yang bisa langsung diubah dari sini. Ustadz & Admin Pengajian
+// diberikan lewat pembuatan keanggotaan (buka detail pengguna → Setup Data Role).
+type BaseRole = "administrator" | "santri";
+const BASE_ROLE_OPTIONS = ROLE_OPTIONS.filter(
+  (r) => r.value === "administrator" || r.value === "santri"
+);
+
 export default function PenggunaScreen() {
   const router = useRouter();
   const [search, setSearch] = useState("");
@@ -46,10 +53,10 @@ export default function PenggunaScreen() {
     return matchSearch && matchRole;
   });
 
-  const handleUpdateRole = async (userId: Id<"users">, role: UserRole) => {
+  const handleUpdateRole = async (userId: Id<"users">, role: BaseRole) => {
     try {
       await updateRole({ userId, role });
-      Alert.alert("Berhasil", "Role pengguna telah diubah.");
+      Alert.alert("Berhasil", "Role dasar pengguna telah diubah.");
       setRoleModal(null);
     } catch {
       Alert.alert("Error", "Gagal mengubah role.");
@@ -200,9 +207,9 @@ export default function PenggunaScreen() {
       >
         <Pressable style={st.modalOverlay} onPress={() => setRoleModal(null)}>
           <View style={st.modalCard}>
-            <Text style={st.modalTitle}>Ubah Role</Text>
+            <Text style={st.modalTitle}>Ubah Role Dasar</Text>
             <Text style={st.modalSubtitle}>{roleModal?.name}</Text>
-            {ROLE_OPTIONS.map((r) => (
+            {BASE_ROLE_OPTIONS.map((r) => (
               <Pressable
                 key={r.value}
                 style={({ pressed }) => [
@@ -214,7 +221,8 @@ export default function PenggunaScreen() {
                   pressed && { opacity: 0.7 },
                 ]}
                 onPress={() =>
-                  roleModal && handleUpdateRole(roleModal.userId, r.value)
+                  roleModal &&
+                  handleUpdateRole(roleModal.userId, r.value as BaseRole)
                 }
               >
                 <Text
@@ -230,6 +238,10 @@ export default function PenggunaScreen() {
                 )}
               </Pressable>
             ))}
+            <Text style={st.modalNote}>
+              Peran Ustadz & Admin Pengajian diatur lewat detail pengguna (Setup
+              Data Role).
+            </Text>
             <Pressable
               style={st.modalCancel}
               onPress={() => setRoleModal(null)}
@@ -376,6 +388,14 @@ const st = StyleSheet.create({
     fontSize: 14,
     fontWeight: "600",
     color: Colors.text,
+  },
+  modalNote: {
+    fontSize: 11,
+    color: Colors.textSecondary,
+    lineHeight: 16,
+    marginTop: 6,
+    marginBottom: 2,
+    textAlign: "center",
   },
   modalCancel: {
     marginTop: 8,

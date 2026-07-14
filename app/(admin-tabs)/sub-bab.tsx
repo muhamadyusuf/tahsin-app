@@ -15,7 +15,7 @@ import FontAwesome from "@expo/vector-icons/FontAwesome";
 import { Colors } from "@/lib/constants";
 import { Id } from "@/convex/_generated/dataModel";
 
-type MateriType = "tahsin" | "ulumul_quran";
+type MateriType = "tahsin" | "ulumul_quran" | "fiqih";
 
 interface MateriWithChildren {
   _id: Id<"materi">;
@@ -118,6 +118,19 @@ export default function SubBabScreen() {
             ]}
           >
             Ulumul Quran
+          </Text>
+        </Pressable>
+        <Pressable
+          style={[st.tab, activeType === "fiqih" && st.tabActive]}
+          onPress={() => setActiveType("fiqih")}
+        >
+          <Text
+            style={[
+              st.tabText,
+              activeType === "fiqih" && st.tabTextActive,
+            ]}
+          >
+            Fiqih
           </Text>
         </Pressable>
       </View>

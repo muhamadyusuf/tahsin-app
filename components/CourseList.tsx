@@ -27,11 +27,30 @@ const BAB_ICONS: Record<number, React.ComponentProps<typeof FontAwesome>["name"]
   9: "trophy",
 };
 
-export default function UlumulQuranScreen() {
+type CourseType = "ulumul_quran" | "fiqih";
+
+type Props = {
+  type: CourseType;
+  title: string;
+  subtitle: string;
+  loadingText: string;
+  emptyDesc: string;
+};
+
+// Generic BAB-list course view — powers the Ulumul Qur'an & Fiqih courses that
+// share the same simple sequential-materi layout (unlike the gamified Tahsin
+// learning path).
+export default function CourseList({
+  type,
+  title,
+  subtitle,
+  loadingText,
+  emptyDesc,
+}: Props) {
   const router = useRouter();
   const { userData } = useAuthContext();
 
-  const materiList = useQuery(api.materi.list, { type: "ulumul_quran" });
+  const materiList = useQuery(api.materi.list, { type });
   const userProgress = useQuery(
     api.quiz.getUserProgress,
     userData?._id ? { userId: userData._id } : "skip"
@@ -56,7 +75,7 @@ export default function UlumulQuranScreen() {
     return (
       <View style={styles.center}>
         <ActivityIndicator size="large" color={Colors.primary} />
-        <Text style={styles.loadingText}>Memuat materi ulumul qur'an...</Text>
+        <Text style={styles.loadingText}>{loadingText}</Text>
       </View>
     );
   }
@@ -69,10 +88,8 @@ export default function UlumulQuranScreen() {
       <View style={styles.progressHeader}>
         <View style={styles.progressTop}>
           <View>
-            <Text style={styles.progressTitle}>Ulumul Qur'an</Text>
-            <Text style={styles.progressSubtitle}>
-              Ilmu-ilmu tentang Al-Qur'an
-            </Text>
+            <Text style={styles.progressTitle}>{title}</Text>
+            <Text style={styles.progressSubtitle}>{subtitle}</Text>
           </View>
           <View style={styles.progressCircle}>
             <Text style={styles.progressCircleText}>{progressPercent}%</Text>
@@ -93,9 +110,7 @@ export default function UlumulQuranScreen() {
         <View style={styles.emptyState}>
           <FontAwesome name="inbox" size={40} color={Colors.textSecondary} />
           <Text style={styles.emptyTitle}>Belum ada materi</Text>
-          <Text style={styles.emptyDesc}>
-            Materi Ulumul Qur'an akan ditambahkan oleh admin
-          </Text>
+          <Text style={styles.emptyDesc}>{emptyDesc}</Text>
         </View>
       ) : (
         sorted.map((materi, index) => {

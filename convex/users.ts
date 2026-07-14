@@ -153,19 +153,39 @@ export const updateProfile = mutation({
   },
 });
 
-// Update user role (admin only)
+// Set a user's base role (administrator only).
+//
+// Hanya menangani "base role": administrator ↔ santri. Peran ustadz &
+// admin_pengajian TIDAK diatur di sini karena butuh data pendukung
+// (lembaga/afiliasi) — keduanya diberikan lewat pembuatan keanggotaan
+// (ustadz.create / adminPengajian.create). Dengan begitu setiap role yang
+// dipegang selalu punya baris pendukung, konsisten dengan model multi-role
+// di getAvailableRoles/setActiveRole.
 export const updateRole = mutation({
   args: {
     userId: v.id("users"),
-    role: v.union(
-      v.literal("administrator"),
-      v.literal("admin_pengajian"),
-      v.literal("ustadz"),
-      v.literal("santri")
-    ),
+    role: v.union(v.literal("administrator"), v.literal("santri")),
   },
   handler: async (ctx, args) => {
     await requireAdministrator(ctx);
+    const user = await ctx.db.get(args.userId);
+    if (!user) throw new Error("User not found");
+
+    // Turun ke santri = pastikan baris keanggotaan santri ada sehingga role
+    // "santri" tetap tersedia setelah pergantian role berikutnya.
+    if (args.role === "santri") {
+      const existing = await ctx.db
+        .query("santri")
+        .withIndex("by_userId", (q) => q.eq("userId", args.userId))
+        .first();
+      if (!existing) {
+        await ctx.db.insert("santri", {
+          userId: args.userId,
+          isActive: true,
+        });
+      }
+    }
+
     await ctx.db.patch(args.userId, { role: args.role });
   },
 });

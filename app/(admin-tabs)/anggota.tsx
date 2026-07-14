@@ -36,7 +36,6 @@ export default function AnggotaScreen() {
   );
   const allUsers = useQuery(api.users.listAll, {});
 
-  const updateRole = useMutation(api.users.updateRole);
   const createUstadz = useMutation(api.ustadz.create);
 
   const isLoading =
@@ -76,7 +75,9 @@ export default function AnggotaScreen() {
           onPress: async () => {
             setBusyUserId(targetUserId);
             try {
-              await updateRole({ userId: targetUserId, role: "ustadz" });
+              // Cukup buat keanggotaan ustadz. Role "ustadz" otomatis tersedia
+              // bagi user (lihat getAvailableRoles) tanpa menimpa role aktif
+              // mereka — mereka bisa beralih sendiri lewat "Pilih Role Aktif".
               await createUstadz({ userId: targetUserId, adminPengajianId: lembaga._id });
             } catch (error) {
               Alert.alert("Gagal", error instanceof Error ? error.message : "Terjadi kesalahan");

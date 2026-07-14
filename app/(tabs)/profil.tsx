@@ -42,6 +42,15 @@ export default function ProfilScreen() {
     affiliatedLembagaId ? { id: affiliatedLembagaId } : "skip"
   );
 
+  // Lembaga yang dimiliki user (jika sudah jadi admin pengajian) — dipakai
+  // untuk memutuskan apakah menampilkan menu pengajuan jadi admin pengajian.
+  const ownLembaga = useQuery(
+    api.adminPengajian.getByUserId,
+    userData?._id ? { userId: userData._id } : "skip"
+  );
+  const canApplyLembaga =
+    role !== ROLES.ADMINISTRATOR && ownLembaga === null;
+
   const doLogout = async () => {
     setLogoutModalVisible(false);
     try {
@@ -149,6 +158,18 @@ export default function ProfilScreen() {
           <TouchableOpacity style={styles.menuItem} onPress={() => router.push("/pilih-role")}>
             <FontAwesome name="exchange" size={18} color={Colors.primary} />
             <Text style={styles.menuText}>Pilih Role Aktif</Text>
+            <FontAwesome
+              name="chevron-right"
+              size={14}
+              color={Colors.textSecondary}
+            />
+          </TouchableOpacity>
+        )}
+
+        {canApplyLembaga && (
+          <TouchableOpacity style={styles.menuItem} onPress={() => router.push("/ajukan-lembaga")}>
+            <FontAwesome name="institution" size={18} color={Colors.primary} />
+            <Text style={styles.menuText}>Ajukan Jadi Admin Pengajian</Text>
             <FontAwesome
               name="chevron-right"
               size={14}

@@ -17,7 +17,7 @@ import { useAuthContext } from "@/lib/auth-context";
 import { Doc } from "@/convex/_generated/dataModel";
 import ConfirmModal from "@/components/ConfirmModal";
 
-type MateriType = "tahsin" | "ulumul_quran";
+type MateriType = "tahsin" | "ulumul_quran" | "fiqih";
 
 const STATUS_LABEL: Record<string, string> = {
   pending: "Menunggu Persetujuan",
@@ -120,6 +120,14 @@ export default function MateriScreen() {
           >
             <Text style={[st.tabText, activeType === "ulumul_quran" && st.tabTextActive]}>
               Ulumul Quran
+            </Text>
+          </Pressable>
+          <Pressable
+            style={[st.tab, activeType === "fiqih" && st.tabActive]}
+            onPress={() => setActiveType("fiqih")}
+          >
+            <Text style={[st.tabText, activeType === "fiqih" && st.tabTextActive]}>
+              Fiqih
             </Text>
           </Pressable>
         </View>

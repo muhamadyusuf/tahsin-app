@@ -39,6 +39,36 @@ export default defineSchema({
     .index("by_kota", ["kota"])
     .index("by_provinsi", ["provinsi"]),
 
+  // Pengajuan seorang user untuk menjadi admin_pengajian (membuka lembaga).
+  // Menunggu verifikasi administrator; saat disetujui baris admin_pengajian
+  // dibuat dari data pengajuan dan role admin_pengajian menjadi tersedia bagi
+  // user (lihat users.getAvailableRoles).
+  admin_pengajian_request: defineTable({
+    userId: v.id("users"),
+    userName: v.string(), // denormalisasi untuk tampilan review
+    userEmail: v.string(),
+    namaLembaga: v.string(),
+    alamat: v.optional(v.string()),
+    kota: v.string(),
+    provinsi: v.string(),
+    latitude: v.optional(v.float64()),
+    longitude: v.optional(v.float64()),
+    fotoUrl: v.optional(v.string()),
+    status: v.union(
+      v.literal("pending"),
+      v.literal("approved"),
+      v.literal("rejected")
+    ),
+    reviewedBy: v.optional(v.id("users")),
+    reviewNote: v.optional(v.string()),
+    createdAt: v.string(),
+    reviewedAt: v.optional(v.string()),
+    // Diisi saat disetujui — menautkan ke lembaga yang dibuat.
+    adminPengajianId: v.optional(v.id("admin_pengajian")),
+  })
+    .index("by_userId", ["userId"])
+    .index("by_status", ["status"]),
+
   // Ustadz linked to admin_pengajian
   ustadz: defineTable({
     userId: v.id("users"),
@@ -60,7 +90,7 @@ export default defineSchema({
     .index("by_adminPengajianId", ["adminPengajianId"])
     .index("by_ustadzId", ["ustadzId"]),
 
-  // Materi — hierarchical (parent-child), supports tahsin & ulumul_quran
+  // Materi — hierarchical (parent-child), supports tahsin, ulumul_quran & fiqih
   materi: defineTable({
     seq: v.float64(),
     parentId: v.optional(v.id("materi")),
@@ -69,7 +99,11 @@ export default defineSchema({
     urlCover: v.optional(v.string()),
     urlVideo: v.optional(v.string()),
     isShow: v.boolean(),
-    type: v.union(v.literal("tahsin"), v.literal("ulumul_quran")),
+    type: v.union(
+      v.literal("tahsin"),
+      v.literal("ulumul_quran"),
+      v.literal("fiqih")
+    ),
     // Approval workflow — undefined/omitted is treated as "approved" so
     // pre-existing rows (created before this field existed) stay visible.
     status: v.optional(

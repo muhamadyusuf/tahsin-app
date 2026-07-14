@@ -35,9 +35,15 @@ export default function DashboardScreen() {
   const allUsers = useQuery(api.users.listAll, {});
   const allMateri = useQuery(api.materi.list, { type: "tahsin" });
   const allUlumul = useQuery(api.materi.list, { type: "ulumul_quran" });
+  const allFiqih = useQuery(api.materi.list, { type: "fiqih" });
   const allLembaga = useQuery(api.adminPengajian.listAll);
+  const pendingLembagaRequests = useQuery(
+    api.adminPengajianRequest.listByStatus,
+    { status: "pending" }
+  );
 
-  const isLoading = !allUsers || !allMateri || !allUlumul || !allLembaga;
+  const isLoading =
+    !allUsers || !allMateri || !allUlumul || !allFiqih || !allLembaga;
 
   const stats = isLoading
     ? []
@@ -78,6 +84,13 @@ export default function DashboardScreen() {
           bg: "#FFEBEE",
         },
         {
+          icon: "balance-scale" as const,
+          label: "Fiqih",
+          value: allFiqih.length,
+          color: "#00695C",
+          bg: "#E0F2F1",
+        },
+        {
           icon: "institution" as const,
           label: "Lembaga",
           value: allLembaga.length,
@@ -101,6 +114,14 @@ export default function DashboardScreen() {
       icon: "institution" as const,
       label: "Tambah Lembaga",
       onPress: () => router.push("/lembaga-form"),
+    },
+    {
+      icon: "check-square-o" as const,
+      label:
+        pendingLembagaRequests && pendingLembagaRequests.length > 0
+          ? `Approval LKM (${pendingLembagaRequests.length})`
+          : "Approval LKM",
+      onPress: () => router.push("/admin-lembaga-requests"),
     },
     {
       icon: "bar-chart" as const,

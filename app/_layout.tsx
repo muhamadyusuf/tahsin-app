@@ -69,6 +69,9 @@ export default function RootLayout() {
               <Stack.Screen name="statistik" options={{ title: "Statistik", headerTintColor: Colors.primary }} />
               <Stack.Screen name="pengaturan" options={{ title: "Pengaturan", headerTintColor: Colors.primary }} />
               <Stack.Screen name="bantuan" options={{ title: "Bantuan", headerTintColor: Colors.primary }} />
+              <Stack.Screen name="tarbiyah/tahsin" options={{ title: "Tahsin", headerTintColor: Colors.primary }} />
+              <Stack.Screen name="tarbiyah/ulumul-quran" options={{ title: "Ulumul Qur'an", headerTintColor: Colors.primary }} />
+              <Stack.Screen name="tarbiyah/fiqih" options={{ title: "Fiqih", headerTintColor: Colors.primary }} />
               <Stack.Screen name="materi/[materiId]" options={{ title: "Detail Materi", headerTintColor: Colors.primary }} />
               <Stack.Screen name="materi-reader/[materiId]" options={{ title: "Baca Materi", headerTintColor: Colors.primary }} />
               <Stack.Screen name="quiz/[materiId]" options={{ title: "Kuis", headerTintColor: Colors.primary }} />
@@ -79,6 +82,8 @@ export default function RootLayout() {
               <Stack.Screen name="quiz-form" options={{ title: "Form Kuis", headerTintColor: Colors.primary }} />
               <Stack.Screen name="quiz-manage" options={{ title: "Kelola Quiz", headerTintColor: Colors.primary }} />
               <Stack.Screen name="lembaga-form" options={{ title: "Form Lembaga", headerTintColor: Colors.primary }} />
+              <Stack.Screen name="ajukan-lembaga" options={{ title: "Ajukan Admin Pengajian", headerTintColor: Colors.primary }} />
+              <Stack.Screen name="admin-lembaga-requests" options={{ title: "Approval Admin Pengajian", headerTintColor: Colors.primary }} />
               <Stack.Screen name="user-detail" options={{ title: "Detail Pengguna", headerTintColor: Colors.primary }} />
               <Stack.Screen name="hadis" options={{ headerShown: false }} />
               <Stack.Screen name="doa" options={{ headerShown: false }} />

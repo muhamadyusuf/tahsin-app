@@ -64,9 +64,9 @@ export default function TabLayout() {
         }}
       />
       <Tabs.Screen
-        name="tahsin"
+        name="tarbiyah"
         options={{
-          title: "Tahsin",
+          title: "Tarbiyah",
           tabBarIcon: ({ color }) => (
             <TabBarIcon name="graduation-cap" color={color} />
           ),
@@ -77,15 +77,6 @@ export default function TabLayout() {
         options={{
           title: "Talaqi",
           tabBarIcon: ({ color }) => <TabBarIcon name="users" color={color} />,
-        }}
-      />
-      <Tabs.Screen
-        name="ulumul-quran"
-        options={{
-          title: "Ulumul Qur'an",
-          tabBarIcon: ({ color }) => (
-            <TabBarIcon name="lightbulb-o" color={color} />
-          ),
         }}
       />
       <Tabs.Screen

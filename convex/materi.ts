@@ -19,7 +19,11 @@ function isApproved(m: Doc<"materi">) {
 // used by student-facing browsing everywhere.
 export const list = query({
   args: {
-    type: v.union(v.literal("tahsin"), v.literal("ulumul_quran")),
+    type: v.union(
+      v.literal("tahsin"),
+      v.literal("ulumul_quran"),
+      v.literal("fiqih")
+    ),
     parentId: v.optional(v.id("materi")),
   },
   handler: async (ctx, args) => {
@@ -42,7 +46,11 @@ export const list = query({
 // List all materi by type including nested children — approved-only.
 export const listAllByType = query({
   args: {
-    type: v.union(v.literal("tahsin"), v.literal("ulumul_quran")),
+    type: v.union(
+      v.literal("tahsin"),
+      v.literal("ulumul_quran"),
+      v.literal("fiqih")
+    ),
   },
   handler: async (ctx, args) => {
     if (!(await getAuthUser(ctx))) return [];
@@ -79,7 +87,11 @@ export const getById = query({
 // List all materi of a type regardless of status — administrator management view.
 export const listAllForType = query({
   args: {
-    type: v.union(v.literal("tahsin"), v.literal("ulumul_quran")),
+    type: v.union(
+      v.literal("tahsin"),
+      v.literal("ulumul_quran"),
+      v.literal("fiqih")
+    ),
   },
   handler: async (ctx, args) => {
     const caller = await getAuthUser(ctx);
@@ -115,7 +127,11 @@ export const create = mutation({
     urlCover: v.optional(v.string()),
     urlVideo: v.optional(v.string()),
     isShow: v.boolean(),
-    type: v.union(v.literal("tahsin"), v.literal("ulumul_quran")),
+    type: v.union(
+      v.literal("tahsin"),
+      v.literal("ulumul_quran"),
+      v.literal("fiqih")
+    ),
   },
   handler: async (ctx, args) => {
     await requireAdministrator(ctx);
@@ -134,7 +150,11 @@ export const propose = mutation({
     urlCover: v.optional(v.string()),
     urlVideo: v.optional(v.string()),
     isShow: v.boolean(),
-    type: v.union(v.literal("tahsin"), v.literal("ulumul_quran")),
+    type: v.union(
+      v.literal("tahsin"),
+      v.literal("ulumul_quran"),
+      v.literal("fiqih")
+    ),
     submittedBy: v.id("users"),
     submittedByAdminPengajianId: v.id("admin_pengajian"),
   },

@@ -68,9 +68,9 @@ export default function MateriFormScreen() {
   const [urlCover, setUrlCover] = useState("");
   const [urlVideo, setUrlVideo] = useState("");
   const [isShow, setIsShow] = useState(true);
-  const [materiType, setMateriType] = useState<"tahsin" | "ulumul_quran">(
-    (type as any) ?? "tahsin"
-  );
+  const [materiType, setMateriType] = useState<
+    "tahsin" | "ulumul_quran" | "fiqih"
+  >((type as any) ?? "tahsin");
   const [submitting, setSubmitting] = useState(false);
   const [mdTab, setMdTab] = useState<"edit" | "preview">("edit");
   const [showCheatsheet, setShowCheatsheet] = useState(false);
@@ -209,6 +209,19 @@ export default function MateriFormScreen() {
                 ]}
               >
                 Ulumul Quran
+              </Text>
+            </Pressable>
+            <Pressable
+              style={[st.typeBtn, materiType === "fiqih" && st.typeBtnActive]}
+              onPress={() => setMateriType("fiqih")}
+            >
+              <Text
+                style={[
+                  st.typeBtnText,
+                  materiType === "fiqih" && st.typeBtnTextActive,
+                ]}
+              >
+                Fiqih
               </Text>
             </Pressable>
           </View>

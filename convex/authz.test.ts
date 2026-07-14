@@ -34,20 +34,43 @@ describe("users.updateRole", () => {
     await expect(
       t
         .withIdentity({ subject: "clerk_santri" })
-        .mutation(api.users.updateRole, { userId: santriId, role: "ustadz" })
+        .mutation(api.users.updateRole, {
+          userId: santriId,
+          role: "administrator",
+        })
     ).rejects.toThrow();
   });
 
-  test("an administrator can change roles", async () => {
+  test("an administrator can grant the administrator base role", async () => {
     const t = convexTest(schema, modules);
     const { santriId } = await seedUsers(t);
 
     await t
       .withIdentity({ subject: "clerk_admin" })
-      .mutation(api.users.updateRole, { userId: santriId, role: "ustadz" });
+      .mutation(api.users.updateRole, {
+        userId: santriId,
+        role: "administrator",
+      });
 
     const updated = await t.run(async (ctx) => ctx.db.get(santriId));
-    expect(updated?.role).toBe("ustadz");
+    expect(updated?.role).toBe("administrator");
+  });
+
+  test("setting the santri base role provisions a santri membership", async () => {
+    const t = convexTest(schema, modules);
+    const { adminId } = await seedUsers(t);
+
+    await t
+      .withIdentity({ subject: "clerk_admin" })
+      .mutation(api.users.updateRole, { userId: adminId, role: "santri" });
+
+    const santriRow = await t.run(async (ctx) =>
+      ctx.db
+        .query("santri")
+        .withIndex("by_userId", (q) => q.eq("userId", adminId))
+        .first()
+    );
+    expect(santriRow).not.toBeNull();
   });
 
   test("an unauthenticated caller cannot change roles", async () => {
@@ -55,7 +78,10 @@ describe("users.updateRole", () => {
     const { santriId } = await seedUsers(t);
 
     await expect(
-      t.mutation(api.users.updateRole, { userId: santriId, role: "ustadz" })
+      t.mutation(api.users.updateRole, {
+        userId: santriId,
+        role: "administrator",
+      })
     ).rejects.toThrow();
   });
 });

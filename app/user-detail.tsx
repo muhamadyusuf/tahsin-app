@@ -24,6 +24,14 @@ const ROLE_OPTIONS: { label: string; value: UserRole; color: string; bg: string 
   { label: "Santri", value: "santri", color: "#2E7D32", bg: "#E8F5E9" },
 ];
 
+// Base role bisa langsung di-set administrator. Ustadz & admin_pengajian
+// diberikan lewat "Setup Data Role" di bawah (butuh data lembaga), bukan di
+// picker ini — sesuai model multi-role berbasis keanggotaan.
+type BaseRole = "administrator" | "santri";
+const BASE_ROLE_OPTIONS = ROLE_OPTIONS.filter(
+  (r) => r.value === "administrator" || r.value === "santri"
+);
+
 export default function UserDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
@@ -74,10 +82,10 @@ export default function UserDetailScreen() {
     return allLembaga.find((item) => item._id === ustadzProfile.adminPengajianId) ?? null;
   }, [ustadzProfile, allLembaga]);
 
-  const changeRole = (newRole: UserRole) => {
+  const changeRole = (newRole: BaseRole) => {
     Alert.alert(
-      "Ubah Role",
-      `Ubah role ${user.name} menjadi ${newRole}?`,
+      "Ubah Role Dasar",
+      `Ubah role dasar ${user.name} menjadi ${newRole}?`,
       [
         { text: "Batal", style: "cancel" },
         {
@@ -161,9 +169,13 @@ export default function UserDetailScreen() {
       </View>
 
       {/* Role Management */}
-      <Text style={st.sectionTitle}>Ubah Role</Text>
+      <Text style={st.sectionTitle}>Ubah Role Dasar</Text>
+      <Text style={st.sectionHint}>
+        Administrator atau Santri. Peran Ustadz & Admin Pengajian diatur lewat
+        "Setup Data Role" di bawah.
+      </Text>
       <View style={st.roleGrid}>
-        {ROLE_OPTIONS.map((r) => (
+        {BASE_ROLE_OPTIONS.map((r) => (
           <Pressable
             key={r.value}
             style={({ pressed }) => [
@@ -174,7 +186,7 @@ export default function UserDetailScreen() {
               },
               pressed && { opacity: 0.7 },
             ]}
-            onPress={() => changeRole(r.value)}
+            onPress={() => changeRole(r.value as BaseRole)}
           >
             <Text
               style={[
@@ -364,6 +376,14 @@ const st = StyleSheet.create({
     paddingHorizontal: 16,
     paddingTop: 20,
     paddingBottom: 10,
+  },
+  sectionHint: {
+    fontSize: 12,
+    color: Colors.textSecondary,
+    paddingHorizontal: 16,
+    paddingBottom: 10,
+    lineHeight: 17,
+    marginTop: -6,
   },
 
   statsRow: {
