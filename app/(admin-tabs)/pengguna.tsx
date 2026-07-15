@@ -24,12 +24,8 @@ const ROLE_OPTIONS: { label: string; value: UserRole; color: string; bg: string 
   { label: "Santri", value: "santri", color: "#2E7D32", bg: "#E8F5E9" },
 ];
 
-// Role dasar yang bisa langsung diubah dari sini. Ustadz & Admin Pengajian
-// diberikan lewat pembuatan keanggotaan (buka detail pengguna → Setup Data Role).
-type BaseRole = "administrator" | "santri";
-const BASE_ROLE_OPTIONS = ROLE_OPTIONS.filter(
-  (r) => r.value === "administrator" || r.value === "santri"
-);
+// Role yang bisa langsung diubah dari sini. Untuk admin_pengajian & ustadz
+// pastikan data keanggotaan (lembaga) sudah diatur lewat detail pengguna.
 
 export default function PenggunaScreen() {
   const router = useRouter();
@@ -53,7 +49,7 @@ export default function PenggunaScreen() {
     return matchSearch && matchRole;
   });
 
-  const handleUpdateRole = async (userId: Id<"users">, role: BaseRole) => {
+  const handleUpdateRole = async (userId: Id<"users">, role: UserRole) => {
     try {
       await updateRole({ userId, role });
       Alert.alert("Berhasil", "Role dasar pengguna telah diubah.");
@@ -209,7 +205,7 @@ export default function PenggunaScreen() {
           <View style={st.modalCard}>
             <Text style={st.modalTitle}>Ubah Role Dasar</Text>
             <Text style={st.modalSubtitle}>{roleModal?.name}</Text>
-            {BASE_ROLE_OPTIONS.map((r) => (
+            {ROLE_OPTIONS.map((r) => (
               <Pressable
                 key={r.value}
                 style={({ pressed }) => [
@@ -222,7 +218,7 @@ export default function PenggunaScreen() {
                 ]}
                 onPress={() =>
                   roleModal &&
-                  handleUpdateRole(roleModal.userId, r.value as BaseRole)
+                  handleUpdateRole(roleModal.userId, r.value)
                 }
               >
                 <Text
@@ -239,8 +235,8 @@ export default function PenggunaScreen() {
               </Pressable>
             ))}
             <Text style={st.modalNote}>
-              Peran Ustadz & Admin Pengajian diatur lewat detail pengguna (Setup
-              Data Role).
+              Untuk Admin Pengajian & Ustadz, atur data lembaga lewat detail
+              pengguna (Setup Data Role).
             </Text>
             <Pressable
               style={st.modalCancel}

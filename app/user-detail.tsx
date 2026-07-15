@@ -64,6 +64,38 @@ export default function UserDetailScreen() {
     user ? { userId: user._id } : "skip"
   );
   const allLembaga = useQuery(api.adminPengajian.listAll);
+  const santriProfile = useQuery(
+    api.santri.getByUserId,
+    user ? { userId: user._id } : "skip"
+  );
+  const setLkmAffiliation = useMutation(api.santri.setLkmAffiliation);
+
+  const [showLkmModal, setShowLkmModal] = useState(false);
+  const [selectedLkmId, setSelectedLkmId] = useState<Id<"admin_pengajian"> | null>(null);
+  const [assigningLkm, setAssigningLkm] = useState(false);
+
+  const santriLembaga = useMemo(() => {
+    if (!santriProfile?.adminPengajianId || !allLembaga) return null;
+    return allLembaga.find((item) => item._id === santriProfile.adminPengajianId) ?? null;
+  }, [santriProfile, allLembaga]);
+
+  const handleSetLkmAffiliation = async () => {
+    if (!user) return;
+    try {
+      setAssigningLkm(true);
+      await setLkmAffiliation({
+        userId: user._id,
+        adminPengajianId: selectedLkmId ?? undefined,
+      });
+      setShowLkmModal(false);
+      setSelectedLkmId(null);
+      Alert.alert("Berhasil", "Afiliasi LKM berhasil diperbarui.");
+    } catch {
+      Alert.alert("Error", "Gagal memperbarui afiliasi LKM.");
+    } finally {
+      setAssigningLkm(false);
+    }
+  };
 
   // Semua hook harus dipanggil sebelum early return di bawah, jika tidak jumlah
   // hook antar-render berbeda ("Rendered more hooks than during the previous
@@ -248,6 +280,28 @@ export default function UserDetailScreen() {
             </Pressable>
           )}
         </View>
+
+        <View style={st.setupCard}>
+          <Text style={st.setupTitle}>Santri — Afiliasi LKM</Text>
+          <Text style={st.setupText}>
+            {santriLembaga
+              ? `Terafiliasi dengan ${santriLembaga.namaLembaga}`
+              : santriProfile
+                ? "Belum terafiliasi dengan LKM."
+                : "Belum ada data santri untuk user ini."}
+          </Text>
+          <Pressable
+            style={({ pressed }) => [st.setupButton, pressed && { opacity: 0.8 }]}
+            onPress={() => {
+              setSelectedLkmId(santriProfile?.adminPengajianId ?? null);
+              setShowLkmModal(true);
+            }}
+          >
+            <Text style={st.setupButtonText}>
+              {santriProfile?.adminPengajianId ? "Ubah Afiliasi LKM" : "Atur Afiliasi LKM"}
+            </Text>
+          </Pressable>
+        </View>
       </View>
 
       {/* Recent Tilawah */}
@@ -330,6 +384,64 @@ export default function UserDetailScreen() {
                 <ActivityIndicator size="small" color="#fff" />
               ) : (
                 <Text style={st.primaryBtnText}>Simpan Data Ustadz</Text>
+              )}
+            </Pressable>
+          </Pressable>
+        </Pressable>
+      </Modal>
+
+      {/* LKM Affiliation Modal */}
+      <Modal
+        visible={showLkmModal}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setShowLkmModal(false)}
+      >
+        <Pressable style={st.modalOverlay} onPress={() => setShowLkmModal(false)}>
+          <Pressable style={st.modalCard} onPress={() => {}}>
+            <Text style={st.modalTitle}>Afiliasi LKM</Text>
+            <Text style={st.modalSubtitle}>{user.name}</Text>
+
+            <Text style={st.inputLabel}>Pilih Lembaga</Text>
+            <Text style={st.inputHint}>Kosongkan untuk menghapus afiliasi.</Text>
+            <View style={st.optionWrap}>
+              {allLembaga?.map((item) => (
+                <Pressable
+                  key={item._id}
+                  style={({ pressed }) => [
+                    st.optionItem,
+                    selectedLkmId === item._id && st.optionItemActive,
+                    pressed && { opacity: 0.8 },
+                  ]}
+                  onPress={() =>
+                    setSelectedLkmId(selectedLkmId === item._id ? null : item._id)
+                  }
+                >
+                  <Text
+                    style={[
+                      st.optionText,
+                      selectedLkmId === item._id && st.optionTextActive,
+                    ]}
+                  >
+                    {item.namaLembaga}
+                  </Text>
+                </Pressable>
+              ))}
+            </View>
+
+            <Pressable
+              style={({ pressed }) => [
+                st.primaryBtn,
+                assigningLkm && { opacity: 0.5 },
+                pressed && !assigningLkm && { opacity: 0.85 },
+              ]}
+              onPress={handleSetLkmAffiliation}
+              disabled={assigningLkm}
+            >
+              {assigningLkm ? (
+                <ActivityIndicator size="small" color="#fff" />
+              ) : (
+                <Text style={st.primaryBtnText}>Simpan Afiliasi</Text>
               )}
             </Pressable>
           </Pressable>
@@ -487,6 +599,12 @@ const st = StyleSheet.create({
     color: Colors.textSecondary,
     marginBottom: 6,
     marginTop: 8,
+  },
+  inputHint: {
+    fontSize: 11,
+    color: Colors.textSecondary,
+    marginBottom: 8,
+    fontStyle: "italic",
   },
   input: {
     backgroundColor: Colors.background,

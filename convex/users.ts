@@ -164,15 +164,19 @@ export const updateProfile = mutation({
 export const updateRole = mutation({
   args: {
     userId: v.id("users"),
-    role: v.union(v.literal("administrator"), v.literal("santri")),
+    role: v.union(
+      v.literal("administrator"),
+      v.literal("admin_pengajian"),
+      v.literal("ustadz"),
+      v.literal("santri"),
+    ),
   },
   handler: async (ctx, args) => {
     await requireAdministrator(ctx);
     const user = await ctx.db.get(args.userId);
     if (!user) throw new Error("User not found");
 
-    // Turun ke santri = pastikan baris keanggotaan santri ada sehingga role
-    // "santri" tetap tersedia setelah pergantian role berikutnya.
+    // Pastikan baris keanggotaan untuk role ybs ada.
     if (args.role === "santri") {
       const existing = await ctx.db
         .query("santri")

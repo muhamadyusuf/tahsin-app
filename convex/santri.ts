@@ -5,6 +5,7 @@ import {
   getAuthUser,
   getUstadzRow,
   isAdministrator,
+  requireAdministrator,
   requireSelf,
 } from "./authz";
 
@@ -61,6 +62,35 @@ export const create = mutation({
 
     return await ctx.db.insert("santri", {
       userId: args.userId,
+      isActive: true,
+    });
+  },
+});
+
+// Set (or clear) LKM affiliation for a user's santri record. Admin only.
+export const setLkmAffiliation = mutation({
+  args: {
+    userId: v.id("users"),
+    adminPengajianId: v.optional(v.id("admin_pengajian")),
+  },
+  handler: async (ctx, args) => {
+    await requireAdministrator(ctx);
+
+    const existing = await ctx.db
+      .query("santri")
+      .withIndex("by_userId", (q) => q.eq("userId", args.userId))
+      .first();
+
+    if (existing) {
+      await ctx.db.patch(existing._id, {
+        adminPengajianId: args.adminPengajianId,
+      });
+      return existing._id;
+    }
+
+    return await ctx.db.insert("santri", {
+      userId: args.userId,
+      adminPengajianId: args.adminPengajianId,
       isActive: true,
     });
   },
