@@ -1,26 +1,27 @@
+import { api } from "@/convex/_generated/api";
+import { getJuzAyahs } from "@/lib/alquran-api";
+import { useAuthContext } from "@/lib/auth-context";
+import { Colors } from "@/lib/constants";
+import FontAwesome from "@expo/vector-icons/FontAwesome";
+import AsyncStorage from "@react-native-async-storage/async-storage";
+import { useMutation, useQuery } from "convex/react";
+import { Audio } from "expo-av";
+import { Redirect, useRouter } from "expo-router";
 import React, { useEffect, useRef, useState } from "react";
 import {
-  View,
-  Text,
-  StyleSheet,
-  ScrollView,
-  TouchableOpacity,
   ActivityIndicator,
   Alert,
-  Platform,
-  Image,
   Animated,
+  Image,
   Modal,
+  Platform,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View,
 } from "react-native";
-import { useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import FontAwesome from "@expo/vector-icons/FontAwesome";
-import { Audio } from "expo-av";
-import AsyncStorage from "@react-native-async-storage/async-storage";
-import { useQuery, useMutation } from "convex/react";
-import { api } from "@/convex/_generated/api";
-import { useAuthContext } from "@/lib/auth-context";
-import { getJuzAyahs } from "@/lib/alquran-api";
 
 // ============ THEME (dedicated dark emerald/gold "game" palette) ============
 const T = {
@@ -50,9 +51,12 @@ const MAX_MULTIPLIER = 5;
 // Sound effects (Google's public "sounds library" — same host already used
 // for the tap sound in app/(tabs)/tahsin.tsx and app/materi/[materiId].tsx)
 const SOUND_TAP = "https://actions.google.com/sounds/v1/cartoon/pop.ogg";
-const SOUND_CORRECT = "https://actions.google.com/sounds/v1/cartoon/instrument_strum.ogg";
-const SOUND_WRONG = "https://actions.google.com/sounds/v1/cartoon/metal_twang.ogg";
-const SOUND_GAMEOVER = "https://actions.google.com/sounds/v1/cartoon/clang_and_wobble.ogg";
+const SOUND_CORRECT =
+  "https://actions.google.com/sounds/v1/cartoon/instrument_strum.ogg";
+const SOUND_WRONG =
+  "https://actions.google.com/sounds/v1/cartoon/metal_twang.ogg";
+const SOUND_GAMEOVER =
+  "https://actions.google.com/sounds/v1/cartoon/clang_and_wobble.ogg";
 const SOUND_TICK = "https://actions.google.com/sounds/v1/alarms/beep_short.ogg";
 const SOUND_ENABLED_KEY = "sambungAyat_soundEnabled";
 
@@ -94,7 +98,7 @@ function pickDistractors(
   pool: JuzAyah[],
   correctText: string,
   promptText: string,
-  count: number
+  count: number,
 ): JuzAyah[] {
   const exclude = new Set([correctText, promptText]);
   const out: JuzAyah[] = [];
@@ -112,18 +116,30 @@ function pickDistractors(
 export default function SambungAyatScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
-  const { userData } = useAuthContext();
+  const { isLoading, isAuthenticated, userData } = useAuthContext();
+
+  if (isLoading) {
+    return (
+      <View style={styles.center}>
+        <ActivityIndicator size="large" color={Colors.primary} />
+      </View>
+    );
+  }
+
+  if (!isAuthenticated) {
+    return <Redirect href="/(auth)/login" />;
+  }
 
   const myBest = useQuery(
     api.sambungAyat.getMyBest,
-    userData?._id ? { userId: userData._id } : "skip"
+    userData?._id ? { userId: userData._id } : "skip",
   );
   const submitScore = useMutation(api.sambungAyat.submitScore);
 
   const [leaderboardVisible, setLeaderboardVisible] = useState(false);
   const leaderboard = useQuery(
     api.sambungAyat.getLeaderboard,
-    leaderboardVisible ? { limit: 20 } : "skip"
+    leaderboardVisible ? { limit: 20 } : "skip",
   );
 
   // ── sound effects ───────────────────────────────────────────
@@ -133,7 +149,10 @@ export default function SambungAyatScreen() {
   const warnPlayedRef = useRef(false);
 
   useEffect(() => {
-    Audio.setAudioModeAsync({ playsInSilentModeIOS: true, staysActiveInBackground: false });
+    Audio.setAudioModeAsync({
+      playsInSilentModeIOS: true,
+      staysActiveInBackground: false,
+    });
     AsyncStorage.getItem(SOUND_ENABLED_KEY).then((v) => {
       if (v === "0") {
         soundEnabledRef.current = false;
@@ -150,7 +169,10 @@ export default function SambungAyatScreen() {
         await cached.replayAsync();
         return;
       }
-      const { sound } = await Audio.Sound.createAsync({ uri }, { shouldPlay: true, volume });
+      const { sound } = await Audio.Sound.createAsync(
+        { uri },
+        { shouldPlay: true, volume },
+      );
       soundCacheRef.current.set(uri, sound);
     } catch {
       // ignore sound failures — never block gameplay on audio issues
@@ -240,29 +262,47 @@ export default function SambungAyatScreen() {
   function triggerComboPulse() {
     comboScale.setValue(1);
     Animated.sequence([
-      Animated.timing(comboScale, { toValue: 1.3, duration: 120, useNativeDriver: true }),
-      Animated.timing(comboScale, { toValue: 1, duration: 150, useNativeDriver: true }),
+      Animated.timing(comboScale, {
+        toValue: 1.3,
+        duration: 120,
+        useNativeDriver: true,
+      }),
+      Animated.timing(comboScale, {
+        toValue: 1,
+        duration: 150,
+        useNativeDriver: true,
+      }),
     ]).start();
   }
   function triggerShake() {
     shakeX.setValue(0);
     Animated.sequence(
       [-10, 10, -8, 8, -4, 4, 0].map((v) =>
-        Animated.timing(shakeX, { toValue: v, duration: 40, useNativeDriver: true })
-      )
+        Animated.timing(shakeX, {
+          toValue: v,
+          duration: 40,
+          useNativeDriver: true,
+        }),
+      ),
     ).start();
   }
   function triggerFlash(kind: "correct" | "wrong") {
     setFlashColor(kind === "correct" ? T.emerald : T.crimson);
     flashOpacity.setValue(0.35);
-    Animated.timing(flashOpacity, { toValue: 0, duration: 550, useNativeDriver: true }).start();
+    Animated.timing(flashOpacity, {
+      toValue: 0,
+      duration: 550,
+      useNativeDriver: true,
+    }).start();
   }
   function spawnScoreFloat(points: number) {
     setFloatText("+" + points);
     floatAnim.setValue(0);
-    Animated.timing(floatAnim, { toValue: 1, duration: 750, useNativeDriver: true }).start(() =>
-      setFloatText(null)
-    );
+    Animated.timing(floatAnim, {
+      toValue: 1,
+      duration: 750,
+      useNativeDriver: true,
+    }).start(() => setFloatText(null));
   }
 
   // ── data fetching ──────────────────────────────────────────
@@ -280,7 +320,10 @@ export default function SambungAyatScreen() {
     return normalized;
   }
 
-  async function loadRange(start: number, end: number): Promise<JuzAyah[] | null> {
+  async function loadRange(
+    start: number,
+    end: number,
+  ): Promise<JuzAyah[] | null> {
     loadAbortRef.current = false;
     setLoadError(null);
     setScreen("loading");
@@ -309,7 +352,9 @@ export default function SambungAyatScreen() {
     if (!pool) return;
     const valid = buildValidIndices(pool);
     if (valid.length < 3) {
-      setLoadError("Rentang juz terlalu kecil untuk membuat soal. Pilih rentang yang lebih besar.");
+      setLoadError(
+        "Rentang juz terlalu kecil untuk membuat soal. Pilih rentang yang lebih besar.",
+      );
       return;
     }
     poolRef.current = pool;
@@ -322,11 +367,15 @@ export default function SambungAyatScreen() {
   }
 
   function pickQuestionIndex(): number {
-    if (usedIdxRef.current.size >= validIdxRef.current.length) usedIdxRef.current.clear();
+    if (usedIdxRef.current.size >= validIdxRef.current.length)
+      usedIdxRef.current.clear();
     let idx = 0;
     let tries = 0;
     do {
-      idx = validIdxRef.current[Math.floor(Math.random() * validIdxRef.current.length)];
+      idx =
+        validIdxRef.current[
+          Math.floor(Math.random() * validIdxRef.current.length)
+        ];
       tries++;
     } while (usedIdxRef.current.has(idx) && tries < 100);
     usedIdxRef.current.add(idx);
@@ -341,7 +390,12 @@ export default function SambungAyatScreen() {
     const promptAyah = poolRef.current[qIdx];
     const correctAyah = poolRef.current[qIdx + 1];
     setPrompt(promptAyah);
-    const distractors = pickDistractors(poolRef.current, correctAyah.text, promptAyah.text, 3);
+    const distractors = pickDistractors(
+      poolRef.current,
+      correctAyah.text,
+      promptAyah.text,
+      3,
+    );
     const shuffled = shuffle<Choice>([
       { ayah: correctAyah, isCorrect: true },
       ...distractors.map((d) => ({ ayah: d, isCorrect: false })),
@@ -394,7 +448,10 @@ export default function SambungAyatScreen() {
   }
 
   function registerCorrect() {
-    const mult = Math.min(1 + Math.floor(statsRef.current.combo / COMBO_STEP), MAX_MULTIPLIER);
+    const mult = Math.min(
+      1 + Math.floor(statsRef.current.combo / COMBO_STEP),
+      MAX_MULTIPLIER,
+    );
     const timeBonus = Math.round((timeLeft / QUESTION_TIME) * 50);
     const points = Math.round((100 + timeBonus) * mult);
     const newCombo = statsRef.current.combo + 1;
@@ -466,7 +523,7 @@ export default function SambungAyatScreen() {
       if (pendingTimeoutRef.current) clearTimeout(pendingTimeoutRef.current);
       soundCacheRef.current.forEach((s) => s.unloadAsync().catch(() => {}));
     },
-    []
+    [],
   );
 
   function handleBack() {
@@ -496,13 +553,19 @@ export default function SambungAyatScreen() {
   }
 
   const timeFrac = timeLeft / QUESTION_TIME;
-  const multiplier = Math.min(1 + Math.floor(stats.combo / COMBO_STEP), MAX_MULTIPLIER);
+  const multiplier = Math.min(
+    1 + Math.floor(stats.combo / COMBO_STEP),
+    MAX_MULTIPLIER,
+  );
 
   return (
     <View style={styles.root}>
       {/* ===== Header ===== */}
       <View style={[styles.header, { paddingTop: insets.top + 12 }]}>
-        <TouchableOpacity onPress={() => router.push("/")} style={styles.headerBtn}>
+        <TouchableOpacity
+          onPress={() => router.push("/")}
+          style={styles.headerBtn}
+        >
           <FontAwesome name="arrow-left" size={18} color={T.textDim} />
         </TouchableOpacity>
         <Text style={styles.headerTitle}>Sambung Ayat</Text>
@@ -535,7 +598,8 @@ export default function SambungAyatScreen() {
             <Text style={styles.titleAr}>سِبَاقُ الْحِفْظِ</Text>
             <Text style={styles.titleLat}>Sambung Ayat</Text>
             <Text style={styles.subtitle}>
-              Bacalah satu ayat, lalu kenali sambungannya. Mushaf Utsmani, standar penomoran resmi.
+              Bacalah satu ayat, lalu kenali sambungannya. Mushaf Utsmani,
+              standar penomoran resmi.
             </Text>
 
             {userData && (
@@ -559,18 +623,34 @@ export default function SambungAyatScreen() {
               <Text style={styles.panelLabel}>PILIH RENTANG JUZ</Text>
               <View style={styles.modeToggle}>
                 <TouchableOpacity
-                  style={[styles.modeBtn, mode === "single" && styles.modeBtnActive]}
+                  style={[
+                    styles.modeBtn,
+                    mode === "single" && styles.modeBtnActive,
+                  ]}
                   onPress={() => setMode("single")}
                 >
-                  <Text style={[styles.modeBtnText, mode === "single" && styles.modeBtnTextActive]}>
+                  <Text
+                    style={[
+                      styles.modeBtnText,
+                      mode === "single" && styles.modeBtnTextActive,
+                    ]}
+                  >
                     Satu Juz
                   </Text>
                 </TouchableOpacity>
                 <TouchableOpacity
-                  style={[styles.modeBtn, mode === "range" && styles.modeBtnActive]}
+                  style={[
+                    styles.modeBtn,
+                    mode === "range" && styles.modeBtnActive,
+                  ]}
                   onPress={() => setMode("range")}
                 >
-                  <Text style={[styles.modeBtnText, mode === "range" && styles.modeBtnTextActive]}>
+                  <Text
+                    style={[
+                      styles.modeBtnText,
+                      mode === "range" && styles.modeBtnTextActive,
+                    ]}
+                  >
                     Rentang Juz
                   </Text>
                 </TouchableOpacity>
@@ -586,12 +666,15 @@ export default function SambungAyatScreen() {
                   <JuzStepper
                     label="Sampai Juz"
                     value={endJuz}
-                    onChange={(v) => setEndJuz(Math.max(startJuz, Math.min(30, v)))}
+                    onChange={(v) =>
+                      setEndJuz(Math.max(startJuz, Math.min(30, v)))
+                    }
                   />
                 )}
               </View>
               <Text style={styles.hintText}>
-                Pilihan default: Juz 30 (Juz 'Amma) — ringkas dan cocok untuk pemanasan hafalan.
+                Pilihan default: Juz 30 (Juz 'Amma) — ringkas dan cocok untuk
+                pemanasan hafalan.
               </Text>
             </View>
 
@@ -608,34 +691,44 @@ export default function SambungAyatScreen() {
               style={styles.ghostBtn}
               onPress={() => setLeaderboardVisible(true)}
             >
-              <Text style={styles.ghostBtnText}>{"🏆"} Papan Skor Tertinggi</Text>
+              <Text style={styles.ghostBtnText}>
+                {"🏆"} Papan Skor Tertinggi
+              </Text>
             </TouchableOpacity>
 
-            <TouchableOpacity onPress={() => setHowToOpen((v) => !v)} style={styles.howToToggle}>
+            <TouchableOpacity
+              onPress={() => setHowToOpen((v) => !v)}
+              style={styles.howToToggle}
+            >
               <Text style={styles.howToToggleText}>
                 {howToOpen ? "Sembunyikan cara bermain" : "Cara bermain"}
               </Text>
             </TouchableOpacity>
             {howToOpen && (
               <View style={styles.howToBox}>
-                <Text style={styles.howToText}>1. Sebuah ayat akan ditampilkan di kartu utama.</Text>
                 <Text style={styles.howToText}>
-                  2. Pilih ayat yang benar-benar menyambung tepat setelahnya, dari 4 pilihan.
+                  1. Sebuah ayat akan ditampilkan di kartu utama.
                 </Text>
                 <Text style={styles.howToText}>
-                  3. Jawaban cepat &amp; benar beruntun menaikkan pengali skor (combo). Jawaban salah
-                  mengurangi nyawa.
+                  2. Pilih ayat yang benar-benar menyambung tepat setelahnya,
+                  dari 4 pilihan.
                 </Text>
                 <Text style={styles.howToText}>
-                  4. Permainan berakhir saat nyawa habis. Kumpulkan skor tertinggi!
+                  3. Jawaban cepat &amp; benar beruntun menaikkan pengali skor
+                  (combo). Jawaban salah mengurangi nyawa.
+                </Text>
+                <Text style={styles.howToText}>
+                  4. Permainan berakhir saat nyawa habis. Kumpulkan skor
+                  tertinggi!
                 </Text>
               </View>
             )}
 
             <Text style={styles.sourceNote}>
-              Teks Arab menggunakan mushaf Utsmani (Uthmani script) dari Al Quran Cloud API —
-              bersumber dari proyek Tanzil yang telah diverifikasi dan lazim dipakai aplikasi
-              Qur'an. Penomoran surah/ayat mengikuti standar mushaf.
+              Teks Arab menggunakan mushaf Utsmani (Uthmani script) dari Al
+              Quran Cloud API — bersumber dari proyek Tanzil yang telah
+              diverifikasi dan lazim dipakai aplikasi Qur'an. Penomoran
+              surah/ayat mengikuti standar mushaf.
             </Text>
           </View>
         </ScrollView>
@@ -647,14 +740,25 @@ export default function SambungAyatScreen() {
           {!loadError ? (
             <>
               <ActivityIndicator size="large" color={T.goldBright} />
-              <Text style={styles.loadText}>{loadingText || "Memuat ayat…"}</Text>
+              <Text style={styles.loadText}>
+                {loadingText || "Memuat ayat…"}
+              </Text>
               <View style={styles.progressTrack}>
-                <View style={[styles.progressFill, { width: `${loadingProgress}%` }]} />
+                <View
+                  style={[
+                    styles.progressFill,
+                    { width: `${loadingProgress}%` },
+                  ]}
+                />
               </View>
             </>
           ) : (
             <>
-              <FontAwesome name="exclamation-circle" size={36} color={T.crimson} />
+              <FontAwesome
+                name="exclamation-circle"
+                size={36}
+                color={T.crimson}
+              />
               <Text style={styles.loadErrorText}>{loadError}</Text>
               <TouchableOpacity style={styles.ctaBtn} onPress={beginNewGame}>
                 <Text style={styles.ctaBtnText}>Coba Lagi</Text>
@@ -678,7 +782,10 @@ export default function SambungAyatScreen() {
         <View style={styles.gameWrap}>
           <Animated.View
             pointerEvents="none"
-            style={[styles.flashOverlay, { backgroundColor: flashColor, opacity: flashOpacity }]}
+            style={[
+              styles.flashOverlay,
+              { backgroundColor: flashColor, opacity: flashOpacity },
+            ]}
           />
 
           <View style={styles.topbar}>
@@ -715,12 +822,26 @@ export default function SambungAyatScreen() {
                 </Animated.Text>
               )}
             </View>
-            <Animated.View style={[styles.comboBadge, { transform: [{ scale: comboScale }] }]}>
-              <Text style={styles.comboBadgeText}>{"×"}{multiplier}</Text>
+            <Animated.View
+              style={[
+                styles.comboBadge,
+                { transform: [{ scale: comboScale }] },
+              ]}
+            >
+              <Text style={styles.comboBadgeText}>
+                {"×"}
+                {multiplier}
+              </Text>
             </Animated.View>
             <View style={styles.livesRow}>
               {Array.from({ length: MAX_LIVES }).map((_, i) => (
-                <View key={i} style={[styles.lifeDot, i >= stats.lives && styles.lifeDotLost]} />
+                <View
+                  key={i}
+                  style={[
+                    styles.lifeDot,
+                    i >= stats.lives && styles.lifeDotLost,
+                  ]}
+                />
               ))}
             </View>
           </View>
@@ -735,13 +856,18 @@ export default function SambungAyatScreen() {
             />
           </View>
 
-          <Animated.View style={[styles.ayahCard, { transform: [{ translateX: shakeX }] }]}>
+          <Animated.View
+            style={[styles.ayahCard, { transform: [{ translateX: shakeX }] }]}
+          >
             <View style={styles.ayahBadge}>
               <Text style={styles.ayahBadgeText} numberOfLines={1}>
                 {prompt.surahName} {"•"} Ayat {prompt.ayahNumber}
               </Text>
             </View>
-            <ScrollView style={styles.ayahScroll} showsVerticalScrollIndicator={false}>
+            <ScrollView
+              style={styles.ayahScroll}
+              showsVerticalScrollIndicator={false}
+            >
               <Text style={styles.ayahText}>{prompt.text}</Text>
             </ScrollView>
           </Animated.View>
@@ -753,7 +879,8 @@ export default function SambungAyatScreen() {
           <View style={styles.answers}>
             {choices.map((choice, i) => {
               const revealed = answeredIdx !== null;
-              const isChosenWrong = revealed && i === answeredIdx && !choice.isCorrect;
+              const isChosenWrong =
+                revealed && i === answeredIdx && !choice.isCorrect;
               const isCorrectCard = revealed && choice.isCorrect;
               const isDim = revealed && !isCorrectCard && !isChosenWrong;
               return (
@@ -772,12 +899,16 @@ export default function SambungAyatScreen() {
                   <View style={styles.answerNum}>
                     <Text style={styles.answerNumText}>{i + 1}</Text>
                   </View>
-                  <ScrollView style={styles.answerScroll} showsVerticalScrollIndicator={false}>
+                  <ScrollView
+                    style={styles.answerScroll}
+                    showsVerticalScrollIndicator={false}
+                  >
                     <Text style={styles.answerText}>{choice.ayah.text}</Text>
                   </ScrollView>
                   {revealed && (
                     <Text style={styles.answerRef} numberOfLines={1}>
-                      {choice.ayah.surahName} {"•"} Ayat {choice.ayah.ayahNumber}
+                      {choice.ayah.surahName} {"•"} Ayat{" "}
+                      {choice.ayah.ayahNumber}
                     </Text>
                   )}
                 </TouchableOpacity>
@@ -789,11 +920,16 @@ export default function SambungAyatScreen() {
 
       {/* ===== GAME OVER ===== */}
       {screen === "gameover" && (
-        <ScrollView style={styles.flex} contentContainerStyle={styles.startContent}>
+        <ScrollView
+          style={styles.flex}
+          contentContainerStyle={styles.startContent}
+        >
           <View style={styles.card}>
             <FontAwesome name="flag-checkered" size={40} color={T.goldBright} />
             <Text style={styles.resultTitle}>Permainan Berakhir</Text>
-            <Text style={styles.subtitle}>Nyawa habis — lihat hasil Anda di bawah.</Text>
+            <Text style={styles.subtitle}>
+              Nyawa habis — lihat hasil Anda di bawah.
+            </Text>
             <Text style={styles.resultScore}>{stats.score}</Text>
 
             <View style={styles.statsGrid}>
@@ -803,12 +939,18 @@ export default function SambungAyatScreen() {
               </View>
               <View style={styles.statBox}>
                 <Text style={styles.statBoxNum}>
-                  {stats.totalCount ? Math.round((stats.correctCount / stats.totalCount) * 100) : 0}%
+                  {stats.totalCount
+                    ? Math.round((stats.correctCount / stats.totalCount) * 100)
+                    : 0}
+                  %
                 </Text>
                 <Text style={styles.statBoxLbl}>Akurasi</Text>
               </View>
               <View style={styles.statBox}>
-                <Text style={styles.statBoxNum}>{"×"}{stats.bestCombo}</Text>
+                <Text style={styles.statBoxNum}>
+                  {"×"}
+                  {stats.bestCombo}
+                </Text>
                 <Text style={styles.statBoxLbl}>Combo Terbaik</Text>
               </View>
             </View>
@@ -820,7 +962,9 @@ export default function SambungAyatScreen() {
               </View>
             )}
             {!userData && (
-              <Text style={styles.hintText}>Masuk akun untuk menyimpan skor ke papan peringkat.</Text>
+              <Text style={styles.hintText}>
+                Masuk akun untuk menyimpan skor ke papan peringkat.
+              </Text>
             )}
 
             <TouchableOpacity
@@ -853,7 +997,9 @@ export default function SambungAyatScreen() {
         onRequestClose={() => setLeaderboardVisible(false)}
       >
         <View style={styles.modalOverlay}>
-          <View style={[styles.modalCard, { marginBottom: insets.bottom + 20 }]}>
+          <View
+            style={[styles.modalCard, { marginBottom: insets.bottom + 20 }]}
+          >
             <TouchableOpacity
               style={styles.modalClose}
               onPress={() => setLeaderboardVisible(false)}
@@ -864,11 +1010,19 @@ export default function SambungAyatScreen() {
             <Text style={styles.subtitle}>Peringkat santri se-aplikasi</Text>
 
             {leaderboard === undefined ? (
-              <ActivityIndicator color={T.goldBright} style={{ marginTop: 20 }} />
+              <ActivityIndicator
+                color={T.goldBright}
+                style={{ marginTop: 20 }}
+              />
             ) : leaderboard.length === 0 ? (
-              <Text style={styles.hsEmpty}>Belum ada skor. Jadilah yang pertama!</Text>
+              <Text style={styles.hsEmpty}>
+                Belum ada skor. Jadilah yang pertama!
+              </Text>
             ) : (
-              <ScrollView style={styles.hsList} showsVerticalScrollIndicator={false}>
+              <ScrollView
+                style={styles.hsList}
+                showsVerticalScrollIndicator={false}
+              >
                 {leaderboard.map((row, i) => {
                   const isMe = userData?._id === row.userId;
                   return (
@@ -878,10 +1032,17 @@ export default function SambungAyatScreen() {
                     >
                       <Text style={styles.hsRank}>{i + 1}</Text>
                       {row.avatarUrl ? (
-                        <Image source={{ uri: row.avatarUrl }} style={styles.hsAvatar} />
+                        <Image
+                          source={{ uri: row.avatarUrl }}
+                          style={styles.hsAvatar}
+                        />
                       ) : (
                         <View style={styles.hsAvatarFallback}>
-                          <FontAwesome name="user" size={13} color={T.textDim2} />
+                          <FontAwesome
+                            name="user"
+                            size={13}
+                            color={T.textDim2}
+                          />
                         </View>
                       )}
                       <View style={styles.hsNameCol}>
@@ -917,11 +1078,17 @@ function JuzStepper({
     <View style={styles.stepperField}>
       <Text style={styles.stepperLabel}>{label}</Text>
       <View style={styles.stepperControl}>
-        <TouchableOpacity style={styles.stepperBtn} onPress={() => onChange(value - 1)}>
+        <TouchableOpacity
+          style={styles.stepperBtn}
+          onPress={() => onChange(value - 1)}
+        >
           <FontAwesome name="minus" size={12} color={T.goldBright} />
         </TouchableOpacity>
         <Text style={styles.stepperValue}>Juz {value}</Text>
-        <TouchableOpacity style={styles.stepperBtn} onPress={() => onChange(value + 1)}>
+        <TouchableOpacity
+          style={styles.stepperBtn}
+          onPress={() => onChange(value + 1)}
+        >
           <FontAwesome name="plus" size={12} color={T.goldBright} />
         </TouchableOpacity>
       </View>
@@ -932,7 +1099,13 @@ function JuzStepper({
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: T.ink },
   flex: { flex: 1 },
-  center: { flex: 1, justifyContent: "center", alignItems: "center", gap: 14, padding: 24 },
+  center: {
+    flex: 1,
+    justifyContent: "center",
+    alignItems: "center",
+    gap: 14,
+    padding: 24,
+  },
 
   header: {
     flexDirection: "row",
@@ -969,7 +1142,12 @@ const styles = StyleSheet.create({
     fontWeight: "800",
     marginBottom: 8,
   },
-  titleAr: { fontSize: 30, color: T.goldBright, fontFamily: "Amiri", writingDirection: "rtl" },
+  titleAr: {
+    fontSize: 30,
+    color: T.goldBright,
+    fontFamily: "Amiri",
+    writingDirection: "rtl",
+  },
   titleLat: { fontSize: 24, fontWeight: "800", color: T.text, marginTop: 2 },
   subtitle: {
     fontSize: 13.5,
@@ -1017,7 +1195,12 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     marginBottom: 14,
   },
-  modeBtn: { flex: 1, paddingVertical: 10, borderRadius: 9, alignItems: "center" },
+  modeBtn: {
+    flex: 1,
+    paddingVertical: 10,
+    borderRadius: 9,
+    alignItems: "center",
+  },
   modeBtnActive: { backgroundColor: T.gold },
   modeBtnText: { color: T.textDim, fontWeight: "700", fontSize: 13 },
   modeBtnTextActive: { color: "#241c09" },
@@ -1045,7 +1228,13 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
   stepperValue: { color: T.text, fontWeight: "700", fontSize: 13 },
-  hintText: { fontSize: 11.5, color: T.textDim2, marginTop: 10, lineHeight: 17, textAlign: "center" },
+  hintText: {
+    fontSize: 11.5,
+    color: T.textDim2,
+    marginTop: 10,
+    lineHeight: 17,
+    textAlign: "center",
+  },
 
   ctaBtn: {
     width: "100%",
@@ -1068,10 +1257,25 @@ const styles = StyleSheet.create({
   ghostBtnText: { color: T.textDim, fontWeight: "700", fontSize: 14 },
 
   howToToggle: { marginTop: 16 },
-  howToToggleText: { fontSize: 12.5, color: T.textDim2, textDecorationLine: "underline" },
+  howToToggleText: {
+    fontSize: 12.5,
+    color: T.textDim2,
+    textDecorationLine: "underline",
+  },
   howToBox: { marginTop: 10, gap: 6, width: "100%" },
-  howToText: { fontSize: 12.5, color: T.textDim, lineHeight: 19, textAlign: "left" },
-  sourceNote: { fontSize: 10.5, color: T.textDim2, lineHeight: 16, marginTop: 18, textAlign: "center" },
+  howToText: {
+    fontSize: 12.5,
+    color: T.textDim,
+    lineHeight: 19,
+    textAlign: "left",
+  },
+  sourceNote: {
+    fontSize: 10.5,
+    color: T.textDim2,
+    lineHeight: 16,
+    marginTop: 18,
+    textAlign: "center",
+  },
 
   // ── loading ──
   loadText: { fontSize: 14, color: T.textDim, textAlign: "center" },
@@ -1083,11 +1287,22 @@ const styles = StyleSheet.create({
     overflow: "hidden",
   },
   progressFill: { height: "100%", backgroundColor: T.goldBright },
-  loadErrorText: { fontSize: 13, color: "#e08b8b", textAlign: "center", lineHeight: 19 },
+  loadErrorText: {
+    fontSize: 13,
+    color: "#e08b8b",
+    textAlign: "center",
+    lineHeight: 19,
+  },
 
   // ── playing ──
   gameWrap: { flex: 1, paddingHorizontal: 14, paddingTop: 6, gap: 12 },
-  flashOverlay: { position: "absolute", top: -100, left: -100, right: -100, bottom: -100 },
+  flashOverlay: {
+    position: "absolute",
+    top: -100,
+    left: -100,
+    right: -100,
+    bottom: -100,
+  },
   topbar: { flexDirection: "row", justifyContent: "space-between" },
   chip: {
     backgroundColor: "#ffffff10",
@@ -1099,8 +1314,17 @@ const styles = StyleSheet.create({
   },
   chipText: { color: T.textDim, fontSize: 12, fontWeight: "700" },
 
-  statRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
-  statLabel: { fontSize: 10, letterSpacing: 1, color: T.textDim2, fontWeight: "700" },
+  statRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+  },
+  statLabel: {
+    fontSize: 10,
+    letterSpacing: 1,
+    color: T.textDim2,
+    fontWeight: "700",
+  },
   scoreValue: { fontSize: 24, fontWeight: "900", color: T.goldBright },
   scoreFloat: {
     position: "absolute",
@@ -1126,7 +1350,12 @@ const styles = StyleSheet.create({
   },
   lifeDotLost: { backgroundColor: "#3a3a3a", opacity: 0.5 },
 
-  timerTrack: { height: 7, borderRadius: 6, backgroundColor: "#ffffff14", overflow: "hidden" },
+  timerTrack: {
+    height: 7,
+    borderRadius: 6,
+    backgroundColor: "#ffffff14",
+    overflow: "hidden",
+  },
   timerFill: { height: "100%", backgroundColor: T.emerald, borderRadius: 6 },
   timerFillWarn: { backgroundColor: T.crimson },
 
@@ -1158,7 +1387,12 @@ const styles = StyleSheet.create({
     writingDirection: "rtl",
   },
 
-  continueLabel: { textAlign: "center", fontSize: 12, color: T.textDim, fontWeight: "600" },
+  continueLabel: {
+    textAlign: "center",
+    fontSize: 12,
+    color: T.textDim,
+    fontWeight: "600",
+  },
 
   answers: { flex: 1, flexDirection: "row", flexWrap: "wrap", gap: 10 },
   answerCard: {
@@ -1195,11 +1429,26 @@ const styles = StyleSheet.create({
     fontFamily: "AmiriQuran",
     writingDirection: "rtl",
   },
-  answerRef: { fontSize: 10, color: T.textDim2, textAlign: "center", marginTop: 6 },
+  answerRef: {
+    fontSize: 10,
+    color: T.textDim2,
+    textAlign: "center",
+    marginTop: 6,
+  },
 
   // ── result ──
-  resultTitle: { fontSize: 20, fontWeight: "800", color: T.text, marginTop: 10 },
-  resultScore: { fontSize: 40, fontWeight: "900", color: T.goldBright, marginTop: 8 },
+  resultTitle: {
+    fontSize: 20,
+    fontWeight: "800",
+    color: T.text,
+    marginTop: 10,
+  },
+  resultScore: {
+    fontSize: 40,
+    fontWeight: "900",
+    color: T.goldBright,
+    marginTop: 8,
+  },
   statsGrid: { flexDirection: "row", gap: 8, marginTop: 18, width: "100%" },
   statBox: {
     flex: 1,
@@ -1209,7 +1458,12 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
   statBoxNum: { fontSize: 18, fontWeight: "900", color: T.goldBright },
-  statBoxLbl: { fontSize: 10, color: T.textDim2, marginTop: 3, textTransform: "uppercase" },
+  statBoxLbl: {
+    fontSize: 10,
+    color: T.textDim2,
+    marginTop: 3,
+    textTransform: "uppercase",
+  },
   newHighBadge: {
     flexDirection: "row",
     alignItems: "center",
@@ -1248,8 +1502,18 @@ const styles = StyleSheet.create({
     alignItems: "center",
     zIndex: 1,
   },
-  modalTitle: { fontSize: 19, fontWeight: "800", color: T.text, textAlign: "center" },
-  hsEmpty: { textAlign: "center", color: T.textDim2, fontSize: 13, marginTop: 24 },
+  modalTitle: {
+    fontSize: 19,
+    fontWeight: "800",
+    color: T.text,
+    textAlign: "center",
+  },
+  hsEmpty: {
+    textAlign: "center",
+    color: T.textDim2,
+    fontSize: 13,
+    marginTop: 24,
+  },
   hsList: { marginTop: 16 },
   hsRow: {
     flexDirection: "row",
@@ -1264,7 +1528,13 @@ const styles = StyleSheet.create({
     borderRadius: 10,
     paddingHorizontal: 8,
   },
-  hsRank: { width: 20, textAlign: "center", fontWeight: "900", color: T.gold, fontSize: 13 },
+  hsRank: {
+    width: 20,
+    textAlign: "center",
+    fontWeight: "900",
+    color: T.gold,
+    fontSize: 13,
+  },
   hsAvatar: { width: 28, height: 28, borderRadius: 14 },
   hsAvatarFallback: {
     width: 28,
