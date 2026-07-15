@@ -8,6 +8,7 @@ import { useMutation, useQuery } from "convex/react";
 import { Audio } from "expo-av";
 import { Redirect, useRouter } from "expo-router";
 import React, { useEffect, useRef, useState } from "react";
+import Svg, { Text as SvgText } from "react-native-svg";
 import {
   ActivityIndicator,
   Alert,
@@ -111,6 +112,69 @@ function pickDistractors(
     out.push(cand);
   }
   return out;
+}
+
+// ── SVG text renderer (so AI can't easily scrape Arabic text) ──────────
+function VerseSvg({
+  text,
+  fontSize,
+  lineHeight,
+  color,
+  fontFamily = "AmiriQuran",
+}: {
+  text: string;
+  fontSize: number;
+  lineHeight: number;
+  color: string;
+  fontFamily?: string;
+}) {
+  const [width, setWidth] = useState(0);
+
+  if (!text) return null;
+
+  const onLayout = (e: any) => {
+    const w = e.nativeEvent?.layout?.width;
+    if (w > 0 && w !== width) setWidth(w);
+  };
+
+  if (width === 0) {
+    return <View onLayout={onLayout} style={{ minHeight: lineHeight }} />;
+  }
+
+  const cw = fontSize * 0.55;
+  const usable = Math.max(1, width - 12);
+  const cpl = Math.max(1, Math.floor(usable / cw));
+
+  const lines: string[] = [];
+  for (let i = 0; i < text.length; i += cpl) {
+    lines.push(text.slice(i, i + cpl));
+  }
+
+  const contentHeight = Math.max(lines.length * lineHeight + 4, lineHeight + 4);
+
+  return (
+    <View
+      onLayout={onLayout}
+      style={{ width: "100%", height: contentHeight }}
+    >
+      <Svg width="100%" height={contentHeight} viewBox={`0 0 ${width} ${contentHeight}`}>
+        {lines.map((line, i) => (
+          <SvgText
+            key={i}
+            fill={color}
+            fontSize={fontSize}
+            fontFamily={fontFamily}
+            fontWeight="400"
+            textAnchor="middle"
+            x="50%"
+            y={lineHeight * (i + 1) - fontSize * 0.3}
+          >
+            {line}
+          </SvgText>
+        ))}
+      </Svg>
+    </View>
+  );
 }
 
 export default function SambungAyatScreen() {
@@ -868,7 +932,7 @@ export default function SambungAyatScreen() {
               style={styles.ayahScroll}
               showsVerticalScrollIndicator={false}
             >
-              <Text style={styles.ayahText}>{prompt.text}</Text>
+              <VerseSvg text={prompt.text} fontSize={24} lineHeight={46} color="#241c0c" />
             </ScrollView>
           </Animated.View>
 
@@ -903,7 +967,7 @@ export default function SambungAyatScreen() {
                     style={styles.answerScroll}
                     showsVerticalScrollIndicator={false}
                   >
-                    <Text style={styles.answerText}>{choice.ayah.text}</Text>
+                    <VerseSvg text={choice.ayah.text} fontSize={17} lineHeight={32} color={T.text} />
                   </ScrollView>
                   {revealed && (
                     <Text style={styles.answerRef} numberOfLines={1}>
