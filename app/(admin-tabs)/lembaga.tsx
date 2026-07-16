@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useState } from "react";
 import {
   View,
   Text,
@@ -7,17 +7,44 @@ import {
   Pressable,
   ActivityIndicator,
   Image,
+  Alert,
 } from "react-native";
-import { useQuery } from "convex/react";
+import { useQuery, useMutation } from "convex/react";
 import { api } from "@/convex/_generated/api";
+import type { Id } from "@/convex/_generated/dataModel";
 import { useRouter } from "expo-router";
 import FontAwesome from "@expo/vector-icons/FontAwesome";
 import { Colors } from "@/lib/constants";
+import ConfirmModal from "@/components/ConfirmModal";
 
 export default function LembagaScreen() {
   const router = useRouter();
   const lembagaList = useQuery(api.adminPengajian.listAll);
   const allUsers = useQuery(api.users.listAll, {});
+  const [deleteModalVisible, setDeleteModalVisible] = useState(false);
+  const [itemToDelete, setItemToDelete] = useState<{
+    id: Id<"admin_pengajian">;
+    nama: string;
+  } | null>(null);
+  const deleteLembaga = useMutation(api.adminPengajian.remove);
+
+  const handleDelete = (id: Id<"admin_pengajian">, nama: string) => {
+    setItemToDelete({ id, nama });
+    setDeleteModalVisible(true);
+  };
+
+  const confirmDelete = async () => {
+    if (!itemToDelete) return;
+    const { id, nama } = itemToDelete;
+    setDeleteModalVisible(false);
+    setItemToDelete(null);
+    try {
+      await deleteLembaga({ id });
+      Alert.alert("Berhasil", `Lembaga "${nama}" telah dihapus.`);
+    } catch (e: any) {
+      Alert.alert("Gagal", e.message ?? "Terjadi kesalahan saat menghapus");
+    }
+  };
 
   if (!lembagaList || !allUsers) {
     return (
@@ -95,10 +122,7 @@ export default function LembagaScreen() {
 
               <View style={st.cardActions}>
                 <Pressable
-                  style={({ pressed }) => [
-                    st.actionBtn,
-                    pressed && { opacity: 0.7 },
-                  ]}
+                  style={st.actionBtn}
                   onPress={() =>
                     router.push({
                       pathname: "/lembaga-form",
@@ -106,14 +130,11 @@ export default function LembagaScreen() {
                     })
                   }
                 >
-                  <FontAwesome name="pencil" size={12} color={Colors.primary} />
-                  <Text style={st.actionText}>Edit</Text>
+                  <FontAwesome name="pencil" size={13} color={Colors.primary} />
+                  <Text style={st.actionBtnText}>Edit</Text>
                 </Pressable>
                 <Pressable
-                  style={({ pressed }) => [
-                    st.actionBtn,
-                    pressed && { opacity: 0.7 },
-                  ]}
+                  style={st.actionBtn}
                   onPress={() =>
                     router.push({
                       pathname: "/kelas-admin/[adminPengajianId]",
@@ -121,8 +142,15 @@ export default function LembagaScreen() {
                     })
                   }
                 >
-                  <FontAwesome name="users" size={12} color={Colors.primary} />
-                  <Text style={st.actionText}>Kelola Kelas</Text>
+                  <FontAwesome name="users" size={13} color={Colors.primary} />
+                  <Text style={st.actionBtnText}>Kelola Kelas</Text>
+                </Pressable>
+                <Pressable
+                  style={[st.actionBtn, st.actionBtnDanger]}
+                  onPress={() => handleDelete(item._id, item.namaLembaga)}
+                >
+                  <FontAwesome name="trash-o" size={13} color={Colors.error} />
+                  <Text style={[st.actionBtnText, { color: Colors.error }]}>Hapus</Text>
                 </Pressable>
               </View>
             </View>
@@ -142,6 +170,17 @@ export default function LembagaScreen() {
       >
         <FontAwesome name="plus" size={22} color="#fff" />
       </Pressable>
+
+      <ConfirmModal
+        visible={deleteModalVisible}
+        onClose={() => setDeleteModalVisible(false)}
+        onConfirm={confirmDelete}
+        title="Hapus Lembaga"
+        message={`Yakin ingin menghapus "${itemToDelete?.nama}"? Tindakan ini tidak dapat dibatalkan.`}
+        confirmText="Hapus"
+        type="danger"
+        icon="trash"
+      />
     </View>
   );
 }
@@ -210,7 +249,8 @@ const st = StyleSheet.create({
     borderRadius: 8,
     backgroundColor: Colors.primaryLight,
   },
-  actionText: { fontSize: 12, fontWeight: "600", color: Colors.primary },
+  actionBtnDanger: { backgroundColor: "#FFEBEE" },
+  actionBtnText: { fontSize: 12, fontWeight: "600", color: Colors.primary },
 
   fab: {
     position: "absolute",

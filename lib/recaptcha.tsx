@@ -32,12 +32,19 @@ const ReCaptchaContext = createContext<ReCaptchaContextType>({
   getToken: async () => null,
 });
 
-const RECAPTCHA_HIDE_BADGE_STYLE = `.grecaptcha-badge { visibility: hidden; }`;
+const RECAPTCHA_HIDE_BADGE_CSS = `.grecaptcha-badge { visibility: hidden !important; display: none !important; }`;
+
+function hideBadge() {
+  const badge = document.querySelector<HTMLElement>(".grecaptcha-badge");
+  if (badge) {
+    badge.style.setProperty("display", "none", "important");
+    badge.style.setProperty("visibility", "hidden", "important");
+  }
+}
 
 export function ReCaptchaProvider({ children }: { children: React.ReactNode }) {
   const [loaded, setLoaded] = useState(Platform.OS !== "web");
   const scriptRef = useRef<HTMLScriptElement | null>(null);
-  const styleRef = useRef<HTMLStyleElement | null>(null);
 
   useEffect(() => {
     if (Platform.OS !== "web" || !RECAPTCHA_SITE_KEY) {
@@ -50,24 +57,29 @@ export function ReCaptchaProvider({ children }: { children: React.ReactNode }) {
       return;
     }
 
-    styleRef.current = document.createElement("style");
-    styleRef.current.textContent = RECAPTCHA_HIDE_BADGE_STYLE;
-    document.head.appendChild(styleRef.current);
+    const style = document.createElement("style");
+    style.textContent = RECAPTCHA_HIDE_BADGE_CSS;
+    document.head.appendChild(style);
 
-    scriptRef.current = document.createElement("script");
-    scriptRef.current.src = `https://www.google.com/recaptcha/api.js?render=${RECAPTCHA_SITE_KEY}`;
-    scriptRef.current.async = true;
-    scriptRef.current.defer = true;
-    scriptRef.current.onload = () => setLoaded(true);
-    document.head.appendChild(scriptRef.current);
+    hideBadge();
+    const target = document.body ?? document.documentElement;
+    const mo = new MutationObserver(() => hideBadge());
+    mo.observe(target, { childList: true, subtree: true });
+
+    const script = document.createElement("script");
+    script.src = `https://www.google.com/recaptcha/api.js?render=${RECAPTCHA_SITE_KEY}`;
+    script.async = true;
+    script.defer = true;
+    script.onload = () => {
+      hideBadge();
+      setLoaded(true);
+    };
+    document.head.appendChild(script);
 
     return () => {
-      if (scriptRef.current) {
-        document.head.removeChild(scriptRef.current);
-      }
-      if (styleRef.current) {
-        document.head.removeChild(styleRef.current);
-      }
+      mo.disconnect();
+      if (script.parentNode) script.parentNode.removeChild(script);
+      if (style.parentNode) style.parentNode.removeChild(style);
     };
   }, []);
 

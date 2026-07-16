@@ -1,6 +1,6 @@
 import { query, mutation } from "./_generated/server";
 import { v } from "convex/values";
-import { getAuthUser, isAdministrator, requireSelf, requireUser } from "./authz";
+import { getAuthUser, isAdministrator, requireAdministrator, requireSelf, requireUser } from "./authz";
 
 // Create admin pengajian — untuk diri sendiri (administrator boleh untuk siapa pun)
 export const create = mutation({
@@ -98,5 +98,15 @@ export const update = mutation({
       Object.entries(updates).filter(([_, val]) => val !== undefined)
     );
     await ctx.db.patch(id, filtered);
+  },
+});
+
+export const remove = mutation({
+  args: { id: v.id("admin_pengajian") },
+  handler: async (ctx, args) => {
+    const user = await requireAdministrator(ctx);
+    const row = await ctx.db.get(args.id);
+    if (!row) throw new Error("Lembaga tidak ditemukan");
+    await ctx.db.delete(args.id);
   },
 });
