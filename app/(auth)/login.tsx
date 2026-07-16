@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import {
   View,
   Text,
@@ -13,9 +13,12 @@ import {
 } from "react-native";
 import { useClerk, useAuth, useSSO } from "@clerk/expo";
 import { Redirect, useRouter } from "expo-router";
+import { useAction } from "convex/react";
+import { api } from "@/convex/_generated/api";
 import FontAwesome from "@expo/vector-icons/FontAwesome";
 import { Colors, getDisplayWidth } from "@/lib/constants";
 import { useAuthContext } from "@/lib/auth-context";
+import { useReCaptcha } from "@/lib/recaptcha";
 import GoogleIcon from "@/components/GoogleIcon";
 
 const { height } = Dimensions.get("window");
@@ -28,6 +31,23 @@ export default function LoginScreen() {
   const { isLoading: authLoading, isAuthenticated } = useAuthContext();
   const router = useRouter();
   const [loading, setLoading] = useState(false);
+  const { getToken, loaded: recaptchaLoaded } = useReCaptcha();
+  const verifyRecaptcha = useAction(api.recaptcha.verify);
+  const recaptchaTokenRef = useRef<string | null>(null);
+  const mountedRef = useRef(true);
+
+  useEffect(() => {
+    return () => {
+      mountedRef.current = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!recaptchaLoaded || Platform.OS !== "web") return;
+    getToken("login").then((token) => {
+      if (mountedRef.current) recaptchaTokenRef.current = token;
+    });
+  }, [recaptchaLoaded, getToken]);
 
   if (authLoading && isSignedIn) {
     return (
@@ -44,6 +64,22 @@ export default function LoginScreen() {
   const handleGoogleSignIn = async () => {
     try {
       setLoading(true);
+
+      if (Platform.OS === "web" && recaptchaTokenRef.current) {
+        const result = await verifyRecaptcha({
+          token: recaptchaTokenRef.current,
+          action: "login",
+        });
+
+        if (!result.success || result.score < 0.5) {
+          Alert.alert(
+            "Verifikasi Gagal",
+            "Kami mendeteksi aktivitas mencurigakan. Silakan coba lagi nanti."
+          );
+          setLoading(false);
+          return;
+        }
+      }
 
       if (Platform.OS === "web") {
         if (!clerk.client?.signIn) return;

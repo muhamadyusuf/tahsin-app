@@ -25,6 +25,7 @@ import type * as mushafProgress from "../mushafProgress.js";
 import type * as ngajiAi from "../ngajiAi.js";
 import type * as quiz from "../quiz.js";
 import type * as quranPages from "../quranPages.js";
+import type * as recaptcha from "../recaptcha.js";
 import type * as recordings from "../recordings.js";
 import type * as recordingsNode from "../recordingsNode.js";
 import type * as sambungAyat from "../sambungAyat.js";
@@ -58,6 +59,7 @@ declare const fullApi: ApiFromModules<{
   ngajiAi: typeof ngajiAi;
   quiz: typeof quiz;
   quranPages: typeof quranPages;
+  recaptcha: typeof recaptcha;
   recordings: typeof recordings;
   recordingsNode: typeof recordingsNode;
   sambungAyat: typeof sambungAyat;
