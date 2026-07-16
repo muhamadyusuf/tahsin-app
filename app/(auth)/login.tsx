@@ -18,7 +18,7 @@ import { api } from "@/convex/_generated/api";
 import FontAwesome from "@expo/vector-icons/FontAwesome";
 import { Colors, getDisplayWidth } from "@/lib/constants";
 import { useAuthContext } from "@/lib/auth-context";
-import { useReCaptcha } from "@/lib/recaptcha";
+import { useReCaptcha, RecaptchaAttribution } from "@/lib/recaptcha";
 import GoogleIcon from "@/components/GoogleIcon";
 
 const { height } = Dimensions.get("window");
@@ -186,6 +186,8 @@ export default function LoginScreen() {
         <Text style={styles.terms}>
           Dengan masuk, Anda menyetujui{"\n"}ketentuan penggunaan aplikasi
         </Text>
+
+        <RecaptchaAttribution />
       </View>
     </View>
   );
