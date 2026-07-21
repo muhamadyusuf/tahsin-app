@@ -15,6 +15,7 @@ import {
   Platform,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { StatusBar } from "expo-status-bar";
 import YouTubePlayer from "@/components/YouTubePlayer";
 import { useQuery } from "convex/react";
 import { useRouter } from "expo-router";
@@ -51,11 +52,52 @@ import {
 import * as Location from "expo-location";
 import Svg, { Circle, Line, Text as SvgText, G, Polygon } from "react-native-svg";
 import { getQiblaData, bearingToCardinal, QiblaData } from "@/lib/qibla-api";
+import { DZIKIR_PAGI } from "@/lib/dzikir-data";
 
 const width = getDisplayWidth();
 
 // Quick access surahs
 const POPULAR_SURAHS = [36, 67, 56, 18, 55, 1]; // Yasin, Al-Mulk, Al-Waqi'ah, Al-Kahf, Ar-Rahman, Al-Fatihah
+
+// Target tilawah harian default (halaman) — dipakai untuk progress di beranda
+const DAILY_TILAWAH_TARGET = 20;
+
+const todayISO = () => {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+};
+
+// Hitung streak harian (hari berurutan dengan catatan tilawah, berakhir hari ini/kemarin)
+function computeStreak(dates: string[]): number {
+  const unique = Array.from(new Set(dates)).sort().reverse();
+  if (unique.length === 0) return 0;
+  const today = todayISO();
+  const yesterday = new Date(Date.now() - 86400000);
+  const yesterdayISO = `${yesterday.getFullYear()}-${String(yesterday.getMonth() + 1).padStart(2, "0")}-${String(yesterday.getDate()).padStart(2, "0")}`;
+  if (unique[0] !== today && unique[0] !== yesterdayISO) return 0;
+  let streak = 1;
+  for (let i = 1; i < unique.length; i++) {
+    const prev = new Date(unique[i - 1] + "T00:00:00");
+    const curr = new Date(unique[i] + "T00:00:00");
+    const diffDays = Math.round((prev.getTime() - curr.getTime()) / 86400000);
+    if (diffDays === 1) streak++;
+    else break;
+  }
+  return streak;
+}
+
+// Teks relatif sederhana untuk tanggal ISO (YYYY-MM-DD)
+function relativeDateText(iso: string): string {
+  const today = todayISO();
+  if (iso === today) return "hari ini";
+  const diff = Math.round(
+    (new Date(today + "T00:00:00").getTime() - new Date(iso + "T00:00:00").getTime()) / 86400000
+  );
+  if (diff === 1) return "kemarin";
+  return `${diff} hari yang lalu`;
+}
+
+
 
 function QiblaCompassLive({
   bearing,
@@ -240,6 +282,23 @@ export default function TilawahScreen() {
   const insets = useSafeAreaInsets();
   const appConfig = useQuery(api.appConfig.getPublicConfig, {});
   const ceramahVideos = useQuery(api.ceramahVideo.listActiveVideos, {});
+  const userId = userData?._id;
+  const readingPosition = useQuery(
+    api.mushafProgress.getReadingPosition,
+    userId ? { userId } : "skip"
+  );
+  const todayTilawah = useQuery(
+    api.tilawah.getByDate,
+    userId ? { userId, tanggal: todayISO() } : "skip"
+  );
+  const tilawahHistory = useQuery(
+    api.tilawah.getByUser,
+    userId ? { userId } : "skip"
+  );
+  const dzikirDoneToday = useQuery(
+    api.dzikir.getDzikirSelesaiByDate,
+    userId ? { userId, tanggal: todayISO() } : "skip"
+  );
   const [surahs, setSurahs] = useState<Surah[]>([]);
   const [filtered, setFiltered] = useState<Surah[]>([]);
   const [loading, setLoading] = useState(true);
@@ -674,9 +733,56 @@ export default function TilawahScreen() {
   const firstName = userData?.name?.split(" ")[0] || "Pengguna";
   const headerImageUrl = appConfig?.tilawahHeaderImageUrl;
 
+  // ── Data turunan untuk kartu-kartu beranda ──
+  const todayPages = (todayTilawah ?? []).reduce(
+    (sum, t) => sum + (t.jumlahHalaman ?? 0),
+    0
+  );
+  const tilawahPercent = Math.min(
+    Math.round((todayPages / DAILY_TILAWAH_TARGET) * 100),
+    100
+  );
+  const streakDays = computeStreak(
+    (tilawahHistory ?? []).map((t) => t.tanggal)
+  );
+  const lastTilawah = tilawahHistory
+    ? [...tilawahHistory].sort((a, b) =>
+        b.tanggal === a.tanggal
+          ? b._creationTime - a._creationTime
+          : b.tanggal.localeCompare(a.tanggal)
+      )[0]
+    : undefined;
+  const dzikirPagiDone = (dzikirDoneToday ?? []).filter(
+    (d) => d.kategoriId === "pagi"
+  ).length;
+  const dzikirPagiTotal = DZIKIR_PAGI.length;
+
+  // Progres menuju waktu sholat berikutnya (0..1 antara waktu sholat sebelumnya & berikutnya)
+  const prayerProgress = (() => {
+    if (!todayJadwal) return 0;
+    const keys = ["subuh", "dzuhur", "ashar", "maghrib", "isya"] as const;
+    const now = new Date();
+    const nowMin = now.getHours() * 60 + now.getMinutes();
+    const toMin = (s?: string) => {
+      if (!s) return null;
+      const [h, m] = s.split(":").map(Number);
+      return h * 60 + m;
+    };
+    const times = keys
+      .map((k) => toMin(todayJadwal[k] as string | undefined))
+      .filter((v): v is number => v != null)
+      .sort((a, b) => a - b);
+    if (times.length === 0) return 0;
+    const next = times.find((t) => t > nowMin);
+    if (next == null) return 1; // semua waktu sudah lewat
+    const prevIdx = times.indexOf(next) - 1;
+    const prev = prevIdx >= 0 ? times[prevIdx] : next - 90; // sebelum Subuh: asumsikan awal 90 mnt
+    return Math.min(Math.max((nowMin - prev) / (next - prev), 0), 1);
+  })();
+
   const searchBgColor = scrollY.interpolate({
     inputRange: [0, 60],
-    outputRange: ["transparent", "#ffffff"],
+    outputRange: ["transparent", Colors.background],
     extrapolate: "clamp",
   });
   const searchBorderRadius = scrollY.interpolate({
@@ -871,17 +977,18 @@ export default function TilawahScreen() {
 
   // HOME mode
   return (
-    <View style={[styles.container, { backgroundColor: Colors.primary }]}>
+    <View style={[styles.container, { backgroundColor: Colors.background }]}>
+      <StatusBar style="dark" backgroundColor={Colors.background} />
       {/* Full-header background: covers sticky bar + scrollable header */}
       {headerImageUrl ? (
         <Image
           source={{ uri: headerImageUrl }}
-          style={[StyleSheet.absoluteFillObject, { height: 230 }]}
+          style={[StyleSheet.absoluteFillObject, { height: 250 }]}
           resizeMode="cover"
         />
       ) : null}
       {headerImageUrl ? (
-        <View style={[StyleSheet.absoluteFillObject, { backgroundColor: "rgba(0,0,0,0.28)" }]} />
+        <View style={[StyleSheet.absoluteFillObject, { backgroundColor: "rgba(246,247,241,0.35)" }]} />
       ) : null}
 
       <Animated.ScrollView
@@ -914,7 +1021,7 @@ export default function TilawahScreen() {
               onPress={() => setMode("surah-list")}
             >
               <FontAwesome name="search" size={16} color={Colors.textSecondary} />
-              <Text style={styles.searchPlaceholder}>Cari surah...</Text>
+              <Text style={styles.searchPlaceholder}>Cari surat, ayat, topik...</Text>
             </TouchableOpacity>
             <TouchableOpacity
               style={styles.avatarCircleTop}
@@ -925,75 +1032,73 @@ export default function TilawahScreen() {
               ) : (
                 <FontAwesome name="user" size={20} color={Colors.primary} />
               )}
+              <View style={styles.avatarOnlineDot} />
             </TouchableOpacity>
           </View>
         </Animated.View>
 
         {/* ── child 1: scrollable header ── */}
-        <View style={[styles.header, { paddingTop: 0 }]}>
+        <View style={[styles.header, { paddingTop: 4 }]}>
           <View style={styles.headerContent}>
             {/* Greeting row */}
-            {/* <View style={styles.headerTopRow}>
-              <View style={styles.headerTextWrap}>
-                <Text style={styles.greeting}>Assalamu'alaikum 👋</Text>
+            <View style={styles.greetingWrap}>
+              <Text style={styles.greeting}>Assalamu'alaikum,</Text>
+              <View style={styles.greetingNameRow}>
                 <Text style={styles.userName}>{firstName}</Text>
+                <FontAwesome name="leaf" size={20} color={Colors.primary} style={{ marginLeft: 8, marginTop: 6 }} />
               </View>
-            </View> */}
+              <Text style={styles.greetingSub}>
+                Semangat hari ini, untuk menjadi lebih dekat dengan Al-Qur'an
+              </Text>
+            </View>
 
-            {/* Sholat widget */}
+            {/* Kartu waktu sholat */}
             <TouchableOpacity
-              style={styles.sholatWidget}
+              style={styles.prayerCard}
               onPress={() => setSholatModalVisible(true)}
-              activeOpacity={0.8}
+              activeOpacity={0.85}
             >
-              {/* Location row */}
-              <View style={styles.sholatLocationRow}>
-                <FontAwesome name="map-marker" size={12} color="rgba(255,255,255,0.7)" />
-                <Text style={styles.sholatLocationText} numberOfLines={1}>
-                  {locationResult
-                    ? locationResult.displayName
-                    : sholatLoading
-                    ? "Mendeteksi lokasi..."
-                    : sholatError
-                    ? "Lokasi tidak tersedia"
-                    : "Memuat lokasi..."}
-                </Text>
+              <View style={styles.prayerIconBox}>
+                <FontAwesome5 name="mosque" size={20} color={Colors.primary} />
               </View>
 
-              {/* Prayer info */}
               {sholatLoading && !nextPrayer ? (
-                <View style={styles.sholatLoadingRow}>
-                  <ActivityIndicator size="small" color="rgba(255,255,255,0.8)" />
-                  <Text style={styles.sholatLoadingText}>Memuat jadwal...</Text>
+                <View style={styles.prayerLoadingRow}>
+                  <ActivityIndicator size="small" color={Colors.primary} />
+                  <Text style={styles.prayerLoadingText}>Memuat jadwal...</Text>
                 </View>
               ) : nextPrayer ? (
-                <View style={styles.sholatInfoRow}>
-                  <View>
-                    <Text style={styles.sholatNextLabel}>Waktu Sholat Berikutnya</Text>
-                    <View style={styles.sholatNextRow}>
-                      <FontAwesome5 name="mosque" size={14} color="#fff" style={{ marginRight: 6 }} />
-                      <Text style={styles.sholatNextName}>{nextPrayer.name}</Text>
-                      <Text style={styles.sholatNextTime}>{nextPrayer.time}</Text>
+                <>
+                  <View style={styles.prayerInfoWrap}>
+                    <Text style={styles.prayerName}>{nextPrayer.name}</Text>
+                    <Text style={styles.prayerTimeBig}>{nextPrayer.time}</Text>
+                    <View style={styles.prayerLocationRow}>
+                      <FontAwesome name="map-marker" size={10} color={Colors.textSecondary} />
+                      <Text style={styles.prayerLocationText} numberOfLines={1}>
+                        {locationResult ? locationResult.displayName : "Lokasi tidak tersedia"}
+                      </Text>
                     </View>
                   </View>
-                  <View style={styles.sholatCountdownBox}>
-                    <Text style={styles.sholatCountdownValue}>{nextPrayer.timeLeft}</Text>
-                    <Text style={styles.sholatCountdownLabel}>lagi</Text>
+                  <View style={styles.prayerRightWrap}>
+                    <Text style={styles.prayerCountdownText}>{nextPrayer.timeLeft} lagi</Text>
+                    <View style={styles.prayerProgressTrack}>
+                      <View
+                        style={[
+                          styles.prayerProgressFill,
+                          { width: `${Math.round(prayerProgress * 100)}%` },
+                        ]}
+                      />
+                    </View>
                   </View>
-                </View>
+                </>
               ) : sholatError ? (
-                <TouchableOpacity onPress={() => loadSholatData()} style={styles.sholatErrorRow}>
-                  <FontAwesome name="refresh" size={12} color="rgba(255,255,255,0.7)" />
-                  <Text style={styles.sholatErrorText}>Ketuk untuk coba lagi</Text>
-                </TouchableOpacity>
-              ) : null}
-
-              {/* Tap hint */}
-              {sholatData && (
-                <View style={styles.sholatTapHint}>
-                  <Text style={styles.sholatTapHintText}>Lihat semua waktu sholat →</Text>
+                <View style={styles.prayerLoadingRow}>
+                  <FontAwesome name="map-marker" size={13} color={Colors.primary} />
+                  <Text style={styles.prayerLoadingText}>
+                    Jadwal tidak tersedia — ketuk untuk atur lokasi
+                  </Text>
                 </View>
-              )}
+              ) : null}
             </TouchableOpacity>
           </View>
         </View>
@@ -1317,74 +1422,145 @@ export default function TilawahScreen() {
         </View>
       </Modal>}
 
-      {/* Tilawah Harian Card */}
-        <TouchableOpacity
-          style={styles.tilawahBanner}
-          onPress={() => router.push("/tilawah-harian")}
-        >
-          <View style={styles.tilawahBannerIcon}>
-            <FontAwesome name="pencil-square-o" size={24} color={Colors.primary} />
+      {/* ===== Lanjut Bacaan (hero hijau) ===== */}
+        {readingPosition ? (
+          <View style={styles.lanjutCard}>
+            <View style={styles.lanjutBadgeRow}>
+              <View style={styles.lanjutBadge}>
+                <View style={styles.lanjutBadgeDot} />
+                <Text style={styles.lanjutBadgeText}>LANJUTKAN</Text>
+              </View>
+              <FontAwesome name="bookmark-o" size={18} color="rgba(255,255,255,0.85)" />
+            </View>
+            <View style={styles.lanjutBody}>
+              <View style={styles.lanjutTextWrap}>
+                <Text style={styles.lanjutTitle}>Lanjut Bacaan</Text>
+                <Text style={styles.lanjutSurah}>QS. {readingPosition.surahName}</Text>
+                <Text style={styles.lanjutMeta}>
+                  Halaman {readingPosition.page} • Juz {readingPosition.juz}
+                </Text>
+                <TouchableOpacity
+                  style={styles.lanjutButton}
+                  activeOpacity={0.85}
+                  onPress={() =>
+                    router.push({
+                      pathname: "/mushaf",
+                      params: { page: String(readingPosition.page) },
+                    })
+                  }
+                >
+                  <Text style={styles.lanjutButtonText}>Lanjut Membaca</Text>
+                  <FontAwesome name="arrow-right" size={13} color={Colors.primaryDark} />
+                </TouchableOpacity>
+              </View>
+              <Image
+                source={require("@/assets/images/alquran-illustration.png")}
+                style={styles.lanjutImage}
+                resizeMode="contain"
+              />
+            </View>
           </View>
-          <View style={{ flex: 1 }}>
-            <Text style={styles.tilawahBannerTitle}>Tilawah Harian</Text>
-            <Text style={styles.tilawahBannerSub}>
-              Catat & lihat riwayat bacaan harianmu
+        ) : (
+          <View style={styles.lanjutCard}>
+            <View style={styles.lanjutBody}>
+              <View style={styles.lanjutTextWrap}>
+                <Text style={styles.lanjutTitle}>
+                  Belajar Al-Qur'an{"\n"}Lebih Mudah!
+                </Text>
+                <Text style={styles.lanjutMeta}>
+                  Tilawah, Tahsin, dan Talaqi dalam satu aplikasi
+                </Text>
+                <TouchableOpacity
+                  style={styles.lanjutButton}
+                  activeOpacity={0.85}
+                  onPress={() => router.push("/mushaf")}
+                >
+                  <Text style={styles.lanjutButtonText}>Buka Mushaf</Text>
+                  <FontAwesome name="arrow-right" size={13} color={Colors.primaryDark} />
+                </TouchableOpacity>
+              </View>
+              <Image
+                source={require("@/assets/images/alquran-illustration.png")}
+                style={styles.lanjutImage}
+                resizeMode="contain"
+              />
+            </View>
+          </View>
+        )}
+
+        {/* ===== Progress & Streak ===== */}
+        <View style={styles.progressRow}>
+          <TouchableOpacity
+            style={styles.progressCard}
+            activeOpacity={0.85}
+            onPress={() => router.push("/tilawah-harian")}
+          >
+            <View style={styles.progressHeaderRow}>
+              <View style={styles.progressIconBox}>
+                <FontAwesome name="book" size={14} color={Colors.primary} />
+              </View>
+              <Text style={styles.progressCardTitle} numberOfLines={2}>
+                Progress Tilawah Hari Ini
+              </Text>
+            </View>
+            <View style={styles.progressValueRow}>
+              <Text style={styles.progressValueBig}>{todayPages}</Text>
+              <Text style={styles.progressValueSep}> / {DAILY_TILAWAH_TARGET}</Text>
+              <Text style={styles.progressValueUnit}> halaman</Text>
+            </View>
+            <View style={styles.progressBarRow}>
+              <View style={styles.progressTrack}>
+                <View
+                  style={[styles.progressFill, { width: `${tilawahPercent}%` }]}
+                />
+              </View>
+              <Text style={styles.progressPercent}>{tilawahPercent}%</Text>
+            </View>
+            <Text style={styles.progressHint} numberOfLines={1}>
+              {todayPages >= DAILY_TILAWAH_TARGET
+                ? "MasyaAllah! Target hari ini tercapai"
+                : `Teruskan! ${DAILY_TILAWAH_TARGET - todayPages} halaman lagi untuk target hari ini`}
+            </Text>
+          </TouchableOpacity>
+
+          <View style={styles.streakCard}>
+            <View style={styles.progressHeaderRow}>
+              <FontAwesome name="fire" size={16} color={Colors.accent} />
+              <Text style={styles.progressCardTitle}>Streak Harian</Text>
+            </View>
+            <View style={styles.progressValueRow}>
+              <Text style={styles.progressValueBig}>{streakDays}</Text>
+              <Text style={styles.progressValueUnit}> hari</Text>
+            </View>
+            <View style={styles.streakBadge}>
+              <FontAwesome name="sun-o" size={16} color={Colors.accent} />
+            </View>
+            <Text style={styles.progressHint} numberOfLines={2}>
+              {streakDays > 0
+                ? "Semangat! Pertahankan kebiasaan baik ini"
+                : "Mulai catat tilawahmu hari ini"}
             </Text>
           </View>
-          <FontAwesome name="chevron-right" size={14} color={Colors.primary} />
-        </TouchableOpacity>
+        </View>
 
-        {/* Menu Categories */}
-        {/* <View style={styles.sectionHeader}>
-          <Text style={styles.sectionTitle}>Menu Utama</Text>
-        </View> */}
+        {/* Menu Utama — grid hijau seragam */}
         <View style={styles.categoryGrid}>
-          {/* <TouchableOpacity
-            style={styles.categoryCard}
-            onPress={() => setMode("surah-list")}
-          >
-            <View style={[styles.categoryIcon, { backgroundColor: "#E8F5E9" }]}>
-              <FontAwesome name="list" size={22} color={Colors.primary} />
-            </View>
-            <Text style={styles.categoryLabel}>Daftar{"\n"}Surah</Text>
-          </TouchableOpacity> */}
-
           <TouchableOpacity
             style={styles.categoryCard}
             onPress={() => setMushafModalVisible(true)}
           >
-            <View style={[styles.categoryIcon, { backgroundColor: "#FFF3E0" }]}>
-              <FontAwesome name="book" size={22} color="#E65100" />
+            <View style={styles.categoryIcon}>
+              <FontAwesome name="book" size={22} color={Colors.primary} />
             </View>
             <Text style={styles.categoryLabel}>Mushaf{"\n"}Al-Qur'an</Text>
           </TouchableOpacity>
-
-          {/* <TouchableOpacity
-            style={styles.categoryCard}
-            onPress={() => router.push("/(tabs)/tahsin")}
-          >
-            <View style={[styles.categoryIcon, { backgroundColor: "#E3F2FD" }]}>
-              <FontAwesome name="graduation-cap" size={20} color="#1565C0" />
-            </View>
-            <Text style={styles.categoryLabel}>Tahsin{"\n"}Tilawah</Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            style={styles.categoryCard}
-            onPress={() => router.push("/(tabs)/talaqi")}
-          >
-            <View style={[styles.categoryIcon, { backgroundColor: "#FCE4EC" }]}>
-              <FontAwesome name="users" size={20} color="#C62828" />
-            </View>
-            <Text style={styles.categoryLabel}>Talaqi{"\n"}Online</Text>
-          </TouchableOpacity> */}
 
           <TouchableOpacity
             style={styles.categoryCard}
             onPress={() => router.push("/hadis")}
           >
-            <View style={[styles.categoryIcon, { backgroundColor: "#EDE7F6" }]}>
-              <FontAwesome name="book" size={20} color="#4527A0" />
+            <View style={styles.categoryIcon}>
+              <FontAwesome name="list-alt" size={20} color={Colors.primary} />
             </View>
             <Text style={styles.categoryLabel}>Koleksi{"\n"}Hadis</Text>
           </TouchableOpacity>
@@ -1393,8 +1569,8 @@ export default function TilawahScreen() {
             style={styles.categoryCard}
             onPress={() => router.push("/doa")}
           >
-            <View style={[styles.categoryIcon, { backgroundColor: "#E8F5E9" }]}>
-              <FontAwesome5 name="praying-hands" size={20} color="#2E7D32" />
+            <View style={styles.categoryIcon}>
+              <FontAwesome5 name="praying-hands" size={20} color={Colors.primary} />
             </View>
             <Text style={styles.categoryLabel}>Untaian{"\n"}Do'a</Text>
           </TouchableOpacity>
@@ -1403,8 +1579,8 @@ export default function TilawahScreen() {
             style={styles.categoryCard}
             onPress={() => router.push("/sambung-ayat")}
           >
-            <View style={[styles.categoryIcon, { backgroundColor: "#FFFDE7" }]}>
-              <FontAwesome name="puzzle-piece" size={20} color="#F57F17" />
+            <View style={styles.categoryIcon}>
+              <FontAwesome name="puzzle-piece" size={20} color={Colors.primary} />
             </View>
             <Text style={styles.categoryLabel}>Sambung{"\n"}Ayat</Text>
           </TouchableOpacity>
@@ -1413,8 +1589,8 @@ export default function TilawahScreen() {
             style={styles.categoryCard}
             onPress={() => router.push("/tasbih")}
           >
-            <View style={[styles.categoryIcon, { backgroundColor: "#E0F2F1" }]}>
-              <FontAwesome name="circle-o-notch" size={20} color="#00695C" />
+            <View style={styles.categoryIcon}>
+              <FontAwesome name="circle-o-notch" size={20} color={Colors.primary} />
             </View>
             <Text style={styles.categoryLabel}>Tasbih{"\n"}Digital</Text>
           </TouchableOpacity>
@@ -1423,10 +1599,30 @@ export default function TilawahScreen() {
             style={styles.categoryCard}
             onPress={() => router.push("/dzikir")}
           >
-            <View style={[styles.categoryIcon, { backgroundColor: "#E1F5FE" }]}>
-              <FontAwesome name="book" size={20} color="#0277BD" />
+            <View style={styles.categoryIcon}>
+              <FontAwesome name="leaf" size={20} color={Colors.primary} />
             </View>
             <Text style={styles.categoryLabel}>Dzikir{"\n"}Harian</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={styles.categoryCard}
+            onPress={() => router.push("/tarbiyah/tahsin")}
+          >
+            <View style={styles.categoryIcon}>
+              <FontAwesome name="graduation-cap" size={20} color={Colors.primary} />
+            </View>
+            <Text style={styles.categoryLabel}>Tajwid{"\n"}Dasar</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={styles.categoryCard}
+            onPress={() => router.push("/(tabs)/talaqi")}
+          >
+            <View style={styles.categoryIcon}>
+              <FontAwesome name="pencil-square-o" size={20} color={Colors.primary} />
+            </View>
+            <Text style={styles.categoryLabel}>Catatan{"\n"}Talaqi</Text>
           </TouchableOpacity>
 
           {Platform.OS !== "web" && (
@@ -1437,13 +1633,131 @@ export default function TilawahScreen() {
                 if (!qiblaData && !qiblaLoading) loadQiblaData();
               }}
             >
-              <View style={[styles.categoryIcon, { backgroundColor: "#E8EAF6" }]}>
-                <FontAwesome name="compass" size={22} color="#283593" />
+              <View style={styles.categoryIcon}>
+                <FontAwesome name="compass" size={22} color={Colors.primary} />
               </View>
               <Text style={styles.categoryLabel}>Arah{"\n"}Kiblat</Text>
             </TouchableOpacity>
           )}
         </View>
+
+        {/* ===== Target Hari Ini ===== */}
+        <View style={styles.targetCard}>
+          <View style={styles.targetHeaderRow}>
+            <View style={styles.targetHeaderLeft}>
+              <View style={styles.targetIconBox}>
+                <FontAwesome name="bullseye" size={14} color={Colors.primary} />
+              </View>
+              <Text style={styles.targetTitle}>Target Hari Ini</Text>
+            </View>
+            <FontAwesome name="chevron-right" size={13} color={Colors.textSecondary} />
+          </View>
+          <View style={styles.targetItemsRow}>
+            <TouchableOpacity
+              style={styles.targetItem}
+              activeOpacity={0.8}
+              onPress={() => router.push("/tilawah-harian")}
+            >
+              <View style={styles.targetItemIcon}>
+                <FontAwesome name="book" size={16} color={Colors.primary} />
+              </View>
+              <Text style={styles.targetItemLabel}>Tilawah</Text>
+              <Text style={styles.targetItemValue}>
+                {todayPages} / {DAILY_TILAWAH_TARGET} halaman
+              </Text>
+              <View style={styles.targetItemTrack}>
+                <View
+                  style={[styles.targetItemFill, { width: `${tilawahPercent}%` }]}
+                />
+              </View>
+            </TouchableOpacity>
+
+            <View style={styles.targetDivider} />
+
+            <TouchableOpacity
+              style={styles.targetItem}
+              activeOpacity={0.8}
+              onPress={() => router.push("/(tabs)/tarbiyah")}
+            >
+              <View style={styles.targetItemIcon}>
+                <Text style={styles.targetItemArab}>ي</Text>
+              </View>
+              <Text style={styles.targetItemLabel}>Tajwid</Text>
+              <Text style={styles.targetItemValue} numberOfLines={1}>
+                Pelajari idzhar
+              </Text>
+              <View style={styles.targetItemTrack}>
+                <View style={[styles.targetItemFill, { width: "35%" }]} />
+              </View>
+            </TouchableOpacity>
+
+            <View style={styles.targetDivider} />
+
+            <TouchableOpacity
+              style={styles.targetItem}
+              activeOpacity={0.8}
+              onPress={() => router.push("/dzikir")}
+            >
+              <View style={styles.targetItemIcon}>
+                <FontAwesome name="leaf" size={16} color={Colors.primary} />
+              </View>
+              <Text style={styles.targetItemLabel}>Dzikir Pagi</Text>
+              <Text style={styles.targetItemValue}>
+                {dzikirPagiDone} / {dzikirPagiTotal} dzikir
+              </Text>
+              <View style={styles.targetItemTrack}>
+                <View
+                  style={[
+                    styles.targetItemFill,
+                    {
+                      width: `${Math.min(
+                        Math.round((dzikirPagiDone / Math.max(dzikirPagiTotal, 1)) * 100),
+                        100
+                      )}%`,
+                    },
+                  ]}
+                />
+              </View>
+            </TouchableOpacity>
+          </View>
+        </View>
+
+        {/* ===== Lanjut Terakhir ===== */}
+        {lastTilawah && (
+          <TouchableOpacity
+            style={styles.lastReadCard}
+            activeOpacity={0.85}
+            onPress={() =>
+              router.push({
+                pathname: "/surah/[surahNumber]",
+                params: {
+                  surahNumber: String(lastTilawah.suratNumber),
+                  surahName: lastTilawah.suratName,
+                },
+              })
+            }
+          >
+            <View style={styles.lastReadLeft}>
+              <View style={styles.lastReadIconBox}>
+                <FontAwesome name="clock-o" size={18} color={Colors.accent} />
+              </View>
+              <View style={styles.lastReadTextWrap}>
+                <Text style={styles.lastReadLabel}>Lanjut Terakhir</Text>
+                <Text style={styles.lastReadSurah}>QS. {lastTilawah.suratName}</Text>
+                <Text style={styles.lastReadMeta}>
+                  {lastTilawah.jumlahHalaman} halaman • Juz {lastTilawah.juz}
+                </Text>
+                <Text style={styles.lastReadTime}>
+                  Terakhir dibaca {relativeDateText(lastTilawah.tanggal)}
+                </Text>
+              </View>
+            </View>
+            <View style={styles.lastReadButton}>
+              <Text style={styles.lastReadButtonText}>Lanjutkan</Text>
+              <FontAwesome name="chevron-right" size={11} color={Colors.primary} />
+            </View>
+          </TouchableOpacity>
+        )}
 
         {/* ===== Ceramah Video Section ===== */}
         {ceramahVideos && ceramahVideos.length > 0 && (() => {
@@ -1555,32 +1869,6 @@ export default function TilawahScreen() {
             </>
           );
         })()}
-
-        {/* Hero Banner */}
-        <View style={styles.heroBanner}>
-          <View style={styles.heroContent}>
-            <Text style={styles.heroTitle}>
-              Belajar Al-Qur'an{"\n"}Lebih Mudah!
-            </Text>
-            <Text style={styles.heroSubtitle}>
-              Tilawah, Tahsin, dan Talaqi{"\n"}dalam satu aplikasi
-            </Text>
-            <TouchableOpacity
-              style={styles.heroButton}
-              onPress={() => router.push("/mushaf")}
-            >
-              <Text style={styles.heroButtonText}>Buka Mushaf</Text>
-            </TouchableOpacity>
-          </View>
-          <View style={styles.heroIconWrap}>
-            {/* <FontAwesome name="book" size={56} color="rgba(255,255,255,0.9)" /> */}
-              <Image
-                  source={require("@/assets/images/alquran-illustration.png")}
-                  style={styles.alquranImage}
-                  resizeMode="contain"
-                />
-          </View>
-        </View>
 
         {/* Hadis Harian */}
         <View style={styles.sectionHeader}>
@@ -1859,132 +2147,112 @@ const styles = StyleSheet.create({
     zIndex: 2,
     position: "relative",
   },
-  headerTopRow: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "flex-start",
-    marginBottom: 14,
-  },
-  headerTextWrap: {
-    flex: 1,
-    paddingRight: 52,
+  greetingWrap: {
+    marginTop: 6,
+    marginBottom: 16,
   },
   greeting: {
-    fontSize: 13,
-    color: "rgba(255,255,255,0.8)",
+    fontSize: 15,
+    color: Colors.text,
+    fontWeight: "500",
+  },
+  greetingNameRow: {
+    flexDirection: "row",
+    alignItems: "center",
   },
   userName: {
-    fontSize: 20,
-    fontWeight: "bold",
-    color: "#fff",
+    fontSize: 32,
+    fontWeight: "800",
+    color: Colors.primaryDark,
     marginTop: 2,
   },
-  avatarCircle: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
+  greetingSub: {
+    fontSize: 13,
+    color: Colors.textSecondary,
+    marginTop: 6,
+    lineHeight: 19,
+    maxWidth: 260,
+  },
+
+  // ===== Kartu Waktu Sholat =====
+  prayerCard: {
+    flexDirection: "row",
+    alignItems: "center",
     backgroundColor: "#fff",
+    borderRadius: 20,
+    padding: 16,
+    gap: 14,
+    shadowColor: "#0F4A28",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.06,
+    shadowRadius: 10,
+    elevation: 2,
+  },
+  prayerIconBox: {
+    width: 52,
+    height: 52,
+    borderRadius: 16,
+    backgroundColor: Colors.primaryLight,
     justifyContent: "center",
     alignItems: "center",
   },
-  avatarImage: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-  },
-  avatarInHeader: {
-    position: "absolute",
-    right: 0,
-    top: 0,
-  },
-
-  // ===== Sholat Widget =====
-  sholatWidget: {
-    // backgroundColor: "rgba(255,255,255,0.15)",
-    // borderRadius: 14,
-    padding: 12,
-    // borderWidth: 1,
-    // borderColor: "rgba(255,255,255,0.25)",
-  },
-  sholatLocationRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 5,
-    marginBottom: 8,
-  },
-  sholatLocationText: {
-    fontSize: 11,
-    color: "rgba(255,255,255,0.75)",
+  prayerLoadingRow: {
     flex: 1,
-  },
-  sholatLoadingRow: {
     flexDirection: "row",
     alignItems: "center",
     gap: 8,
-    paddingVertical: 4,
+    paddingVertical: 8,
   },
-  sholatLoadingText: {
-    fontSize: 12,
-    color: "rgba(255,255,255,0.7)",
+  prayerLoadingText: {
+    fontSize: 13,
+    color: Colors.textSecondary,
   },
-  sholatInfoRow: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
+  prayerInfoWrap: {
+    flex: 1,
   },
-  sholatNextLabel: {
-    fontSize: 10,
-    color: "rgba(255,255,255,0.7)",
-    marginBottom: 3,
-  },
-  sholatNextRow: {
-    flexDirection: "row",
-    alignItems: "center",
-  },
-  sholatNextName: {
-    fontSize: 16,
-    fontWeight: "bold",
-    color: "#fff",
-    marginRight: 8,
-  },
-  sholatNextTime: {
-    fontSize: 14,
-    color: "rgba(255,255,255,0.85)",
+  prayerName: {
+    fontSize: 13,
+    color: Colors.textSecondary,
     fontWeight: "600",
   },
-  sholatCountdownBox: {
-    alignItems: "center",
-    backgroundColor: "rgba(255,255,255,0.2)",
-    borderRadius: 10,
-    paddingHorizontal: 12,
-    paddingVertical: 6,
+  prayerTimeBig: {
+    fontSize: 28,
+    fontWeight: "800",
+    color: Colors.text,
+    marginTop: 1,
   },
-  sholatCountdownValue: {
-    fontSize: 15,
-    fontWeight: "bold",
-    color: "#fff",
-  },
-  sholatCountdownLabel: {
-    fontSize: 10,
-    color: "rgba(255,255,255,0.8)",
-  },
-  sholatErrorRow: {
+  prayerLocationRow: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 6,
-    paddingVertical: 4,
+    gap: 4,
+    marginTop: 3,
   },
-  sholatErrorText: {
-    fontSize: 12,
-    color: "rgba(255,255,255,0.7)",
-  },
-  sholatTapHint: {
-    marginTop: 8,
-    alignItems: "flex-end",
-  },
-  sholatTapHintText: {
+  prayerLocationText: {
     fontSize: 10,
-    color: "rgba(255,255,255,0.6)",
+    color: Colors.textSecondary,
+    flexShrink: 1,
+  },
+  prayerRightWrap: {
+    alignItems: "flex-end",
+    justifyContent: "center",
+    gap: 8,
+  },
+  prayerCountdownText: {
+    fontSize: 13,
+    fontWeight: "700",
+    color: Colors.text,
+  },
+  prayerProgressTrack: {
+    width: 110,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: Colors.primaryLight,
+    overflow: "hidden",
+  },
+  prayerProgressFill: {
+    height: "100%",
+    borderRadius: 3,
+    backgroundColor: Colors.primary,
   },
 
   // ===== Sticky Search Bar =====
@@ -2004,11 +2272,16 @@ const styles = StyleSheet.create({
     flex: 1,
     flexDirection: "row",
     alignItems: "center",
-    backgroundColor: "#f2f2f2",
-    borderRadius: 22,
+    backgroundColor: "#fff",
+    borderRadius: 24,
     paddingHorizontal: 16,
     paddingVertical: 12,
     gap: 10,
+    shadowColor: "#0F4A28",
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.05,
+    shadowRadius: 6,
+    elevation: 1,
   },
   avatarCircleTop: {
     width: 44,
@@ -2017,12 +2290,24 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.primaryLight,
     justifyContent: "center",
     alignItems: "center",
-    overflow: "hidden",
+    borderWidth: 2,
+    borderColor: "#fff",
   },
   avatarImageTop: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+  },
+  avatarOnlineDot: {
+    position: "absolute",
+    right: 0,
+    bottom: 0,
+    width: 12,
+    height: 12,
+    borderRadius: 6,
+    backgroundColor: "#34C759",
+    borderWidth: 2,
+    borderColor: "#fff",
   },
   searchBar: {
     flexDirection: "row",
@@ -2259,93 +2544,203 @@ const styles = StyleSheet.create({
     paddingVertical: 20,
   },
 
-  // ===== Hero Banner =====
-  heroBanner: {
+  // ===== Lanjut Bacaan (hero hijau) =====
+  lanjutCard: {
     marginHorizontal: 20,
-    marginTop: 20,
+    marginTop: 4,
     backgroundColor: Colors.primaryDark,
-    borderRadius: 20,
-    padding: 24,
+    borderRadius: 22,
+    padding: 20,
+    overflow: "hidden",
+    shadowColor: "#0F4A28",
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.25,
+    shadowRadius: 14,
+    elevation: 6,
+  },
+  lanjutBadgeRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginBottom: 10,
+  },
+  lanjutBadge: {
     flexDirection: "row",
     alignItems: "center",
-    overflow: "hidden",
+    gap: 6,
+    backgroundColor: "rgba(255,255,255,0.14)",
+    borderRadius: 12,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
   },
-  heroContent: {
+  lanjutBadgeDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: "#7BE495",
+  },
+  lanjutBadgeText: {
+    fontSize: 10,
+    fontWeight: "800",
+    color: "#DFF3E5",
+    letterSpacing: 1,
+  },
+  lanjutBody: {
+    flexDirection: "row",
+    alignItems: "center",
+  },
+  lanjutTextWrap: {
     flex: 1,
+    paddingRight: 8,
   },
-  heroTitle: {
-    fontSize: 18,
-    fontWeight: "bold",
+  lanjutTitle: {
+    fontSize: 24,
+    fontWeight: "800",
     color: "#fff",
-    lineHeight: 24,
+    lineHeight: 30,
   },
-  heroSubtitle: {
-    fontSize: 12,
-    color: "rgba(255,255,255,0.75)",
+  lanjutSurah: {
+    fontSize: 15,
+    color: "rgba(255,255,255,0.92)",
     marginTop: 6,
+    fontWeight: "600",
+  },
+  lanjutMeta: {
+    fontSize: 12,
+    color: "rgba(255,255,255,0.7)",
+    marginTop: 3,
     lineHeight: 18,
   },
-  alquranImage: {
-    width: 120,
-    height: 120,
-  },
-  heroButton: {
-    backgroundColor: "#fff",
-    borderRadius: 8,
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-    alignSelf: "flex-start",
-    marginTop: 14,
-  },
-  heroButtonText: {
-    color: Colors.primaryDark,
-    fontSize: 13,
-    fontWeight: "700",
-  },
-  heroIconWrap: {
-    width: 90,
-    height: 90,
-    borderRadius: 45,
-    backgroundColor: "rgba(255,255,255,0.12)",
-    justifyContent: "center",
-    alignItems: "center",
-    marginLeft: 12,
-  },
-
-  // ===== Tilawah Harian Banner =====
-  tilawahBanner: {
+  lanjutButton: {
     flexDirection: "row",
     alignItems: "center",
+    gap: 8,
     backgroundColor: "#fff",
+    borderRadius: 22,
+    paddingHorizontal: 18,
+    paddingVertical: 11,
+    alignSelf: "flex-start",
+    marginTop: 16,
+  },
+  lanjutButtonText: {
+    color: Colors.primaryDark,
+    fontSize: 13,
+    fontWeight: "800",
+  },
+  lanjutImage: {
+    width: 130,
+    height: 130,
+    marginRight: -14,
+    marginBottom: -14,
+  },
+
+  // ===== Progress & Streak =====
+  progressRow: {
+    flexDirection: "row",
     marginHorizontal: 20,
-    marginTop: -40,
-    marginBottom: 5,
-    borderRadius: 14,
-    padding: 16,
+    marginTop: 14,
     gap: 12,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.06,
-    shadowRadius: 4,
+  },
+  progressCard: {
+    flex: 1.35,
+    backgroundColor: "#fff",
+    borderRadius: 20,
+    padding: 16,
+    shadowColor: "#0F4A28",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.05,
+    shadowRadius: 8,
     elevation: 2,
   },
-  tilawahBannerIcon: {
-    width: 48,
-    height: 48,
-    borderRadius: 12,
-    backgroundColor: "#E8F5E9",
+  streakCard: {
+    flex: 1,
+    backgroundColor: "#fff",
+    borderRadius: 20,
+    padding: 16,
+    shadowColor: "#0F4A28",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.05,
+    shadowRadius: 8,
+    elevation: 2,
+  },
+  progressHeaderRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+  },
+  progressIconBox: {
+    width: 26,
+    height: 26,
+    borderRadius: 8,
+    backgroundColor: Colors.primaryLight,
     justifyContent: "center",
     alignItems: "center",
   },
-  tilawahBannerTitle: {
-    fontSize: 15,
-    fontWeight: "bold",
+  progressCardTitle: {
+    flex: 1,
+    fontSize: 12,
+    fontWeight: "700",
+    color: Colors.text,
+    lineHeight: 16,
+  },
+  progressValueRow: {
+    flexDirection: "row",
+    alignItems: "flex-end",
+    marginTop: 12,
+  },
+  progressValueBig: {
+    fontSize: 30,
+    fontWeight: "800",
     color: Colors.text,
   },
-  tilawahBannerSub: {
+  progressValueSep: {
+    fontSize: 16,
+    fontWeight: "700",
+    color: Colors.text,
+    marginBottom: 4,
+  },
+  progressValueUnit: {
     fontSize: 12,
     color: Colors.textSecondary,
-    marginTop: 2,
+    marginBottom: 5,
+  },
+  progressBarRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    marginTop: 10,
+  },
+  progressTrack: {
+    flex: 1,
+    height: 7,
+    borderRadius: 4,
+    backgroundColor: Colors.primaryLight,
+    overflow: "hidden",
+  },
+  progressFill: {
+    height: "100%",
+    borderRadius: 4,
+    backgroundColor: Colors.primary,
+  },
+  progressPercent: {
+    fontSize: 11,
+    fontWeight: "700",
+    color: Colors.primary,
+  },
+  progressHint: {
+    fontSize: 10,
+    color: Colors.textSecondary,
+    marginTop: 10,
+    lineHeight: 14,
+  },
+  streakBadge: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    backgroundColor: "#FBF3E2",
+    justifyContent: "center",
+    alignItems: "center",
+    marginTop: 12,
   },
 
   // ===== Section =====
@@ -2373,36 +2768,196 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     flexWrap: "wrap",
     paddingHorizontal: 14,
+    marginTop: 16,
     gap: 10,
   },
   categoryCard: {
     width: (width - 48) / 4 - 5, // 4 columns with 14px horizontal padding and 10px gap
-    // backgroundColor: "#fff",
-    borderRadius: 14,
+    backgroundColor: "#fff",
+    borderRadius: 18,
     padding: 12,
     flexDirection: "column",
     alignItems: "center",
-    gap: 5,
-    // shadowColor: "#000",
-    // shadowOffset: { width: 0, height: 1 },
-    // shadowOpacity: 0.06,
-    // shadowRadius: 4,
-    // elevation: 2,
+    gap: 8,
+    shadowColor: "#0F4A28",
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.05,
+    shadowRadius: 6,
+    elevation: 1,
   },
   categoryIcon: {
-    width: 44,
-    height: 44,
-    borderRadius: 12,
+    width: 48,
+    height: 48,
+    borderRadius: 14,
+    backgroundColor: Colors.primaryLight,
     justifyContent: "center",
     alignItems: "center",
   },
   categoryLabel: {
     flex: 1,
-    fontSize: 13,
-    fontWeight: "500",
+    fontSize: 11,
+    fontWeight: "600",
     color: Colors.text,
-    lineHeight: 18,
+    lineHeight: 15,
     textAlign: "center",
+  },
+
+  // ===== Target Hari Ini =====
+  targetCard: {
+    marginHorizontal: 20,
+    marginTop: 16,
+    backgroundColor: "#fff",
+    borderRadius: 20,
+    padding: 16,
+    shadowColor: "#0F4A28",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.05,
+    shadowRadius: 8,
+    elevation: 2,
+  },
+  targetHeaderRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    marginBottom: 14,
+  },
+  targetHeaderLeft: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+  },
+  targetIconBox: {
+    width: 26,
+    height: 26,
+    borderRadius: 8,
+    backgroundColor: Colors.primaryLight,
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  targetTitle: {
+    fontSize: 14,
+    fontWeight: "700",
+    color: Colors.text,
+  },
+  targetItemsRow: {
+    flexDirection: "row",
+    alignItems: "stretch",
+  },
+  targetItem: {
+    flex: 1,
+    alignItems: "flex-start",
+    gap: 4,
+    paddingHorizontal: 4,
+  },
+  targetItemIcon: {
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    backgroundColor: Colors.primaryLight,
+    justifyContent: "center",
+    alignItems: "center",
+    marginBottom: 2,
+  },
+  targetItemArab: {
+    fontFamily: "AmiriQuran",
+    fontSize: 18,
+    color: Colors.primary,
+  },
+  targetItemLabel: {
+    fontSize: 12,
+    fontWeight: "700",
+    color: Colors.text,
+  },
+  targetItemValue: {
+    fontSize: 10,
+    color: Colors.textSecondary,
+  },
+  targetItemTrack: {
+    width: "100%",
+    height: 5,
+    borderRadius: 3,
+    backgroundColor: Colors.primaryLight,
+    overflow: "hidden",
+    marginTop: 4,
+  },
+  targetItemFill: {
+    height: "100%",
+    borderRadius: 3,
+    backgroundColor: Colors.primary,
+  },
+  targetDivider: {
+    width: 1,
+    backgroundColor: Colors.border,
+    marginHorizontal: 8,
+  },
+
+  // ===== Lanjut Terakhir =====
+  lastReadCard: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    marginHorizontal: 20,
+    marginTop: 14,
+    backgroundColor: "#FDF9EF",
+    borderRadius: 20,
+    padding: 16,
+    borderWidth: 1,
+    borderColor: "#F1E7CE",
+  },
+  lastReadLeft: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+    flex: 1,
+  },
+  lastReadIconBox: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: "#FBF3E2",
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  lastReadTextWrap: {
+    flex: 1,
+  },
+  lastReadLabel: {
+    fontSize: 10,
+    color: Colors.textSecondary,
+    fontWeight: "600",
+  },
+  lastReadSurah: {
+    fontSize: 15,
+    fontWeight: "800",
+    color: Colors.text,
+    marginTop: 1,
+  },
+  lastReadMeta: {
+    fontSize: 11,
+    color: Colors.textSecondary,
+    marginTop: 1,
+  },
+  lastReadTime: {
+    fontSize: 10,
+    color: Colors.textSecondary,
+    marginTop: 1,
+  },
+  lastReadButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    backgroundColor: "#fff",
+    borderRadius: 18,
+    paddingHorizontal: 14,
+    paddingVertical: 9,
+    borderWidth: 1,
+    borderColor: "#EFE3C8",
+    marginLeft: 10,
+  },
+  lastReadButtonText: {
+    fontSize: 12,
+    fontWeight: "700",
+    color: Colors.primary,
   },
 
   // ===== Popular Surahs =====

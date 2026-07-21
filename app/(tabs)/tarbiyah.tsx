@@ -36,8 +36,8 @@ const COURSES: Course[] = [
     title: "Tahsin",
     subtitle: "Pedoman Dauroh Al-Qur'an",
     icon: "graduation-cap",
-    color: "#1565C0",
-    bg: "#E3F2FD",
+    color: "#1F7A45",
+    bg: "#E3F1E8",
   },
   {
     type: "ulumul_quran",
@@ -45,8 +45,8 @@ const COURSES: Course[] = [
     title: "Ulumul Qur'an",
     subtitle: "Ilmu-ilmu tentang Al-Qur'an",
     icon: "lightbulb-o",
-    color: "#C62828",
-    bg: "#FFEBEE",
+    color: "#B07817",
+    bg: "#FBF3E2",
   },
   {
     type: "fiqih",

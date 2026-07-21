@@ -19,12 +19,26 @@ export const getPublicConfig = query({
   },
 });
 
+export const generateUploadUrl = mutation({
+  args: {},
+  handler: async (ctx) => {
+    return await ctx.storage.generateUploadUrl();
+  },
+});
+
 export const upsertTilawahHeaderImage = mutation({
   args: {
     tilawahHeaderImageUrl: v.optional(v.string()),
+    storageId: v.optional(v.id("_storage")),
   },
   handler: async (ctx, args) => {
     await requireAdministrator(ctx);
+
+    let url = args.tilawahHeaderImageUrl;
+    if (args.storageId) {
+      url = (await ctx.storage.getUrl(args.storageId)) ?? undefined;
+    }
+
     const existing = await ctx.db
       .query("app_config")
       .withIndex("by_key", (q) => q.eq("key", APP_CONFIG_KEY))
@@ -32,7 +46,7 @@ export const upsertTilawahHeaderImage = mutation({
 
     const payload = {
       key: APP_CONFIG_KEY,
-      tilawahHeaderImageUrl: args.tilawahHeaderImageUrl,
+      tilawahHeaderImageUrl: url,
       updatedAt: new Date().toISOString(),
     };
 

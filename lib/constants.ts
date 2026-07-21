@@ -40,25 +40,27 @@ export const NILAI_OPTIONS = [6, 6.5, 7, 7.5, 8, 8.5, 9, 9.5, 10] as const;
 // Quiz passing grade (70%)
 export const QUIZ_PASSING_GRADE = 0.7;
 
-// Colors (green Quran / mushaf theme)
+// Colors (Islamic deep-green / mushaf theme — krem hangat + hijau zamrud)
 export const Colors = {
-  primary: "#2E7D32",
-  primaryDark: "#1B5E20",
-  primaryLight: "#C8E6C9",
-  secondary: "#FF9800",
-  background: "#F5F5F5",
-  backgroundLight: "#FAFAFA",
+  primary: "#1F7A45",
+  primaryDark: "#0F4A28",
+  primaryLight: "#E3F1E8",
+  primarySoft: "#F0F7F2",
+  secondary: "#E8A33D",
+  accent: "#E8A33D",
+  background: "#F6F7F1",
+  backgroundLight: "#FBFCF8",
   surface: "#FFFFFF",
-  text: "#212121",
-  textPrimary: "#212121",
-  textSecondary: "#757575",
+  text: "#1E2B23",
+  textPrimary: "#1E2B23",
+  textSecondary: "#6F7F73",
   textLight: "#FFFFFF",
-  border: "#E0E0E0",
+  border: "#E6EAE1",
   success: "#4CAF50",
   warning: "#FF9800",
   error: "#F44336",
-  info: "#2E7D32",
-  infoLight: "#C8E6C9",
+  info: "#1F7A45",
+  infoLight: "#E3F1E8",
 };
 
 // Talaqi types

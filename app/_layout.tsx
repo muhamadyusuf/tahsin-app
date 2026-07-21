@@ -48,7 +48,7 @@ export default function RootLayout() {
   return (
     <Providers>
       <AuthProvider>
-        <StatusBar style="light" backgroundColor="#2E7D32" />
+        <StatusBar style="light" backgroundColor={Colors.primary} />
         <View style={styles.rootContainer}>
           <View style={[styles.contentContainer, useDesktopLayout && styles.contentContainerDesktop]}>
             {/* MeetingProvider di sini agar video meeting tetap tersambung

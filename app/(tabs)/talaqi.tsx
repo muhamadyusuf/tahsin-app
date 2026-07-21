@@ -18,7 +18,7 @@ import {
 const TYPE_COLORS: Record<string, string> = {
   tahsin: Colors.primary,
   murojaah: Colors.secondary,
-  tahfidz: "#7B1FA2",
+  tahfidz: "#00695C",
 };
 
 const TYPE_ICONS: Record<

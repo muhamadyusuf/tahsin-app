@@ -109,9 +109,7 @@ export const upsertUser = mutation({
 
     if (existing) {
       const updates: Record<string, any> = {
-        name: args.name,
         email: args.email,
-        phone: args.phone,
         avatarUrl: args.avatarUrl,
       };
       // Auto-promote admin emails on every login

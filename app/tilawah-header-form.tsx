@@ -20,6 +20,7 @@ import { Colors } from "@/lib/constants";
 export default function TilawahHeaderFormScreen() {
   const config = useQuery(api.appConfig.getPublicConfig, {});
   const upsert = useMutation(api.appConfig.upsertTilawahHeaderImage);
+  const generateUploadUrl = useMutation(api.appConfig.generateUploadUrl);
 
   const [url, setUrl] = useState("");
   const [saving, setSaving] = useState(false);
@@ -86,9 +87,31 @@ export default function TilawahHeaderFormScreen() {
 
     setSaving(true);
     try {
-      await upsert({
-        tilawahHeaderImageUrl: trimmed.length > 0 ? trimmed : undefined,
-      });
+      if (isDataImage) {
+        const uploadUrl = await generateUploadUrl();
+        const mimeType =
+          trimmed.match(/^data:(image\/[a-zA-Z0-9.+-]+);base64,/)?.[1] ??
+          "image/jpeg";
+        const base64Data = trimmed.split(",")[1];
+        const binaryStr = atob(base64Data);
+        const bytes = new Uint8Array(binaryStr.length);
+        for (let i = 0; i < binaryStr.length; i++) {
+          bytes[i] = binaryStr.charCodeAt(i);
+        }
+        const blob = new Blob([bytes], { type: mimeType });
+
+        const uploadResult = await fetch(uploadUrl, {
+          method: "POST",
+          headers: { "Content-Type": mimeType },
+          body: blob,
+        });
+        const { storageId } = await uploadResult.json();
+        await upsert({ storageId });
+      } else {
+        await upsert({
+          tilawahHeaderImageUrl: trimmed.length > 0 ? trimmed : undefined,
+        });
+      }
       Alert.alert("Berhasil", "Header Tilawah berhasil diperbarui.");
     } catch {
       Alert.alert("Error", "Gagal menyimpan konfigurasi header.");
