@@ -2712,7 +2712,7 @@ const styles = StyleSheet.create({
     backgroundColor: "transparent",
     paddingTop: 16,
     paddingHorizontal: 20,
-    paddingBottom: 20,
+    paddingBottom: 14,
     borderBottomLeftRadius: 24,
     borderBottomRightRadius: 24,
     overflow: "hidden",

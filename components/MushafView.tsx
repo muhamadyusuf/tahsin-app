@@ -2902,16 +2902,23 @@ export default function MushafView({ initialPage = 0 }: Props) {
             // </View>
           }
 
-          {/* Bookmark ribbon indicator — pushed below the floating top row on mobile */}
+          {/* Bookmark ribbon indicator — floats over the mushaf so it never
+              shifts the page content. pointerEvents="none" lets taps pass through
+              to the mushaf beneath it. */}
           {isBookmarked && (
             <View
+              pointerEvents="none"
               style={[
-                s.bookmarkRibbon,
-                !isDesktop && { marginTop: (insets.top || TOP_INSET) + 58 },
+                s.bookmarkRibbonWrap,
+                isDesktop
+                  ? { top: 12 }
+                  : { top: (insets.top || TOP_INSET) + 8 },
               ]}
             >
-              <FontAwesome name="bookmark" size={16} color={M.bookmark} />
-              <Text style={s.bookmarkRibbonText}>Batas Baca</Text>
+              <View style={s.bookmarkRibbon}>
+                <FontAwesome name="bookmark" size={14} color={M.bookmark} />
+                <Text style={s.bookmarkRibbonText}>Batas Baca</Text>
+              </View>
             </View>
           )}
 
@@ -4048,16 +4055,30 @@ const s = StyleSheet.create({
     marginTop: 2,
   },
 
-  // Bookmark ribbon
+  // Bookmark ribbon — floating, absolute overlay (does not consume layout)
+  bookmarkRibbonWrap: {
+    position: "absolute",
+    left: 0,
+    right: 0,
+    alignItems: "center",
+    zIndex: 30,
+    elevation: 30,
+  },
   bookmarkRibbon: {
     flexDirection: "row",
     alignItems: "center",
-    justifyContent: "center",
     gap: 6,
-    backgroundColor: M.bookmark + "15",
+    backgroundColor: M.bookmark + "22",
+    paddingHorizontal: 12,
     paddingVertical: 5,
-    borderBottomWidth: 1,
-    borderBottomColor: M.bookmark + "30",
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: M.bookmark + "44",
+    shadowColor: M.bookmark,
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.2,
+    shadowRadius: 3,
+    elevation: 4,
   },
   bookmarkRibbonText: {
     fontSize: 11,

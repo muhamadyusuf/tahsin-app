@@ -1,20 +1,20 @@
-import React from "react";
-import {
-  View,
-  Text,
-  StyleSheet,
-  ScrollView,
-  Pressable,
-  ActivityIndicator,
-} from "react-native";
-import { useQuery } from "convex/react";
+import ConfirmModal from "@/components/ConfirmModal";
 import { api } from "@/convex/_generated/api";
 import { useAuthContext } from "@/lib/auth-context";
-import { useRouter } from "expo-router";
-import FontAwesome from "@expo/vector-icons/FontAwesome";
 import { Colors } from "@/lib/constants";
 import { useClerk } from "@clerk/expo";
-import ConfirmModal from "@/components/ConfirmModal";
+import FontAwesome from "@expo/vector-icons/FontAwesome";
+import { useQuery } from "convex/react";
+import { useRouter } from "expo-router";
+import React from "react";
+import {
+  ActivityIndicator,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  View,
+} from "react-native";
 
 export default function DashboardScreen() {
   const { userData } = useAuthContext();
@@ -45,35 +45,35 @@ export default function DashboardScreen() {
   // --- Query khusus administrator (data global) ---
   const allLembaga = useQuery(
     api.adminPengajian.listAll,
-    isLembaga ? "skip" : {}
+    isLembaga ? "skip" : {},
   );
   const pendingLembagaRequests = useQuery(
     api.adminPengajianRequest.listByStatus,
-    isLembaga ? "skip" : { status: "pending" }
+    isLembaga ? "skip" : { status: "pending" },
   );
 
   // --- Query khusus admin_pengajian (dibatasi lembaga sendiri) ---
   const lembaga = useQuery(
     api.adminPengajian.getByUserId,
-    isLembaga && userData?._id ? { userId: userData._id } : "skip"
+    isLembaga && userData?._id ? { userId: userData._id } : "skip",
   );
   const santriList = useQuery(
     api.santri.listByAdminPengajian,
-    isLembaga && lembaga?._id ? { adminPengajianId: lembaga._id } : "skip"
+    isLembaga && lembaga?._id ? { adminPengajianId: lembaga._id } : "skip",
   );
   const ustadzList = useQuery(
     api.ustadz.listByAdminPengajian,
-    isLembaga && lembaga?._id ? { adminPengajianId: lembaga._id } : "skip"
+    isLembaga && lembaga?._id ? { adminPengajianId: lembaga._id } : "skip",
   );
   const kelasList = useQuery(
     api.kelas.listByAdminPengajian,
-    isLembaga && lembaga?._id ? { adminPengajianId: lembaga._id } : "skip"
+    isLembaga && lembaga?._id ? { adminPengajianId: lembaga._id } : "skip",
   );
   const pendingJoinRequests = useQuery(
     api.lkmJoinRequest.listByAdminPengajian,
     isLembaga && lembaga?._id
       ? { adminPengajianId: lembaga._id, status: "pending" as const }
-      : "skip"
+      : "skip",
   );
 
   // Anggota lembaga (santri + ustadz) beserta profil user-nya. Hanya user yang
@@ -285,7 +285,10 @@ export default function DashboardScreen() {
       ];
 
   return (
-    <ScrollView style={st.container} contentContainerStyle={{ paddingBottom: 32 }}>
+    <ScrollView
+      style={st.container}
+      contentContainerStyle={{ paddingBottom: 32 }}
+    >
       {/* Header */}
       <View style={st.header}>
         <View>
@@ -331,7 +334,10 @@ export default function DashboardScreen() {
         {quickActions.map((a, i) => (
           <Pressable
             key={i}
-            style={({ pressed }) => [st.actionCard, pressed && { opacity: 0.8 }]}
+            style={({ pressed }) => [
+              st.actionCard,
+              pressed && { opacity: 0.8 },
+            ]}
             onPress={a.onPress}
           >
             <View style={st.actionIcon}>
@@ -356,57 +362,63 @@ export default function DashboardScreen() {
             .slice(-5)
             .reverse()
             .map((u) => (
-            <Pressable
-              key={u._id}
-              style={({ pressed }) => [st.userRow, pressed && { opacity: 0.7 }]}
-              onPress={() =>
-                router.push({ pathname: "/user-detail", params: { id: u._id } })
-              }
-            >
-              <View style={st.avatar}>
-                <Text style={st.avatarText}>
-                  {u.name.charAt(0).toUpperCase()}
-                </Text>
-              </View>
-              <View style={{ flex: 1 }}>
-                <Text style={st.userRowName}>{u.name}</Text>
-                <Text style={st.userRowEmail}>{u.email}</Text>
-              </View>
-              <View
-                style={[
-                  st.roleTag,
-                  {
-                    backgroundColor:
-                      u.role === "administrator"
-                        ? "#FFEBEE"
-                        : u.role === "ustadz"
-                          ? "#F3E5F5"
-                          : u.role === "admin_pengajian"
-                            ? "#E3F2FD"
-                            : "#E8F5E9",
-                  },
+              <Pressable
+                key={u._id}
+                style={({ pressed }) => [
+                  st.userRow,
+                  pressed && { opacity: 0.7 },
                 ]}
+                onPress={() =>
+                  router.push({
+                    pathname: "/user-detail",
+                    params: { id: u._id },
+                  })
+                }
               >
-                <Text
+                <View style={st.avatar}>
+                  <Text style={st.avatarText}>
+                    {u.name.charAt(0).toUpperCase()}
+                  </Text>
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={st.userRowName}>{u.name}</Text>
+                  <Text style={st.userRowEmail}>{u.email}</Text>
+                </View>
+                <View
                   style={[
-                    st.roleTagText,
+                    st.roleTag,
                     {
-                      color:
+                      backgroundColor:
                         u.role === "administrator"
-                          ? "#C62828"
+                          ? "#FFEBEE"
                           : u.role === "ustadz"
-                            ? "#7B1FA2"
+                            ? "#F3E5F5"
                             : u.role === "admin_pengajian"
-                              ? "#1565C0"
-                              : "#2E7D32",
+                              ? "#E3F2FD"
+                              : "#E8F5E9",
                     },
                   ]}
                 >
-                  {u.role}
-                </Text>
-              </View>
-            </Pressable>
-          ))}
+                  <Text
+                    style={[
+                      st.roleTagText,
+                      {
+                        color:
+                          u.role === "administrator"
+                            ? "#C62828"
+                            : u.role === "ustadz"
+                              ? "#7B1FA2"
+                              : u.role === "admin_pengajian"
+                                ? "#1565C0"
+                                : "#2E7D32",
+                      },
+                    ]}
+                  >
+                    {u.role}
+                  </Text>
+                </View>
+              </Pressable>
+            ))}
         </>
       )}
       <ConfirmModal
