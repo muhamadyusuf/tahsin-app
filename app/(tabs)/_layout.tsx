@@ -1,7 +1,7 @@
 import FontAwesome from "@expo/vector-icons/FontAwesome";
 import { Redirect, Tabs } from "expo-router";
 import React from "react";
-import { ActivityIndicator, Platform, View } from "react-native";
+import { ActivityIndicator, Image, Platform, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { GlassTabBarBackground } from "@/components/GlassTabBarBackground";
@@ -15,8 +15,40 @@ function TabBarIcon(props: {
   return <FontAwesome size={22} style={{ marginBottom: -3 }} {...props} />;
 }
 
+function ProfilTabBarIcon({
+  avatarUrl,
+  color,
+}: {
+  avatarUrl?: string;
+  color: string;
+}) {
+  if (avatarUrl) {
+    return (
+      <Image
+        source={{ uri: avatarUrl }}
+        style={{
+          width: 24,
+          height: 24,
+          borderRadius: 12,
+          marginBottom: -3,
+          borderWidth: 1.5,
+          borderColor: color,
+        }}
+      />
+    );
+  }
+  return (
+    <FontAwesome
+      name="user"
+      size={22}
+      style={{ marginBottom: -3 }}
+      color={color}
+    />
+  );
+}
+
 export default function TabLayout() {
-  const { isLoading, isAuthenticated, isAdmin } = useAuthContext();
+  const { isLoading, isAuthenticated, isAdmin, userData } = useAuthContext();
   const insets = useSafeAreaInsets();
 
   if (isLoading) {
@@ -39,7 +71,7 @@ export default function TabLayout() {
     <Tabs
       screenOptions={{
         tabBarActiveTintColor: Colors.primary,
-        tabBarInactiveTintColor: Colors.textSecondary,
+        tabBarInactiveTintColor: Colors.primaryDark,
         tabBarLabelStyle: {
           fontSize: 9,
           fontWeight: "600",
@@ -47,7 +79,7 @@ export default function TabLayout() {
         tabBarBackground: () => <GlassTabBarBackground />,
         tabBarStyle: {
           position: "absolute",
-          bottom: 24,
+          bottom: 10 + insets.bottom,
           left: 16,
           right: 16,
           height: 50,
@@ -103,7 +135,9 @@ export default function TabLayout() {
         name="profil"
         options={{
           title: "Profil",
-          tabBarIcon: ({ color }) => <TabBarIcon name="user" color={color} />,
+          tabBarIcon: ({ color }) => (
+            <ProfilTabBarIcon avatarUrl={userData?.avatarUrl} color={color} />
+          ),
         }}
       />
     </Tabs>

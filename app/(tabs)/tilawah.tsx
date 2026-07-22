@@ -2022,7 +2022,7 @@ export default function TilawahScreen() {
               <Text style={styles.categoryLabel}>Dzikir{"\n"}Harian</Text>
             </TouchableOpacity>
 
-            <TouchableOpacity
+            {/* <TouchableOpacity
               style={styles.categoryCard}
               onPress={() => router.push("/tarbiyah/tahsin")}
             >
@@ -2048,7 +2048,7 @@ export default function TilawahScreen() {
                 />
               </View>
               <Text style={styles.categoryLabel}>Catatan{"\n"}Talaqi</Text>
-            </TouchableOpacity>
+            </TouchableOpacity> */}
 
             {Platform.OS !== "web" && (
               <TouchableOpacity
@@ -2071,7 +2071,7 @@ export default function TilawahScreen() {
           </View>
 
           {/* ===== Target Hari Ini ===== */}
-          <View style={styles.targetCard}>
+          {/* <View style={styles.targetCard}>
             <View style={styles.targetHeaderRow}>
               <View style={styles.targetHeaderLeft}>
                 <View style={styles.targetIconBox}>
@@ -2163,7 +2163,7 @@ export default function TilawahScreen() {
                 </View>
               </TouchableOpacity>
             </View>
-          </View>
+          </View> */}
 
           {/* ===== Lanjut Terakhir ===== */}
           {lastTilawah && (
@@ -2596,19 +2596,29 @@ export default function TilawahScreen() {
         animationType="slide"
         onRequestClose={() => setMushafModalVisible(false)}
       >
-        <View style={styles.modalOverlay}>
-          <View
-            style={[styles.modalSheet, { paddingBottom: insets.bottom + 20 }]}
+        <TouchableOpacity
+          style={styles.modalOverlay}
+          activeOpacity={1}
+          onPress={() => setMushafModalVisible(false)}
+        >
+          <TouchableOpacity
+            style={[styles.mushafSheet, { paddingBottom: insets.bottom + 20 }]}
+            activeOpacity={1}
           >
-            <View style={styles.modalHeader}>
-              <View>
-                <Text style={styles.modalTitle}>Mushaf Al-Qur'an</Text>
-                <Text style={styles.modalDateText}>
+            <View style={styles.mushafGrabHandle} />
+
+            <View style={styles.mushafHeader}>
+              <View style={styles.mushafHeaderIcon}>
+                <FontAwesome name="book" size={20} color={Colors.primary} />
+              </View>
+              <View style={styles.mushafHeaderText}>
+                <Text style={styles.mushafTitle}>Mushaf Al-Qur'an</Text>
+                <Text style={styles.mushafSubtitle}>
                   Pilih cara membaca Al-Qur'an
                 </Text>
               </View>
               <TouchableOpacity
-                style={styles.modalCloseBtn}
+                style={styles.mushafCloseBtn}
                 onPress={() => setMushafModalVisible(false)}
               >
                 <FontAwesome
@@ -2627,13 +2637,8 @@ export default function TilawahScreen() {
               }}
               activeOpacity={0.8}
             >
-              <View
-                style={[
-                  styles.mushafChoiceIcon,
-                  { backgroundColor: "#E8F5E9" },
-                ]}
-              >
-                <FontAwesome name="list" size={22} color={Colors.primary} />
+              <View style={styles.mushafChoiceIconGreen}>
+                <FontAwesome5 name="list-ul" size={20} color={Colors.primary} />
               </View>
               <View style={styles.mushafChoiceTextWrap}>
                 <Text style={styles.mushafChoiceTitle}>Per Surah</Text>
@@ -2641,11 +2646,13 @@ export default function TilawahScreen() {
                   Pilih surah dari daftar untuk dibaca
                 </Text>
               </View>
-              <FontAwesome
-                name="chevron-right"
-                size={14}
-                color={Colors.textSecondary}
-              />
+              <View style={styles.mushafChoiceArrow}>
+                <FontAwesome
+                  name="chevron-right"
+                  size={14}
+                  color={Colors.primary}
+                />
+              </View>
             </TouchableOpacity>
 
             <TouchableOpacity
@@ -2656,13 +2663,8 @@ export default function TilawahScreen() {
               }}
               activeOpacity={0.8}
             >
-              <View
-                style={[
-                  styles.mushafChoiceIcon,
-                  { backgroundColor: "#FFF3E0" },
-                ]}
-              >
-                <FontAwesome name="book" size={22} color="#E65100" />
+              <View style={styles.mushafChoiceIconGold}>
+                <FontAwesome name="book" size={20} color={Colors.accent} />
               </View>
               <View style={styles.mushafChoiceTextWrap}>
                 <Text style={styles.mushafChoiceTitle}>Mushaf Full</Text>
@@ -2670,14 +2672,16 @@ export default function TilawahScreen() {
                   Baca mushaf lengkap per halaman
                 </Text>
               </View>
-              <FontAwesome
-                name="chevron-right"
-                size={14}
-                color={Colors.textSecondary}
-              />
+              <View style={styles.mushafChoiceArrowGold}>
+                <FontAwesome
+                  name="chevron-right"
+                  size={14}
+                  color={Colors.accent}
+                />
+              </View>
             </TouchableOpacity>
-          </View>
-        </View>
+          </TouchableOpacity>
+        </TouchableOpacity>
       </Modal>
     </View>
   );
@@ -3037,20 +3041,82 @@ const styles = StyleSheet.create({
     fontWeight: "600",
   },
   // ===== Mushaf mode chooser =====
+  mushafSheet: {
+    backgroundColor: "#fff",
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    paddingTop: 12,
+    paddingHorizontal: 20,
+    maxHeight: "85%",
+  },
+  mushafGrabHandle: {
+    alignSelf: "center",
+    width: 40,
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: Colors.border,
+    marginBottom: 14,
+  },
+  mushafHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+    marginBottom: 16,
+  },
+  mushafHeaderIcon: {
+    width: 44,
+    height: 44,
+    borderRadius: 14,
+    backgroundColor: Colors.primaryLight,
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  mushafHeaderText: {
+    flex: 1,
+  },
+  mushafTitle: {
+    fontSize: 18,
+    fontWeight: "bold",
+    color: Colors.text,
+  },
+  mushafSubtitle: {
+    fontSize: 12,
+    color: Colors.textSecondary,
+    marginTop: 2,
+  },
+  mushafCloseBtn: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: Colors.backgroundLight,
+    justifyContent: "center",
+    alignItems: "center",
+  },
   mushafChoiceCard: {
     flexDirection: "row",
     alignItems: "center",
     gap: 14,
-    paddingVertical: 14,
-    paddingHorizontal: 14,
-    borderRadius: 14,
-    backgroundColor: Colors.backgroundLight,
-    marginTop: 12,
+    paddingVertical: 16,
+    paddingHorizontal: 16,
+    borderRadius: 18,
+    backgroundColor: "#fff",
+    borderWidth: 1,
+    borderColor: Colors.border,
+    marginBottom: 12,
   },
-  mushafChoiceIcon: {
-    width: 46,
-    height: 46,
-    borderRadius: 12,
+  mushafChoiceIconGreen: {
+    width: 48,
+    height: 48,
+    borderRadius: 14,
+    backgroundColor: Colors.primaryLight,
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  mushafChoiceIconGold: {
+    width: 48,
+    height: 48,
+    borderRadius: 14,
+    backgroundColor: "#FBF1DE",
     justifyContent: "center",
     alignItems: "center",
   },
@@ -3058,7 +3124,7 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   mushafChoiceTitle: {
-    fontSize: 15,
+    fontSize: 16,
     fontWeight: "700",
     color: Colors.text,
   },
@@ -3066,6 +3132,22 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: Colors.textSecondary,
     marginTop: 2,
+  },
+  mushafChoiceArrow: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: Colors.primaryLight,
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  mushafChoiceArrowGold: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: "#FBF1DE",
+    justifyContent: "center",
+    alignItems: "center",
   },
   // ===== Location Picker =====
   pickerBackBtn: {

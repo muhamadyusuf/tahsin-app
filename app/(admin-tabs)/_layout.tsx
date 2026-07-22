@@ -36,7 +36,7 @@ export default function TabsLayout() {
     <Tabs
       screenOptions={{
         tabBarActiveTintColor: Colors.primary,
-        tabBarInactiveTintColor: Colors.textSecondary,
+        tabBarInactiveTintColor: Colors.primaryDark,
         tabBarLabelStyle: {
           fontSize: 9,
           fontWeight: "600",
@@ -44,7 +44,7 @@ export default function TabsLayout() {
         tabBarBackground: () => <GlassTabBarBackground />,
         tabBarStyle: {
           position: "absolute",
-          bottom: 24,
+          bottom: 10 + insets.bottom,
           left: 16,
           right: 16,
           height: 50,
