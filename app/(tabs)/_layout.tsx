@@ -1,9 +1,10 @@
-import React from "react";
 import FontAwesome from "@expo/vector-icons/FontAwesome";
-import { Tabs, Redirect } from "expo-router";
-import { ActivityIndicator, View } from "react-native";
+import { Redirect, Tabs } from "expo-router";
+import React from "react";
+import { ActivityIndicator, Platform, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
+import { GlassTabBarBackground } from "@/components/GlassTabBarBackground";
 import { useAuthContext } from "@/lib/auth-context";
 import { Colors } from "@/lib/constants";
 
@@ -40,15 +41,30 @@ export default function TabLayout() {
         tabBarActiveTintColor: Colors.primary,
         tabBarInactiveTintColor: Colors.textSecondary,
         tabBarLabelStyle: {
-          fontSize: 11,
+          fontSize: 9,
           fontWeight: "600",
         },
+        tabBarBackground: () => <GlassTabBarBackground />,
         tabBarStyle: {
-          backgroundColor: Colors.surface,
-          borderTopColor: Colors.border,
-          height: 54 + insets.bottom,
-          paddingBottom: insets.bottom,
-          paddingTop: 4,
+          position: "absolute",
+          bottom: 24,
+          left: 16,
+          right: 16,
+          height: 50,
+          borderRadius: 30,
+          backgroundColor: "transparent",
+          borderTopWidth: 0,
+          borderTopColor: "transparent",
+          paddingBottom: 0,
+          paddingHorizontal: 0,
+          ...(Platform.OS === "web"
+            ? { maxWidth: 468, marginHorizontal: "auto" }
+            : {}),
+          shadowColor: "#000",
+          shadowOffset: { width: 0, height: 4 },
+          shadowOpacity: 0.12,
+          shadowRadius: 16,
+          elevation: 8,
         },
         headerStyle: {
           backgroundColor: Colors.primary,

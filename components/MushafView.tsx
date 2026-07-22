@@ -11,7 +11,11 @@ import {
   QURAN_EDITION_TRANSLATION,
   WEB_MAX_WIDTH,
 } from "@/lib/constants";
-import { colorizeArabicText, TAJWID_RULES } from "@/lib/tajwid";
+import {
+  colorizeArabicText,
+  colorizeWordsByLine,
+  TAJWID_RULES,
+} from "@/lib/tajwid";
 import FontAwesome from "@expo/vector-icons/FontAwesome";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import Slider from "@react-native-community/slider";
@@ -2491,64 +2495,86 @@ export default function MushafView({ initialPage = 0 }: Props) {
             isActiveLine && s.mushafLineActive,
           ]}
         >
-          {lineWords.map((w, wi) => {
-            const audioIdx = verseKeyToAyahIdx.get(w.verseKey) ?? 0;
-            const isActive = interactive && playingAyahIdx === audioIdx;
-            const isLast = wi === lineWords.length - 1;
-            const nextIsEnd = !isLast && lineWords[wi + 1].charType === "end";
+          {(() => {
+            // Compute tajwid coloring for this entire line at once so
+            // rules that span word boundaries (Nun sukun + Ikhfa letter in
+            // the next word, etc.) are detected correctly. End-of-ayah
+            // markers are placeholders (empty string) so the word indices
+            // stay aligned with `lineWords`.
+            const wordTexts = lineWords.map((w) =>
+              w.charType === "end" ? "" : w.textUthmani,
+            );
+            const lineColorings = showTajwid
+              ? colorizeWordsByLine(wordTexts)
+              : lineWords.map(() => null);
 
-            if (w.charType === "end") {
+            return lineWords.map((w, wi) => {
+              const audioIdx = verseKeyToAyahIdx.get(w.verseKey) ?? 0;
+              const isActive = interactive && playingAyahIdx === audioIdx;
+              const isLast = wi === lineWords.length - 1;
+              const nextIsEnd =
+                !isLast && lineWords[wi + 1].charType === "end";
+
+              if (w.charType === "end") {
+                return (
+                  <Text
+                    key={w.id}
+                    style={[
+                      s.mushafLineEndMarker,
+                      { fontSize: lineFontSize * 0.35 },
+                      isActive && s.activeMarker,
+                    ]}
+                    onPress={
+                      interactive
+                        ? () => {
+                            isPlayingAllRef.current = false;
+                            setIsPlayingAll(false);
+                            playAyah(audioIdx);
+                          }
+                        : undefined
+                    }
+                  >
+                    {" ﴿"}
+                    {toArabicNumeral(w.verseNumber)}
+                    {"﴾ "}
+                  </Text>
+                );
+              }
+
+              const segs = lineColorings[wi];
+
               return (
                 <Text
                   key={w.id}
                   style={[
-                    s.mushafLineEndMarker,
-                    { fontSize: lineFontSize * 0.35 },
-                    isActive && s.activeMarker,
+                    s.mushafLineWord,
+                    isActive && s.mushafWordActive,
                   ]}
                   onPress={
                     interactive
                       ? () => {
-                          isPlayingAllRef.current = false;
-                          setIsPlayingAll(false);
-                          playAyah(audioIdx);
+                          if (!pgData) return;
+                          const ayah = pgData.ayahs[audioIdx];
+                          if (ayah) onAyahPress(ayah, audioIdx);
                         }
                       : undefined
                   }
                 >
-                  {" ﴿"}
-                  {toArabicNumeral(w.verseNumber)}
-                  {"﴾ "}
+                  {segs
+                    ? segs.map((seg, si) => (
+                        <Text
+                          key={si}
+                          style={seg.color ? { color: seg.color } : undefined}
+                        >
+                          {seg.text}
+                        </Text>
+                      ))
+                    : w.textUthmani}
+                  {!isLast && !nextIsEnd ? " " : ""}
                 </Text>
               );
-            }
-
-            return (
-              <Text
-                key={w.id}
-                style={[
-                  s.mushafLineWord,
-                  isActive && s.mushafWordActive,
-                  showTajwid && {
-                    color:
-                      colorizeArabicText(w.textUthmani)[0]?.color ?? M.text,
-                  },
-                ]}
-                onPress={
-                  interactive
-                    ? () => {
-                        if (!pgData) return;
-                        const ayah = pgData.ayahs[audioIdx];
-                        if (ayah) onAyahPress(ayah, audioIdx);
-                      }
-                    : undefined
-                }
-              >
-                {w.textUthmani}
-                {!isLast && !nextIsEnd ? " " : ""}
-              </Text>
-            );
-          })}
+            });
+          })()}
         </Text>,
       );
     }

@@ -2,7 +2,8 @@
  * Tajwid (Hukum Bacaan) detection for Arabic Quran text.
  *
  * Detects common tajwid rules from Arabic text characters and patterns.
- * This is a simplified rule-based detector — not a full phonological analyzer.
+ * This is a rule-based detector covering the standard tajwid categories
+ * used by most Indonesian tahsin references.
  */
 
 export interface TajwidRule {
@@ -69,6 +70,13 @@ export const TAJWID_RULES: Record<string, TajwidRule> = {
     description: "Mad asli — dipanjangkan 2 harakat (alif, waw, ya)",
     color: "#607D8B", // blue-grey
   },
+  mad_lin: {
+    name: "Mad Lin",
+    arabic: "مد لين",
+    description:
+      "Waw sukun / Ya sukun setelah Fathah — dibaca lunak & panjang 2-6 harakat",
+    color: "#26A69A", // teal
+  },
   ikhfa_syafawi: {
     name: "Ikhfa Syafawi",
     arabic: "إخفاء شفوي",
@@ -81,6 +89,13 @@ export const TAJWID_RULES: Record<string, TajwidRule> = {
     description: "Mim sukun bertemu م — dilebur dengan dengung",
     color: "#8BC34A", // light green
   },
+  izhar_syafawi: {
+    name: "Izhar Syafawi",
+    arabic: "إظهار شفوي",
+    description:
+      "Mim sukun bertemu huruf selain ب dan م — dibaca jelas di bibir",
+    color: "#EF5350", // light red
+  },
 };
 
 // Arabic character references
@@ -89,9 +104,16 @@ const TANWIN_FATHAH = "\u064B";
 const TANWIN_DAMMAH = "\u064C";
 const TANWIN_KASRAH = "\u064D";
 const SHADDA = "\u0651";
+const FATHAH = "\u064E";
+const DAMMAH = "\u064F";
+const KASRAH = "\u0650";
 const NUN = "ن";
 const MIM = "م";
 const BA = "ب";
+const WAW = "و";
+const YA = "ي";
+const ALIF = "ا";
+const ALEF_MAKSURA = "ى";
 
 // Huruf groups
 const IDGHAM_BIGHUNNAH = ["ي", "ن", "م", "و"];
@@ -102,6 +124,22 @@ const IKHFA_LETTERS = [
   "ص", "ض", "ط", "ظ", "ف", "ق", "ك",
 ];
 const QALQALAH_LETTERS = ["ق", "ط", "ب", "ج", "د"];
+const MAD_LETTERS = [ALIF, WAW, YA, ALEF_MAKSURA];
+
+function isDiacriticChar(c: string): boolean {
+  return /[\u064B-\u065F\u0670\u06D6-\u06ED\u0610-\u061A]/.test(c);
+}
+
+function isSpaceChar(c: string): boolean {
+  return c === " " || c === "\u00A0" || c === "\uFEFF";
+}
+
+function findNextBaseIndex(chars: string[], startIdx: number): number | null {
+  for (let i = startIdx; i < chars.length; i++) {
+    if (!isDiacriticChar(chars[i]) && !isSpaceChar(chars[i])) return i;
+  }
+  return null;
+}
 
 /**
  * Analyze an ayah's Arabic text and return which tajwid rules are present.
@@ -113,22 +151,17 @@ export function detectTajwidRules(arabicText: string): string[] {
   for (let i = 0; i < chars.length; i++) {
     const ch = chars[i];
     const next = chars[i + 1] ?? "";
-    const next2 = chars[i + 2] ?? "";
-
-    // Find the next "base letter" (skip diacritics)
-    const nextBaseLetter = findNextBaseLetter(chars, i + 1);
 
     // --- Nun Sukun / Tanwin rules ---
     const isNunSukun = ch === NUN && next === SUKUN;
     const isTanwin =
-      ch === TANWIN_FATHAH ||
-      ch === TANWIN_DAMMAH ||
-      ch === TANWIN_KASRAH;
+      ch === TANWIN_FATHAH || ch === TANWIN_DAMMAH || ch === TANWIN_KASRAH;
 
     if (isNunSukun || isTanwin) {
-      const target = isNunSukun
-        ? findNextBaseLetter(chars, i + 2)
-        : nextBaseLetter;
+      const targetIdx = isNunSukun
+        ? findNextBaseIndex(chars, i + 2)
+        : findNextBaseIndex(chars, i + 1);
+      const target = targetIdx !== null ? chars[targetIdx] : null;
 
       if (target) {
         if (IDGHAM_BIGHUNNAH.includes(target)) {
@@ -157,39 +190,39 @@ export function detectTajwidRules(arabicText: string): string[] {
 
     // --- Mim Sukun rules ---
     if (ch === MIM && next === SUKUN) {
-      const target = findNextBaseLetter(chars, i + 2);
+      const targetIdx = findNextBaseIndex(chars, i + 2);
+      const target = targetIdx !== null ? chars[targetIdx] : null;
       if (target === BA) {
         found.add("ikhfa_syafawi");
       } else if (target === MIM) {
         found.add("idgham_mimi");
+      } else if (target) {
+        found.add("izhar_syafawi");
       }
     }
 
-    // --- Mad Thabi'i (simplified: alif/waw/ya after specific harakat) ---
-    if (ch === "ا" || ch === "و" || ch === "ي") {
-      // Check if preceded by a matching harakat (simplified detection)
+    // --- Mad Thabi'i (simplified: alif/waw/ya after matching harakat) ---
+    if (MAD_LETTERS.includes(ch)) {
       const prev = chars[i - 1] ?? "";
       if (
-        (ch === "ا" && prev === "\u064E") || // fathah + alif
-        (ch === "و" && prev === "\u064F") || // dammah + waw
-        (ch === "ي" && prev === "\u0650") // kasrah + ya
+        (ch === ALIF && prev === FATHAH) ||
+        (ch === WAW && prev === DAMMAH) ||
+        (ch === YA && prev === KASRAH)
       ) {
         found.add("mad_thabii");
+      }
+    }
+
+    // --- Mad Lin: waw_sukun or ya_sukun preceded by fathah ---
+    if ((ch === WAW || ch === YA) && next === SUKUN) {
+      const prev = chars[i - 1] ?? "";
+      if (prev === FATHAH) {
+        found.add("mad_lin");
       }
     }
   }
 
   return Array.from(found);
-}
-
-function findNextBaseLetter(chars: string[], startIdx: number): string | null {
-  const diacritics = /[\u064B-\u065F\u0670\u06D6-\u06ED]/;
-  for (let i = startIdx; i < chars.length; i++) {
-    if (!diacritics.test(chars[i]) && chars[i].trim() !== "") {
-      return chars[i];
-    }
-  }
-  return null;
 }
 
 /**
@@ -202,16 +235,6 @@ export function getTajwidInfo(arabicText: string): TajwidRule[] {
 
 // --- Inline coloring helpers ---
 
-const isDiacriticChar = (c: string) =>
-  /[\u064B-\u065F\u0670\u06D6-\u06ED\u0610-\u061A]/.test(c);
-
-function nextBaseIndex(chars: string[], start: number): number | null {
-  for (let i = start; i < chars.length; i++) {
-    if (!isDiacriticChar(chars[i]) && chars[i].trim()) return i;
-  }
-  return null;
-}
-
 function letterEndIndex(chars: string[], baseIdx: number): number {
   let end = baseIdx + 1;
   while (end < chars.length && isDiacriticChar(chars[end])) end++;
@@ -222,7 +245,7 @@ function markColors(
   colors: (string | null)[],
   from: number,
   to: number,
-  color: string
+  color: string,
 ) {
   for (let j = from; j < to && j < colors.length; j++) {
     if (colors[j] === null) colors[j] = color;
@@ -230,13 +253,13 @@ function markColors(
 }
 
 /**
- * Colorize Arabic text with tajwid rule colors.
- * Returns segments of text, each with a color or null (default).
+ * Compute per-character color assignments for the given Arabic text.
+ * Shared by colorizeArabicText (single-string API) and colorizeWordsByLine
+ * (word-aware API used by the mushaf for per-word rendering).
  */
-export function colorizeArabicText(arabicText: string): ColoredSegment[] {
-  const chars = [...arabicText];
-  if (chars.length === 0) return [];
-
+export function computeCharColors(
+  chars: string[],
+): (string | null)[] {
   const colors: (string | null)[] = new Array(chars.length).fill(null);
 
   for (let i = 0; i < chars.length; i++) {
@@ -250,7 +273,7 @@ export function colorizeArabicText(arabicText: string): ColoredSegment[] {
 
     if (isNunSukun || isTanwin) {
       const searchFrom = isNunSukun ? i + 2 : i + 1;
-      const tIdx = nextBaseIndex(chars, searchFrom);
+      const tIdx = findNextBaseIndex(chars, searchFrom);
 
       if (tIdx !== null) {
         const target = chars[tIdx];
@@ -262,17 +285,25 @@ export function colorizeArabicText(arabicText: string): ColoredSegment[] {
         else if (target === BA) ruleKey = "iqlab";
         else if (IZHAR_HALQI.includes(target)) ruleKey = "izhar";
         else if (IKHFA_LETTERS.includes(target)) ruleKey = "ikhfa";
+        else ruleKey = "izhar"; // default izhar for tanwin/nun sukun across word boundary
+
+        // Don't override default izhar color for non-halqi consonants across
+        // words — keep izhar strictly to halqi letters. Revert.
+        if (ruleKey === "izhar" && !IZHAR_HALQI.includes(target)) {
+          ruleKey = null;
+        }
 
         if (ruleKey) {
           const c = TAJWID_RULES[ruleKey].color;
           if (isNunSukun) {
             markColors(colors, i, i + 2, c);
+            markColors(colors, tIdx, letterEndIndex(chars, tIdx), c);
           } else {
             // tanwin diacritic + the letter it's on (letter is before tanwin)
             const prevBase = i > 0 ? i - 1 : i;
             markColors(colors, prevBase, i + 1, c);
+            markColors(colors, tIdx, letterEndIndex(chars, tIdx), c);
           }
-          markColors(colors, tIdx, letterEndIndex(chars, tIdx), c);
         }
       }
     }
@@ -289,12 +320,13 @@ export function colorizeArabicText(arabicText: string): ColoredSegment[] {
 
     // === Mim Sukun ===
     if (ch === MIM && next === SUKUN) {
-      const tIdx = nextBaseIndex(chars, i + 2);
+      const tIdx = findNextBaseIndex(chars, i + 2);
       if (tIdx !== null) {
         const target = chars[tIdx];
         let ruleKey: string | null = null;
         if (target === BA) ruleKey = "ikhfa_syafawi";
         else if (target === MIM) ruleKey = "idgham_mimi";
+        else ruleKey = "izhar_syafawi";
 
         if (ruleKey) {
           const c = TAJWID_RULES[ruleKey].color;
@@ -305,17 +337,38 @@ export function colorizeArabicText(arabicText: string): ColoredSegment[] {
     }
 
     // === Mad Thabi'i ===
-    if (ch === "ا" || ch === "و" || ch === "ي") {
+    if (MAD_LETTERS.includes(ch)) {
       const prev = chars[i - 1] ?? "";
       if (
-        (ch === "ا" && prev === "\u064E") ||
-        (ch === "و" && prev === "\u064F") ||
-        (ch === "ي" && prev === "\u0650")
+        (ch === ALIF && prev === FATHAH) ||
+        (ch === WAW && prev === DAMMAH) ||
+        (ch === YA && prev === KASRAH)
       ) {
         markColors(colors, i - 1, i + 1, TAJWID_RULES.mad_thabii.color);
       }
     }
+
+    // === Mad Lin: waw_sukun or ya_sukun after fathah ===
+    if ((ch === WAW || ch === YA) && next === SUKUN) {
+      const prev = chars[i - 1] ?? "";
+      if (prev === FATHAH) {
+        markColors(colors, i - 1, i + 2, TAJWID_RULES.mad_lin.color);
+      }
+    }
   }
+
+  return colors;
+}
+
+/**
+ * Colorize Arabic text with tajwid rule colors.
+ * Returns segments of text, each with a color or null (default).
+ */
+export function colorizeArabicText(arabicText: string): ColoredSegment[] {
+  const chars = [...arabicText];
+  if (chars.length === 0) return [];
+
+  const colors = computeCharColors(chars);
 
   // Build segments by merging consecutive same-color chars
   const segments: ColoredSegment[] = [];
@@ -334,4 +387,76 @@ export function colorizeArabicText(arabicText: string): ColoredSegment[] {
   segments.push({ text: curText, color: curColor });
 
   return segments;
+}
+
+/**
+ * Colorize a list of words (e.g. a single mushaf line) WITH cross-word
+ * context. Tajwid rules often span word boundaries (e.g. Nun sukun at the
+ * end of one word + Ikhfa letter at the start of the next), so analyzing
+ * each word in isolation misses most rules. This joins the words with a
+ * space separator, runs `computeCharColors` on the combined string, then
+ * splits the per-character colors back out to each word.
+ *
+ * Returns an array (same length as `words`) of either:
+ *   - `null`    → the word has no tajwid coloring (use default text color)
+ *   - array of colored segments → render each segment with its color
+ *
+ * @param words Uthmani word strings for one line (e.g. from quran.com API)
+ */
+export function colorizeWordsByLine(
+  words: string[],
+): (ColoredSegment[] | null)[] {
+  if (words.length === 0) return [];
+
+  // Track each word's span [start, end) in the joined string
+  const spans: { start: number; end: number }[] = [];
+  let pos = 0;
+  const parts: string[] = [];
+  for (let i = 0; i < words.length; i++) {
+    if (i > 0) {
+      parts.push(" ");
+      pos += 1;
+    }
+    const w = [...words[i]];
+    spans.push({ start: pos, end: pos + w.length });
+    parts.push(...w);
+    pos += w.length;
+  }
+
+  const joined = parts;
+  const colors = computeCharColors(joined);
+
+  const result: (ColoredSegment[] | null)[] = [];
+  for (const span of spans) {
+    const wordColors = colors.slice(span.start, span.end);
+    const wordChars = joined.slice(span.start, span.end);
+
+    // Check if word has any non-null color
+    if (!wordColors.some((c) => c !== null)) {
+      result.push(null);
+      continue;
+    }
+
+    // Build segments within this word
+    const segs: ColoredSegment[] = [];
+    if (wordChars.length === 0) {
+      result.push(null);
+      continue;
+    }
+    let curColor = wordColors[0];
+    let curText = wordChars[0];
+    for (let i = 1; i < wordChars.length; i++) {
+      if (wordColors[i] === curColor) {
+        curText += wordChars[i];
+      } else {
+        segs.push({ text: curText, color: curColor });
+        curColor = wordColors[i];
+        curText = wordChars[i];
+      }
+    }
+    segs.push({ text: curText, color: curColor });
+    result.push(segs);
+  }
+
+  return result;
 }

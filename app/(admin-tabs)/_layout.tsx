@@ -1,10 +1,10 @@
-import { Tabs } from "expo-router";
-import { Redirect } from "expo-router";
-import FontAwesome from "@expo/vector-icons/FontAwesome";
-import { ActivityIndicator, View } from "react-native";
-import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { Colors } from "@/lib/constants";
+import { GlassTabBarBackground } from "@/components/GlassTabBarBackground";
 import { useAuthContext } from "@/lib/auth-context";
+import { Colors } from "@/lib/constants";
+import FontAwesome from "@expo/vector-icons/FontAwesome";
+import { Redirect, Tabs } from "expo-router";
+import { ActivityIndicator, Platform, View } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 export default function TabsLayout() {
   const { isLoading, isAuthenticated, isAdmin, role } = useAuthContext();
@@ -37,15 +37,39 @@ export default function TabsLayout() {
       screenOptions={{
         tabBarActiveTintColor: Colors.primary,
         tabBarInactiveTintColor: Colors.textSecondary,
-        tabBarStyle: {
-          backgroundColor: "#fff",
-          borderTopColor: Colors.border,
-          height: 60 + insets.bottom,
-          paddingBottom: Math.max(8, insets.bottom),
-          paddingTop: 4,
+        tabBarLabelStyle: {
+          fontSize: 9,
+          fontWeight: "600",
         },
-        tabBarLabelStyle: { fontSize: 11, fontWeight: "600" },
-        headerTitleStyle: { fontWeight: "700", color: Colors.text },
+        tabBarBackground: () => <GlassTabBarBackground />,
+        tabBarStyle: {
+          position: "absolute",
+          bottom: 24,
+          left: 16,
+          right: 16,
+          height: 50,
+          borderRadius: 30,
+          backgroundColor: "transparent",
+          borderTopWidth: 0,
+          borderTopColor: "transparent",
+          paddingBottom: 0,
+          paddingHorizontal: 0,
+          ...(Platform.OS === "web"
+            ? { maxWidth: 468, marginHorizontal: "auto" }
+            : {}),
+          shadowColor: "#000",
+          shadowOffset: { width: 0, height: 4 },
+          shadowOpacity: 0.12,
+          shadowRadius: 16,
+          elevation: 8,
+        },
+        headerStyle: {
+          backgroundColor: Colors.primary,
+        },
+        headerTintColor: Colors.textLight,
+        headerTitleStyle: {
+          fontWeight: "bold",
+        },
       }}
     >
       <Tabs.Screen

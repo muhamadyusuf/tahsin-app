@@ -1,58 +1,57 @@
+import YouTubePlayer from "@/components/YouTubePlayer";
+import { api } from "@/convex/_generated/api";
+import { getAllSurahs, Surah } from "@/lib/alquran-api";
+import { useAuthContext } from "@/lib/auth-context";
+import { Colors, getDisplayWidth } from "@/lib/constants";
+import { DZIKIR_PAGI } from "@/lib/dzikir-data";
+import {
+  getHadisById,
+  getNextHadis,
+  getPrevHadis,
+  getRandomHadis,
+  HadisData,
+  HadisSearchItem,
+  searchHadis,
+} from "@/lib/hadis-api";
+import { bearingToCardinal, getQiblaData, QiblaData } from "@/lib/qibla-api";
+import {
+  detectLocation,
+  getKabKota,
+  getNextPrayer,
+  getProvinsi,
+  getSholatTimes,
+  loadSavedLocation,
+  LocationResult,
+  NextPrayer,
+  PRAYER_DISPLAY,
+  saveLocation,
+  SholatData,
+  SholatJadwal,
+} from "@/lib/sholat-api";
+import { extractYouTubeId } from "@/lib/youtube";
+import FontAwesome from "@expo/vector-icons/FontAwesome";
+import FontAwesome5 from "@expo/vector-icons/FontAwesome5";
+import { useQuery } from "convex/react";
+import * as Location from "expo-location";
+import { useRouter } from "expo-router";
+import { StatusBar } from "expo-status-bar";
 import React, { useEffect, useRef, useState } from "react";
 import {
-  View,
-  Text,
-  FlatList,
-  TouchableOpacity,
-  StyleSheet,
   ActivityIndicator,
-  TextInput,
-  ScrollView,
   Animated,
-  Dimensions,
+  FlatList,
   Image,
   Modal,
   Platform,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { StatusBar } from "expo-status-bar";
-import YouTubePlayer from "@/components/YouTubePlayer";
-import { useQuery } from "convex/react";
-import { useRouter } from "expo-router";
-import FontAwesome from "@expo/vector-icons/FontAwesome";
-import FontAwesome5 from "@expo/vector-icons/FontAwesome5";
-import { api } from "@/convex/_generated/api";
-import { Colors, getDisplayWidth } from "@/lib/constants";
-import { extractYouTubeId } from "@/lib/youtube";
-import { getAllSurahs, Surah } from "@/lib/alquran-api";
-import { useAuthContext } from "@/lib/auth-context";
-import {
-  HadisData,
-  HadisSearchItem,
-  getRandomHadis,
-  getNextHadis,
-  getPrevHadis,
-  getHadisById,
-  searchHadis,
-} from "@/lib/hadis-api";
-import {
-  detectLocation,
-  getSholatTimes,
-  getNextPrayer,
-  getProvinsi,
-  getKabKota,
-  saveLocation,
-  loadSavedLocation,
-  PRAYER_DISPLAY,
-  LocationResult,
-  SholatData,
-  SholatJadwal,
-  NextPrayer,
-} from "@/lib/sholat-api";
-import * as Location from "expo-location";
-import Svg, { Circle, Line, Text as SvgText, G, Polygon } from "react-native-svg";
-import { getQiblaData, bearingToCardinal, QiblaData } from "@/lib/qibla-api";
-import { DZIKIR_PAGI } from "@/lib/dzikir-data";
+import Svg, { Circle, Line, Polygon, Text as SvgText } from "react-native-svg";
 
 const width = getDisplayWidth();
 
@@ -91,13 +90,13 @@ function relativeDateText(iso: string): string {
   const today = todayISO();
   if (iso === today) return "hari ini";
   const diff = Math.round(
-    (new Date(today + "T00:00:00").getTime() - new Date(iso + "T00:00:00").getTime()) / 86400000
+    (new Date(today + "T00:00:00").getTime() -
+      new Date(iso + "T00:00:00").getTime()) /
+      86400000,
   );
   if (diff === 1) return "kemarin";
   return `${diff} hari yang lalu`;
 }
-
-
 
 function QiblaCompassLive({
   bearing,
@@ -123,19 +122,27 @@ function QiblaCompassLive({
   const pulseAnim = useRef(new Animated.Value(1)).current;
   const pulseLoopRef = useRef<Animated.CompositeAnimation | null>(null);
 
-  const diff = deviceHeading != null ? ((bearing - deviceHeading + 360) % 360) : null;
+  const diff =
+    deviceHeading != null ? (bearing - deviceHeading + 360) % 360 : null;
   const isAligned = diff != null && (diff < 12 || diff > 348);
-  const turnDeg = diff != null ? (diff <= 180 ? Math.round(diff) : Math.round(360 - diff)) : 0;
+  const turnDeg =
+    diff != null
+      ? diff <= 180
+        ? Math.round(diff)
+        : Math.round(360 - diff)
+      : 0;
   const turnDir = diff != null && diff <= 180 ? "kanan" : "kiri";
 
   const animStyle = (anim: Animated.Value) => ({
-    transform: [{
-      rotate: anim.interpolate({
-        inputRange: [-7200, 7200],
-        outputRange: ["-7200deg", "7200deg"],
-        extrapolate: "extend",
-      }),
-    }],
+    transform: [
+      {
+        rotate: anim.interpolate({
+          inputRange: [-7200, 7200],
+          outputRange: ["-7200deg", "7200deg"],
+          extrapolate: "extend",
+        }),
+      },
+    ],
   });
 
   useEffect(() => {
@@ -146,17 +153,37 @@ function QiblaCompassLive({
     const rawR = -deviceHeading;
     const dR = ((rawR - prevRose.current + 540) % 360) - 180;
     prevRose.current += dR;
-    Animated.spring(needleAnim, { toValue: prevNeedle.current, useNativeDriver: false, damping: 18, stiffness: 100, mass: 0.6 }).start();
-    Animated.spring(roseAnim, { toValue: prevRose.current, useNativeDriver: false, damping: 18, stiffness: 100, mass: 0.6 }).start();
+    Animated.spring(needleAnim, {
+      toValue: prevNeedle.current,
+      useNativeDriver: false,
+      damping: 18,
+      stiffness: 100,
+      mass: 0.6,
+    }).start();
+    Animated.spring(roseAnim, {
+      toValue: prevRose.current,
+      useNativeDriver: false,
+      damping: 18,
+      stiffness: 100,
+      mass: 0.6,
+    }).start();
   }, [deviceHeading, bearing]);
 
   useEffect(() => {
     if (isAligned) {
       pulseLoopRef.current = Animated.loop(
         Animated.sequence([
-          Animated.timing(pulseAnim, { toValue: 1.06, duration: 700, useNativeDriver: false }),
-          Animated.timing(pulseAnim, { toValue: 1.0, duration: 700, useNativeDriver: false }),
-        ])
+          Animated.timing(pulseAnim, {
+            toValue: 1.06,
+            duration: 700,
+            useNativeDriver: false,
+          }),
+          Animated.timing(pulseAnim, {
+            toValue: 1.0,
+            duration: 700,
+            useNativeDriver: false,
+          }),
+        ]),
       );
       pulseLoopRef.current.start();
     } else {
@@ -165,28 +192,51 @@ function QiblaCompassLive({
     }
   }, [isAligned]);
 
-  const absLayer = { position: "absolute" as const, top: 0, left: 0, width: SIZE, height: SIZE };
+  const absLayer = {
+    position: "absolute" as const,
+    top: 0,
+    left: 0,
+    width: SIZE,
+    height: SIZE,
+  };
 
   return (
     <View style={{ alignItems: "center" }}>
       <View style={{ width: SIZE, height: SIZE }}>
-
         {/* ── Layer 1: Fixed outer ring + degree ticks ── */}
         <Svg width={SIZE} height={SIZE} style={absLayer}>
-          <Circle cx={CX} cy={CY} r={OUTER_R} fill="#E8F5E9" stroke="#A5D6A7" strokeWidth={2} />
+          <Circle
+            cx={CX}
+            cy={CY}
+            r={OUTER_R}
+            fill="#E8F5E9"
+            stroke="#A5D6A7"
+            strokeWidth={2}
+          />
           {Array.from({ length: 36 }, (_, i) => {
             const deg = i * 10;
             const rad = (deg - 90) * (Math.PI / 180);
             const isMajor = deg % 30 === 0;
             return (
-              <Line key={deg}
-                x1={CX + Math.cos(rad) * (OUTER_R - 2)} y1={CY + Math.sin(rad) * (OUTER_R - 2)}
-                x2={CX + Math.cos(rad) * (OUTER_R - (isMajor ? 14 : 7))} y2={CY + Math.sin(rad) * (OUTER_R - (isMajor ? 14 : 7))}
-                stroke={isMajor ? "#558B2F" : "#AED581"} strokeWidth={isMajor ? 2.5 : 1}
+              <Line
+                key={deg}
+                x1={CX + Math.cos(rad) * (OUTER_R - 2)}
+                y1={CY + Math.sin(rad) * (OUTER_R - 2)}
+                x2={CX + Math.cos(rad) * (OUTER_R - (isMajor ? 14 : 7))}
+                y2={CY + Math.sin(rad) * (OUTER_R - (isMajor ? 14 : 7))}
+                stroke={isMajor ? "#558B2F" : "#AED581"}
+                strokeWidth={isMajor ? 2.5 : 1}
               />
             );
           })}
-          <Circle cx={CX} cy={CY} r={RING_R} fill="#FAFAFA" stroke="#C8E6C9" strokeWidth={1.5} />
+          <Circle
+            cx={CX}
+            cy={CY}
+            r={RING_R}
+            fill="#FAFAFA"
+            stroke="#C8E6C9"
+            strokeWidth={1.5}
+          />
         </Svg>
 
         {/* ── Layer 2: Animated compass rose (N/S/T/B rotate with world) ── */}
@@ -197,17 +247,54 @@ function QiblaCompassLive({
               const rad = (deg - 90) * (Math.PI / 180);
               const isMajor = deg % 90 === 0;
               return (
-                <Line key={deg}
-                  x1={CX + Math.cos(rad) * (RING_R - 2)} y1={CY + Math.sin(rad) * (RING_R - 2)}
-                  x2={CX + Math.cos(rad) * (RING_R - (isMajor ? 22 : 14))} y2={CY + Math.sin(rad) * (RING_R - (isMajor ? 22 : 14))}
-                  stroke={isMajor ? "#2E7D32" : "#81C784"} strokeWidth={isMajor ? 3.5 : 1.5}
+                <Line
+                  key={deg}
+                  x1={CX + Math.cos(rad) * (RING_R - 2)}
+                  y1={CY + Math.sin(rad) * (RING_R - 2)}
+                  x2={CX + Math.cos(rad) * (RING_R - (isMajor ? 22 : 14))}
+                  y2={CY + Math.sin(rad) * (RING_R - (isMajor ? 22 : 14))}
+                  stroke={isMajor ? "#2E7D32" : "#81C784"}
+                  strokeWidth={isMajor ? 3.5 : 1.5}
                 />
               );
             })}
-            <SvgText x={CX} y={CY - RING_R + 28} textAnchor="middle" fontSize="20" fontWeight="bold" fill="#C62828">U</SvgText>
-            <SvgText x={CX} y={CY + RING_R - 6} textAnchor="middle" fontSize="15" fill="#546E7A">S</SvgText>
-            <SvgText x={CX + RING_R - 10} y={CY + 6} textAnchor="middle" fontSize="15" fill="#546E7A">T</SvgText>
-            <SvgText x={CX - RING_R + 10} y={CY + 6} textAnchor="middle" fontSize="15" fill="#546E7A">B</SvgText>
+            <SvgText
+              x={CX}
+              y={CY - RING_R + 28}
+              textAnchor="middle"
+              fontSize="20"
+              fontWeight="bold"
+              fill="#C62828"
+            >
+              U
+            </SvgText>
+            <SvgText
+              x={CX}
+              y={CY + RING_R - 6}
+              textAnchor="middle"
+              fontSize="15"
+              fill="#546E7A"
+            >
+              S
+            </SvgText>
+            <SvgText
+              x={CX + RING_R - 10}
+              y={CY + 6}
+              textAnchor="middle"
+              fontSize="15"
+              fill="#546E7A"
+            >
+              T
+            </SvgText>
+            <SvgText
+              x={CX - RING_R + 10}
+              y={CY + 6}
+              textAnchor="middle"
+              fontSize="15"
+              fill="#546E7A"
+            >
+              B
+            </SvgText>
           </Svg>
         </Animated.View>
 
@@ -215,14 +302,35 @@ function QiblaCompassLive({
         <Animated.View style={[absLayer, animStyle(needleAnim)]}>
           <Svg width={SIZE} height={SIZE}>
             {/* Needle body */}
-            <Line x1={CX} y1={CY + 52} x2={CX} y2={TIP_Y + 28} stroke="#2E7D32" strokeWidth={5} strokeLinecap="round" />
+            <Line
+              x1={CX}
+              y1={CY + 52}
+              x2={CX}
+              y2={TIP_Y + 28}
+              stroke="#2E7D32"
+              strokeWidth={5}
+              strokeLinecap="round"
+            />
             {/* Head arrowhead */}
-            <Polygon points={`${CX},${TIP_Y} ${CX - 14},${TIP_Y + 30} ${CX + 14},${TIP_Y + 30}`} fill="#2E7D32" />
+            <Polygon
+              points={`${CX},${TIP_Y} ${CX - 14},${TIP_Y + 30} ${CX + 14},${TIP_Y + 30}`}
+              fill="#2E7D32"
+            />
             {/* Tail */}
-            <Polygon points={`${CX},${CY + 62} ${CX - 8},${CY + 52} ${CX + 8},${CY + 52}`} fill="#9E9E9E" />
+            <Polygon
+              points={`${CX},${CY + 62} ${CX - 8},${CY + 52} ${CX + 8},${CY + 52}`}
+              fill="#9E9E9E"
+            />
             {/* Ka'bah marker circle at tip */}
             <Circle cx={CX} cy={TIP_Y + 8} r={13} fill="#1B5E20" />
-            <Circle cx={CX} cy={TIP_Y + 8} r={6} fill="none" stroke="rgba(255,255,255,0.6)" strokeWidth={2} />
+            <Circle
+              cx={CX}
+              cy={TIP_Y + 8}
+              r={6}
+              fill="none"
+              stroke="rgba(255,255,255,0.6)"
+              strokeWidth={2}
+            />
           </Svg>
         </Animated.View>
 
@@ -235,9 +343,19 @@ function QiblaCompassLive({
 
         {/* ── Layer 5: Alignment pulse ring ── */}
         {isAligned && (
-          <Animated.View style={[absLayer, { transform: [{ scale: pulseAnim }] }]}>
+          <Animated.View
+            style={[absLayer, { transform: [{ scale: pulseAnim }] }]}
+          >
             <Svg width={SIZE} height={SIZE}>
-              <Circle cx={CX} cy={CY} r={OUTER_R - 1} fill="none" stroke="#4CAF50" strokeWidth={5} strokeOpacity={0.5} />
+              <Circle
+                cx={CX}
+                cy={CY}
+                r={OUTER_R - 1}
+                fill="none"
+                stroke="#4CAF50"
+                strokeWidth={5}
+                strokeOpacity={0.5}
+              />
             </Svg>
           </Animated.View>
         )}
@@ -245,21 +363,41 @@ function QiblaCompassLive({
 
       {/* Status badge */}
       {deviceHeading != null ? (
-        <View style={[styles.qiblaAlignBadge, isAligned && styles.qiblaAlignBadgeActive]}>
-          {isAligned
-            ? <FontAwesome name="check-circle" size={16} color="#fff" />
-            : <FontAwesome5 name="directions" size={16} color={Colors.primary} />}
-          <Text style={[styles.qiblaAlignText, isAligned && styles.qiblaAlignTextActive]}>
-            {isAligned ? "Anda Menghadap Kiblat ✓" : `Putar ${turnDeg}° ke ${turnDir}`}
+        <View
+          style={[
+            styles.qiblaAlignBadge,
+            isAligned && styles.qiblaAlignBadgeActive,
+          ]}
+        >
+          {isAligned ? (
+            <FontAwesome name="check-circle" size={16} color="#fff" />
+          ) : (
+            <FontAwesome5 name="directions" size={16} color={Colors.primary} />
+          )}
+          <Text
+            style={[
+              styles.qiblaAlignText,
+              isAligned && styles.qiblaAlignTextActive,
+            ]}
+          >
+            {isAligned
+              ? "Anda Menghadap Kiblat ✓"
+              : `Putar ${turnDeg}° ke ${turnDir}`}
           </Text>
         </View>
       ) : (
         <View style={styles.qiblaNoCompassBadge}>
           {!compassAvailable ? (
             <>
-              <FontAwesome name="info-circle" size={13} color={Colors.textSecondary} />
+              <FontAwesome
+                name="info-circle"
+                size={13}
+                color={Colors.textSecondary}
+              />
               <Text style={styles.qiblaNoCompassText}>
-                {Platform.OS === "web" ? "Kompas tidak tersedia, lihat sudut di bawah" : "Sensor kompas tidak ditemukan"}
+                {Platform.OS === "web"
+                  ? "Kompas tidak tersedia, lihat sudut di bawah"
+                  : "Sensor kompas tidak ditemukan"}
               </Text>
             </>
           ) : (
@@ -285,19 +423,19 @@ export default function TilawahScreen() {
   const userId = userData?._id;
   const readingPosition = useQuery(
     api.mushafProgress.getReadingPosition,
-    userId ? { userId } : "skip"
+    userId ? { userId } : "skip",
   );
   const todayTilawah = useQuery(
     api.tilawah.getByDate,
-    userId ? { userId, tanggal: todayISO() } : "skip"
+    userId ? { userId, tanggal: todayISO() } : "skip",
   );
   const tilawahHistory = useQuery(
     api.tilawah.getByUser,
-    userId ? { userId } : "skip"
+    userId ? { userId } : "skip",
   );
   const dzikirDoneToday = useQuery(
     api.dzikir.getDzikirSelesaiByDate,
-    userId ? { userId, tanggal: todayISO() } : "skip"
+    userId ? { userId, tanggal: todayISO() } : "skip",
   );
   const [surahs, setSurahs] = useState<Surah[]>([]);
   const [filtered, setFiltered] = useState<Surah[]>([]);
@@ -307,13 +445,17 @@ export default function TilawahScreen() {
   const [hadis, setHadis] = useState<HadisData | null>(null);
   const [hadisLoading, setHadisLoading] = useState(false);
   const [hadisSearch, setHadisSearch] = useState("");
-  const [hadisSearchResults, setHadisSearchResults] = useState<HadisSearchItem[]>([]);
+  const [hadisSearchResults, setHadisSearchResults] = useState<
+    HadisSearchItem[]
+  >([]);
   const [hadisSearchLoading, setHadisSearchLoading] = useState(false);
   const [hadisSearchPage, setHadisSearchPage] = useState(1);
   const [hadisSearchTotalPages, setHadisSearchTotalPages] = useState(1);
 
   // Sholat state
-  const [locationResult, setLocationResult] = useState<LocationResult | null>(null);
+  const [locationResult, setLocationResult] = useState<LocationResult | null>(
+    null,
+  );
   const [sholatData, setSholatData] = useState<SholatData | null>(null);
   const [todayJadwal, setTodayJadwal] = useState<SholatJadwal | null>(null);
   const [nextPrayer, setNextPrayer] = useState<NextPrayer | null>(null);
@@ -323,7 +465,9 @@ export default function TilawahScreen() {
   const countdownRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   // Manual location picker state
-  const [pickerMode, setPickerMode] = useState<"jadwal" | "provinsi" | "kabkota">("jadwal");
+  const [pickerMode, setPickerMode] = useState<
+    "jadwal" | "provinsi" | "kabkota"
+  >("jadwal");
   const [provinsiList, setProvinsiList] = useState<string[]>([]);
   const [kabkotaList, setKabkotaList] = useState<string[]>([]);
   const [pickerSelectedProvinsi, setPickerSelectedProvinsi] = useState("");
@@ -334,7 +478,10 @@ export default function TilawahScreen() {
   const [qiblaData, setQiblaData] = useState<QiblaData | null>(null);
   const [qiblaLoading, setQiblaLoading] = useState(false);
   const [qiblaError, setQiblaError] = useState<string | null>(null);
-  const [qiblaCoords, setQiblaCoords] = useState<{ lat: number; lon: number } | null>(null);
+  const [qiblaCoords, setQiblaCoords] = useState<{
+    lat: number;
+    lon: number;
+  } | null>(null);
   // Live compass heading
   const [deviceHeading, setDeviceHeading] = useState<number | null>(null);
   const [compassAvailable, setCompassAvailable] = useState(true);
@@ -344,7 +491,11 @@ export default function TilawahScreen() {
 
   // Ceramah video player state
   const [videoModalVisible, setVideoModalVisible] = useState(false);
-  const [selectedVideo, setSelectedVideo] = useState<{ youtubeUrl: string; judul: string; isLive: boolean } | null>(null);
+  const [selectedVideo, setSelectedVideo] = useState<{
+    youtubeUrl: string;
+    judul: string;
+    isLive: boolean;
+  } | null>(null);
   const [isFullscreen, setIsFullscreen] = useState(false);
 
   // Mushaf mode chooser (per surah vs mushaf full)
@@ -380,8 +531,8 @@ export default function TilawahScreen() {
           (s) =>
             s.englishName.toLowerCase().includes(q) ||
             s.englishNameTranslation.toLowerCase().includes(q) ||
-            s.number.toString().includes(q)
-        )
+            s.number.toString().includes(q),
+        ),
       );
     } else {
       setFiltered(surahs);
@@ -415,13 +566,21 @@ export default function TilawahScreen() {
   const applyLocation = async (loc: LocationResult) => {
     setLocationResult(loc);
     const now = new Date();
-    const data = await getSholatTimes(loc.provinsi, loc.kabkota, now.getMonth() + 1, now.getFullYear());
+    const data = await getSholatTimes(
+      loc.provinsi,
+      loc.kabkota,
+      now.getMonth() + 1,
+      now.getFullYear(),
+    );
     setSholatData(data);
     const todayDate = now.getDate();
     const today =
       data.jadwal?.find((j) => {
         const d = String(j.tanggal ?? j.date ?? "");
-        return d.includes(String(todayDate)) || d.startsWith(String(todayDate).padStart(2, "0"));
+        return (
+          d.includes(String(todayDate)) ||
+          d.startsWith(String(todayDate).padStart(2, "0"))
+        );
       }) ??
       data.jadwal?.[todayDate - 1] ??
       null;
@@ -528,9 +687,13 @@ export default function TilawahScreen() {
         return;
       }
       navigator.geolocation.getCurrentPosition(
-        (pos) => resolve({ latitude: pos.coords.latitude, longitude: pos.coords.longitude }),
+        (pos) =>
+          resolve({
+            latitude: pos.coords.latitude,
+            longitude: pos.coords.longitude,
+          }),
         (err) => reject(err),
-        { enableHighAccuracy: false, timeout: 10000, maximumAge: 60000 }
+        { enableHighAccuracy: false, timeout: 10000, maximumAge: 60000 },
       );
     });
 
@@ -549,7 +712,9 @@ export default function TilawahScreen() {
       } else {
         const { status } = await Location.requestForegroundPermissionsAsync();
         if (status !== "granted") {
-          setQiblaError("Izin lokasi ditolak. Aktifkan izin lokasi di pengaturan perangkat.");
+          setQiblaError(
+            "Izin lokasi ditolak. Aktifkan izin lokasi di pengaturan perangkat.",
+          );
           setQiblaLoading(false);
           return;
         }
@@ -573,7 +738,7 @@ export default function TilawahScreen() {
             : "Izin lokasi ditolak. Aktifkan izin lokasi di pengaturan perangkat."
           : isWeb
             ? "Gagal mendapatkan lokasi dari browser. Coba reload halaman."
-            : "Gagal mendapatkan lokasi. Pastikan GPS aktif."
+            : "Gagal mendapatkan lokasi. Pastikan GPS aktif.",
       );
       setQiblaLoading(false);
       return;
@@ -590,8 +755,16 @@ export default function TilawahScreen() {
   const stopHeadingWatch = () => {
     if (Platform.OS === "web") {
       if (webOrientationHandlerRef.current) {
-        window.removeEventListener("deviceorientationabsolute", webOrientationHandlerRef.current as any, true);
-        window.removeEventListener("deviceorientation", webOrientationHandlerRef.current as any, true);
+        window.removeEventListener(
+          "deviceorientationabsolute",
+          webOrientationHandlerRef.current as any,
+          true,
+        );
+        window.removeEventListener(
+          "deviceorientation",
+          webOrientationHandlerRef.current as any,
+          true,
+        );
         webOrientationHandlerRef.current = null;
       }
     } else {
@@ -607,19 +780,32 @@ export default function TilawahScreen() {
 
     if (Platform.OS === "web") {
       // iOS 13+ requires explicit permission for DeviceOrientationEvent
-      if (typeof (DeviceOrientationEvent as any).requestPermission === "function") {
+      if (
+        typeof (DeviceOrientationEvent as any).requestPermission === "function"
+      ) {
         try {
-          const perm = await (DeviceOrientationEvent as any).requestPermission();
-          if (perm !== "granted") { setCompassAvailable(false); return; }
-        } catch { setCompassAvailable(false); return; }
+          const perm = await (
+            DeviceOrientationEvent as any
+          ).requestPermission();
+          if (perm !== "granted") {
+            setCompassAvailable(false);
+            return;
+          }
+        } catch {
+          setCompassAvailable(false);
+          return;
+        }
       }
       const handler = (e: Event) => {
         const ev = e as DeviceOrientationEvent;
         let heading: number | null = null;
         // iOS Safari: webkitCompassHeading gives magnetic-north heading directly
-        if ((ev as any).webkitCompassHeading != null && (ev as any).webkitCompassHeading >= 0) {
+        if (
+          (ev as any).webkitCompassHeading != null &&
+          (ev as any).webkitCompassHeading >= 0
+        ) {
           heading = (ev as any).webkitCompassHeading;
-        // Android Chrome: alpha with absolute=true is degrees from magnetic north
+          // Android Chrome: alpha with absolute=true is degrees from magnetic north
         } else if (ev.alpha != null) {
           heading = (360 - ev.alpha + 360) % 360;
         }
@@ -628,7 +814,11 @@ export default function TilawahScreen() {
           setDeviceHeading(heading);
         }
       };
-      window.addEventListener("deviceorientationabsolute", handler as any, true);
+      window.addEventListener(
+        "deviceorientationabsolute",
+        handler as any,
+        true,
+      );
       window.addEventListener("deviceorientation", handler as any, true);
       webOrientationHandlerRef.current = handler as any;
       // After 3 s with no data → compass unavailable (desktop browser)
@@ -655,8 +845,16 @@ export default function TilawahScreen() {
     return () => {
       if (Platform.OS === "web") {
         if (webOrientationHandlerRef.current) {
-          window.removeEventListener("deviceorientationabsolute", webOrientationHandlerRef.current as any, true);
-          window.removeEventListener("deviceorientation", webOrientationHandlerRef.current as any, true);
+          window.removeEventListener(
+            "deviceorientationabsolute",
+            webOrientationHandlerRef.current as any,
+            true,
+          );
+          window.removeEventListener(
+            "deviceorientation",
+            webOrientationHandlerRef.current as any,
+            true,
+          );
           webOrientationHandlerRef.current = null;
         }
       } else {
@@ -727,7 +925,7 @@ export default function TilawahScreen() {
 
   const getPopularSurahs = () =>
     POPULAR_SURAHS.map((num) => surahs.find((s) => s.number === num)).filter(
-      Boolean
+      Boolean,
     ) as Surah[];
 
   const firstName = userData?.name?.split(" ")[0] || "Pengguna";
@@ -736,24 +934,24 @@ export default function TilawahScreen() {
   // ── Data turunan untuk kartu-kartu beranda ──
   const todayPages = (todayTilawah ?? []).reduce(
     (sum, t) => sum + (t.jumlahHalaman ?? 0),
-    0
+    0,
   );
   const tilawahPercent = Math.min(
     Math.round((todayPages / DAILY_TILAWAH_TARGET) * 100),
-    100
+    100,
   );
   const streakDays = computeStreak(
-    (tilawahHistory ?? []).map((t) => t.tanggal)
+    (tilawahHistory ?? []).map((t) => t.tanggal),
   );
   const lastTilawah = tilawahHistory
     ? [...tilawahHistory].sort((a, b) =>
         b.tanggal === a.tanggal
           ? b._creationTime - a._creationTime
-          : b.tanggal.localeCompare(a.tanggal)
+          : b.tanggal.localeCompare(a.tanggal),
       )[0]
     : undefined;
   const dzikirPagiDone = (dzikirDoneToday ?? []).filter(
-    (d) => d.kategoriId === "pagi"
+    (d) => d.kategoriId === "pagi",
   ).length;
   const dzikirPagiTotal = DZIKIR_PAGI.length;
 
@@ -870,7 +1068,10 @@ export default function TilawahScreen() {
             contentContainerStyle={styles.list}
             showsVerticalScrollIndicator={false}
             onEndReached={() => {
-              if (hadisSearchPage < hadisSearchTotalPages && !hadisSearchLoading) {
+              if (
+                hadisSearchPage < hadisSearchTotalPages &&
+                !hadisSearchLoading
+              ) {
                 handleHadisSearch(hadisSearch, hadisSearchPage + 1);
               }
             }}
@@ -890,7 +1091,9 @@ export default function TilawahScreen() {
                 onPress={() => handleSelectSearchResult(item)}
               >
                 <View style={styles.hadisSearchResultBadge}>
-                  <Text style={styles.hadisSearchResultBadgeText}>#{item.id}</Text>
+                  <Text style={styles.hadisSearchResultBadgeText}>
+                    #{item.id}
+                  </Text>
                 </View>
                 <Text style={styles.hadisSearchResultText} numberOfLines={3}>
                   {item.text}
@@ -988,7 +1191,12 @@ export default function TilawahScreen() {
         />
       ) : null}
       {headerImageUrl ? (
-        <View style={[StyleSheet.absoluteFillObject, { backgroundColor: "rgba(246,247,241,0.35)" }]} />
+        <View
+          style={[
+            StyleSheet.absoluteFillObject,
+            { backgroundColor: "rgba(246,247,241,0.35)" },
+          ]}
+        />
       ) : null}
 
       <Animated.ScrollView
@@ -997,7 +1205,7 @@ export default function TilawahScreen() {
         contentContainerStyle={{ paddingBottom: 0 }}
         onScroll={Animated.event(
           [{ nativeEvent: { contentOffset: { y: scrollY } } }],
-          { useNativeDriver: false }
+          { useNativeDriver: false },
         )}
         scrollEventThrottle={16}
       >
@@ -1020,15 +1228,24 @@ export default function TilawahScreen() {
               style={styles.searchBarInner}
               onPress={() => setMode("surah-list")}
             >
-              <FontAwesome name="search" size={16} color={Colors.textSecondary} />
-              <Text style={styles.searchPlaceholder}>Cari surat, ayat, topik...</Text>
+              <FontAwesome
+                name="search"
+                size={16}
+                color={Colors.textSecondary}
+              />
+              <Text style={styles.searchPlaceholder}>
+                Cari surat, ayat, topik...
+              </Text>
             </TouchableOpacity>
             <TouchableOpacity
               style={styles.avatarCircleTop}
               onPress={() => router.push("/(tabs)/profil")}
             >
               {userData?.avatarUrl ? (
-                <Image source={{ uri: userData.avatarUrl }} style={styles.avatarImageTop} />
+                <Image
+                  source={{ uri: userData.avatarUrl }}
+                  style={styles.avatarImageTop}
+                />
               ) : (
                 <FontAwesome name="user" size={20} color={Colors.primary} />
               )}
@@ -1045,7 +1262,12 @@ export default function TilawahScreen() {
               <Text style={styles.greeting}>Assalamu'alaikum,</Text>
               <View style={styles.greetingNameRow}>
                 <Text style={styles.userName}>{firstName}</Text>
-                <FontAwesome name="leaf" size={20} color={Colors.primary} style={{ marginLeft: 8, marginTop: 6 }} />
+                <FontAwesome
+                  name="leaf"
+                  size={20}
+                  color={Colors.primary}
+                  style={{ marginLeft: 8, marginTop: 6 }}
+                />
               </View>
               <Text style={styles.greetingSub}>
                 Semangat hari ini, untuk menjadi lebih dekat dengan Al-Qur'an
@@ -1073,14 +1295,22 @@ export default function TilawahScreen() {
                     <Text style={styles.prayerName}>{nextPrayer.name}</Text>
                     <Text style={styles.prayerTimeBig}>{nextPrayer.time}</Text>
                     <View style={styles.prayerLocationRow}>
-                      <FontAwesome name="map-marker" size={10} color={Colors.textSecondary} />
+                      <FontAwesome
+                        name="map-marker"
+                        size={10}
+                        color={Colors.textSecondary}
+                      />
                       <Text style={styles.prayerLocationText} numberOfLines={1}>
-                        {locationResult ? locationResult.displayName : "Lokasi tidak tersedia"}
+                        {locationResult
+                          ? locationResult.displayName
+                          : "Lokasi tidak tersedia"}
                       </Text>
                     </View>
                   </View>
                   <View style={styles.prayerRightWrap}>
-                    <Text style={styles.prayerCountdownText}>{nextPrayer.timeLeft} lagi</Text>
+                    <Text style={styles.prayerCountdownText}>
+                      {nextPrayer.timeLeft} lagi
+                    </Text>
                     <View style={styles.prayerProgressTrack}>
                       <View
                         style={[
@@ -1093,7 +1323,11 @@ export default function TilawahScreen() {
                 </>
               ) : sholatError ? (
                 <View style={styles.prayerLoadingRow}>
-                  <FontAwesome name="map-marker" size={13} color={Colors.primary} />
+                  <FontAwesome
+                    name="map-marker"
+                    size={13}
+                    color={Colors.primary}
+                  />
                   <Text style={styles.prayerLoadingText}>
                     Jadwal tidak tersedia — ketuk untuk atur lokasi
                   </Text>
@@ -1105,865 +1339,1161 @@ export default function TilawahScreen() {
 
         {/* ── child 2: main content ── */}
         <View style={{ backgroundColor: Colors.background }}>
-      <Modal
-        visible={sholatModalVisible}
-        transparent
-        animationType="slide"
-        onRequestClose={() => {
-          setPickerMode("jadwal");
-          setSholatModalVisible(false);
-        }}
-      >
-        <View style={styles.modalOverlay}>
-          <View style={[styles.modalSheet, { paddingBottom: insets.bottom + 20 }]}>
-
-            {/* ===== JADWAL VIEW ===== */}
-            {pickerMode === "jadwal" && (
-              <>
-                <View style={styles.modalHeader}>
-                  <View>
-                    <Text style={styles.modalTitle}>Jadwal Sholat</Text>
-                    <View style={styles.modalLocationRow}>
-                      <FontAwesome name="map-marker" size={12} color={Colors.primary} />
-                      <Text style={styles.modalLocationText}>
-                        {locationResult?.displayName ?? "Lokasi belum diset"}
-                      </Text>
-                    </View>
-                  </View>
-                  <TouchableOpacity
-                    style={styles.modalCloseBtn}
-                    onPress={() => setSholatModalVisible(false)}
-                  >
-                    <FontAwesome name="times" size={18} color={Colors.textSecondary} />
-                  </TouchableOpacity>
-                </View>
-
-                {todayJadwal && (
-                  <Text style={styles.modalDateText}>
-                    {new Date().toLocaleDateString("id-ID", {
-                      weekday: "long",
-                      day: "numeric",
-                      month: "long",
-                      year: "numeric",
-                    })}
-                  </Text>
-                )}
-
-                {!todayJadwal && sholatError && (
-                  <View style={styles.modalEmptyBox}>
-                    <FontAwesome name="exclamation-circle" size={32} color={Colors.primaryLight} />
-                    <Text style={styles.modalEmptyText}>{sholatError}</Text>
-                  </View>
-                )}
-
-                {todayJadwal && (
-                  <View style={styles.prayerList}>
-                    {PRAYER_DISPLAY.map(({ key, label }) => {
-                      const time = todayJadwal?.[key] as string | undefined;
-                      const isNext = nextPrayer?.key === key;
-                      return (
-                        <View
-                          key={key}
-                          style={[
-                            styles.prayerRow,
-                            isNext && styles.prayerRowActive,
-                          ]}
-                        >
-                          <View style={[styles.prayerIconWrap, isNext && styles.prayerIconWrapActive]}>
-                            <FontAwesome5
-                              name="mosque"
-                              size={14}
-                              color={isNext ? "#fff" : Colors.primary}
-                            />
-                          </View>
-                          <Text style={[styles.prayerLabel, isNext && styles.prayerLabelActive]}>
-                            {label}
+          <Modal
+            visible={sholatModalVisible}
+            transparent
+            animationType="slide"
+            onRequestClose={() => {
+              setPickerMode("jadwal");
+              setSholatModalVisible(false);
+            }}
+          >
+            <View style={styles.modalOverlay}>
+              <View
+                style={[
+                  styles.modalSheet,
+                  { paddingBottom: insets.bottom + 20 },
+                ]}
+              >
+                {/* ===== JADWAL VIEW ===== */}
+                {pickerMode === "jadwal" && (
+                  <>
+                    <View style={styles.modalHeader}>
+                      <View>
+                        <Text style={styles.modalTitle}>Jadwal Sholat</Text>
+                        <View style={styles.modalLocationRow}>
+                          <FontAwesome
+                            name="map-marker"
+                            size={12}
+                            color={Colors.primary}
+                          />
+                          <Text style={styles.modalLocationText}>
+                            {locationResult?.displayName ??
+                              "Lokasi belum diset"}
                           </Text>
-                          <Text style={[styles.prayerTime, isNext && styles.prayerTimeActive]}>
-                            {time ?? "-"}
-                          </Text>
-                          {isNext && (
-                            <View style={styles.prayerBadge}>
-                              <Text style={styles.prayerBadgeText}>{nextPrayer.timeLeft} lagi</Text>
-                            </View>
-                          )}
                         </View>
-                      );
-                    })}
-                  </View>
-                )}
-
-                {/* Action buttons */}
-                <View style={styles.modalActions}>
-                  <TouchableOpacity
-                    style={[styles.modalActionBtn, styles.modalActionBtnSecondary]}
-                    onPress={handleAutoDetect}
-                  >
-                    <FontAwesome name="location-arrow" size={13} color={Colors.primary} />
-                    <Text style={[styles.modalActionBtnText, { color: Colors.primary }]}>
-                      Deteksi Otomatis
-                    </Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity
-                    style={[styles.modalActionBtn, styles.modalActionBtnPrimary]}
-                    onPress={openManualPicker}
-                  >
-                    <FontAwesome name="map-marker" size={13} color="#fff" />
-                    <Text style={[styles.modalActionBtnText, { color: "#fff" }]}>
-                      Pilih Manual
-                    </Text>
-                  </TouchableOpacity>
-                </View>
-              </>
-            )}
-
-            {/* ===== PROVINSI PICKER ===== */}
-            {pickerMode === "provinsi" && (
-              <>
-                <View style={styles.modalHeader}>
-                  <TouchableOpacity
-                    style={styles.pickerBackBtn}
-                    onPress={() => setPickerMode("jadwal")}
-                  >
-                    <FontAwesome name="arrow-left" size={16} color={Colors.primary} />
-                  </TouchableOpacity>
-                  <Text style={[styles.modalTitle, { flex: 1, marginLeft: 10 }]}>Pilih Provinsi</Text>
-                  <TouchableOpacity
-                    style={styles.modalCloseBtn}
-                    onPress={() => { setPickerMode("jadwal"); setSholatModalVisible(false); }}
-                  >
-                    <FontAwesome name="times" size={18} color={Colors.textSecondary} />
-                  </TouchableOpacity>
-                </View>
-                {pickerLoading ? (
-                  <View style={styles.pickerLoading}>
-                    <ActivityIndicator size="large" color={Colors.primary} />
-                    <Text style={styles.pickerLoadingText}>Memuat provinsi...</Text>
-                  </View>
-                ) : (
-                  <ScrollView
-                    style={styles.pickerScroll}
-                    showsVerticalScrollIndicator={false}
-                  >
-                    {provinsiList.map((p) => (
+                      </View>
                       <TouchableOpacity
-                        key={p}
-                        style={styles.pickerItem}
-                        onPress={() => handleSelectProvinsi(p)}
+                        style={styles.modalCloseBtn}
+                        onPress={() => setSholatModalVisible(false)}
                       >
-                        <Text style={styles.pickerItemText}>{p}</Text>
-                        <FontAwesome name="chevron-right" size={12} color={Colors.textSecondary} />
+                        <FontAwesome
+                          name="times"
+                          size={18}
+                          color={Colors.textSecondary}
+                        />
                       </TouchableOpacity>
-                    ))}
-                    {provinsiList.length === 0 && (
-                      <Text style={styles.pickerEmptyText}>Gagal memuat daftar provinsi</Text>
-                    )}
-                  </ScrollView>
-                )}
-              </>
-            )}
+                    </View>
 
-            {/* ===== KABKOTA PICKER ===== */}
-            {pickerMode === "kabkota" && (
-              <>
-                <View style={styles.modalHeader}>
-                  <TouchableOpacity
-                    style={styles.pickerBackBtn}
-                    onPress={() => setPickerMode("provinsi")}
-                  >
-                    <FontAwesome name="arrow-left" size={16} color={Colors.primary} />
-                  </TouchableOpacity>
-                  <View style={{ flex: 1, marginLeft: 10 }}>
-                    <Text style={styles.modalTitle}>Pilih Kab/Kota</Text>
-                    <Text style={styles.pickerSubtitle}>{pickerSelectedProvinsi}</Text>
-                  </View>
-                  <TouchableOpacity
-                    style={styles.modalCloseBtn}
-                    onPress={() => { setPickerMode("jadwal"); setSholatModalVisible(false); }}
-                  >
-                    <FontAwesome name="times" size={18} color={Colors.textSecondary} />
-                  </TouchableOpacity>
-                </View>
-                {pickerLoading ? (
-                  <View style={styles.pickerLoading}>
-                    <ActivityIndicator size="large" color={Colors.primary} />
-                    <Text style={styles.pickerLoadingText}>Memuat kota...</Text>
-                  </View>
-                ) : (
-                  <ScrollView
-                    style={styles.pickerScroll}
-                    showsVerticalScrollIndicator={false}
-                  >
-                    {kabkotaList.map((k) => (
+                    {todayJadwal && (
+                      <Text style={styles.modalDateText}>
+                        {new Date().toLocaleDateString("id-ID", {
+                          weekday: "long",
+                          day: "numeric",
+                          month: "long",
+                          year: "numeric",
+                        })}
+                      </Text>
+                    )}
+
+                    {!todayJadwal && sholatError && (
+                      <View style={styles.modalEmptyBox}>
+                        <FontAwesome
+                          name="exclamation-circle"
+                          size={32}
+                          color={Colors.primaryLight}
+                        />
+                        <Text style={styles.modalEmptyText}>{sholatError}</Text>
+                      </View>
+                    )}
+
+                    {todayJadwal && (
+                      <View style={styles.prayerList}>
+                        {PRAYER_DISPLAY.map(({ key, label }) => {
+                          const time = todayJadwal?.[key] as string | undefined;
+                          const isNext = nextPrayer?.key === key;
+                          return (
+                            <View
+                              key={key}
+                              style={[
+                                styles.prayerRow,
+                                isNext && styles.prayerRowActive,
+                              ]}
+                            >
+                              <View
+                                style={[
+                                  styles.prayerIconWrap,
+                                  isNext && styles.prayerIconWrapActive,
+                                ]}
+                              >
+                                <FontAwesome5
+                                  name="mosque"
+                                  size={14}
+                                  color={isNext ? "#fff" : Colors.primary}
+                                />
+                              </View>
+                              <Text
+                                style={[
+                                  styles.prayerLabel,
+                                  isNext && styles.prayerLabelActive,
+                                ]}
+                              >
+                                {label}
+                              </Text>
+                              <Text
+                                style={[
+                                  styles.prayerTime,
+                                  isNext && styles.prayerTimeActive,
+                                ]}
+                              >
+                                {time ?? "-"}
+                              </Text>
+                              {isNext && (
+                                <View style={styles.prayerBadge}>
+                                  <Text style={styles.prayerBadgeText}>
+                                    {nextPrayer.timeLeft} lagi
+                                  </Text>
+                                </View>
+                              )}
+                            </View>
+                          );
+                        })}
+                      </View>
+                    )}
+
+                    {/* Action buttons */}
+                    <View style={styles.modalActions}>
                       <TouchableOpacity
-                        key={k}
                         style={[
-                          styles.pickerItem,
-                          locationResult?.kabkota === k && styles.pickerItemActive,
+                          styles.modalActionBtn,
+                          styles.modalActionBtnSecondary,
                         ]}
-                        onPress={() => handleSelectKabkota(k)}
+                        onPress={handleAutoDetect}
                       >
+                        <FontAwesome
+                          name="location-arrow"
+                          size={13}
+                          color={Colors.primary}
+                        />
                         <Text
                           style={[
-                            styles.pickerItemText,
-                            locationResult?.kabkota === k && styles.pickerItemTextActive,
+                            styles.modalActionBtnText,
+                            { color: Colors.primary },
                           ]}
                         >
-                          {k}
+                          Deteksi Otomatis
                         </Text>
-                        {locationResult?.kabkota === k ? (
-                          <FontAwesome name="check" size={12} color={Colors.primary} />
-                        ) : (
-                          <FontAwesome name="chevron-right" size={12} color={Colors.textSecondary} />
-                        )}
                       </TouchableOpacity>
-                    ))}
-                    {kabkotaList.length === 0 && (
-                      <Text style={styles.pickerEmptyText}>Gagal memuat daftar kota</Text>
+                      <TouchableOpacity
+                        style={[
+                          styles.modalActionBtn,
+                          styles.modalActionBtnPrimary,
+                        ]}
+                        onPress={openManualPicker}
+                      >
+                        <FontAwesome name="map-marker" size={13} color="#fff" />
+                        <Text
+                          style={[styles.modalActionBtnText, { color: "#fff" }]}
+                        >
+                          Pilih Manual
+                        </Text>
+                      </TouchableOpacity>
+                    </View>
+                  </>
+                )}
+
+                {/* ===== PROVINSI PICKER ===== */}
+                {pickerMode === "provinsi" && (
+                  <>
+                    <View style={styles.modalHeader}>
+                      <TouchableOpacity
+                        style={styles.pickerBackBtn}
+                        onPress={() => setPickerMode("jadwal")}
+                      >
+                        <FontAwesome
+                          name="arrow-left"
+                          size={16}
+                          color={Colors.primary}
+                        />
+                      </TouchableOpacity>
+                      <Text
+                        style={[styles.modalTitle, { flex: 1, marginLeft: 10 }]}
+                      >
+                        Pilih Provinsi
+                      </Text>
+                      <TouchableOpacity
+                        style={styles.modalCloseBtn}
+                        onPress={() => {
+                          setPickerMode("jadwal");
+                          setSholatModalVisible(false);
+                        }}
+                      >
+                        <FontAwesome
+                          name="times"
+                          size={18}
+                          color={Colors.textSecondary}
+                        />
+                      </TouchableOpacity>
+                    </View>
+                    {pickerLoading ? (
+                      <View style={styles.pickerLoading}>
+                        <ActivityIndicator
+                          size="large"
+                          color={Colors.primary}
+                        />
+                        <Text style={styles.pickerLoadingText}>
+                          Memuat provinsi...
+                        </Text>
+                      </View>
+                    ) : (
+                      <ScrollView
+                        style={styles.pickerScroll}
+                        showsVerticalScrollIndicator={false}
+                      >
+                        {provinsiList.map((p) => (
+                          <TouchableOpacity
+                            key={p}
+                            style={styles.pickerItem}
+                            onPress={() => handleSelectProvinsi(p)}
+                          >
+                            <Text style={styles.pickerItemText}>{p}</Text>
+                            <FontAwesome
+                              name="chevron-right"
+                              size={12}
+                              color={Colors.textSecondary}
+                            />
+                          </TouchableOpacity>
+                        ))}
+                        {provinsiList.length === 0 && (
+                          <Text style={styles.pickerEmptyText}>
+                            Gagal memuat daftar provinsi
+                          </Text>
+                        )}
+                      </ScrollView>
                     )}
-                  </ScrollView>
-                )}
-              </>
-            )}
-
-          </View>
-        </View>
-      </Modal>
-
-      {/* ===== Qibla Modal ===== */}
-      {Platform.OS !== "web" && <Modal
-        visible={qiblaModalVisible}
-        transparent
-        animationType="slide"
-        onRequestClose={() => setQiblaModalVisible(false)}
-      >
-        <View style={styles.modalOverlay}>
-        <View style={[styles.modalSheet, { paddingBottom: 20, maxHeight: "93%" }]}>
-            {/* Header */}
-            <View style={styles.modalHeader}>
-              <View>
-                <Text style={styles.modalTitle}>Arah Kiblat</Text>
-                {qiblaCoords && (
-                  <Text style={styles.modalLocationText}>
-                    {qiblaCoords.lat.toFixed(4)}, {qiblaCoords.lon.toFixed(4)}
-                  </Text>
-                )}
-              </View>
-              <TouchableOpacity
-                style={styles.modalCloseBtn}
-                onPress={() => setQiblaModalVisible(false)}
-              >
-                <FontAwesome name="times" size={18} color={Colors.textSecondary} />
-              </TouchableOpacity>
-            </View>
-
-            {/* Body */}
-            {qiblaLoading ? (
-              <View style={styles.qiblaCenter}>
-                <ActivityIndicator size="large" color={Colors.primary} />
-                <Text style={styles.qiblaLoadingText}>Mendeteksi lokasi...</Text>
-              </View>
-            ) : qiblaError ? (
-              <View style={styles.qiblaCenter}>
-                <FontAwesome name="exclamation-circle" size={36} color="#EF5350" />
-                <Text style={styles.qiblaErrorText}>{qiblaError}</Text>
-                <TouchableOpacity style={styles.qiblaRetryBtn} onPress={loadQiblaData}>
-                  <FontAwesome name="refresh" size={13} color="#fff" />
-                  <Text style={styles.qiblaRetryBtnText}>Coba Lagi</Text>
-                </TouchableOpacity>
-              </View>
-            ) : qiblaData && qiblaData.bearing != null ? (
-              <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 8 }}>
-                {/* Live compass */}
-                <View style={styles.qiblaCompassWrap}>
-                  <QiblaCompassLive
-                    bearing={qiblaData.bearing}
-                    deviceHeading={deviceHeading}
-                    compassAvailable={compassAvailable}
-                  />
-                </View>
-
-                {/* Bearing info */}
-                <View style={styles.qiblaBearingRow}>
-                  <View style={styles.qiblaBearingBox}>
-                    <Text style={styles.qiblaBearingValue}>
-                      {qiblaData.bearing.toFixed(1)}°
-                    </Text>
-                    <Text style={styles.qiblaBearingLabel}>dari Utara</Text>
-                  </View>
-                  <View style={styles.qiblaCardinalBox}>
-                    <Text style={styles.qiblaCardinalValue}>
-                      {bearingToCardinal(qiblaData.bearing)}
-                    </Text>
-                    <Text style={styles.qiblaCardinalLabel}>arah kiblat</Text>
-                  </View>
-                </View>
-
-                {/* Web desktop: static instruction */}
-                {(Platform.OS === "web" && !compassAvailable) && (
-                  <View style={styles.qiblaInstructionBox}>
-                    <FontAwesome name="info-circle" size={15} color={Colors.primary} style={{ marginTop: 1 }} />
-                    <Text style={styles.qiblaInstructionText}>
-                      Hadapkan diri ke arah{" "}
-                      <Text style={{ fontWeight: "700" }}>{qiblaData.bearing.toFixed(0)}° dari Utara</Text>
-                      {" "}({bearingToCardinal(qiblaData.bearing)}). Gunakan kompas fisik untuk menentukan Utara terlebih dahulu.
-                    </Text>
-                  </View>
+                  </>
                 )}
 
-                {/* Re-detect button */}
-                <TouchableOpacity style={styles.qiblaRedetectBtn} onPress={loadQiblaData}>
-                  <FontAwesome name="location-arrow" size={13} color={Colors.primary} />
-                  <Text style={styles.qiblaRedetectText}>Deteksi Ulang Lokasi</Text>
-                </TouchableOpacity>
-              </ScrollView>
-            ) : null}
-          </View>
-        </View>
-      </Modal>}
-
-      {/* ===== Lanjut Bacaan (hero hijau) ===== */}
-        {readingPosition ? (
-          <View style={styles.lanjutCard}>
-            <View style={styles.lanjutBadgeRow}>
-              <View style={styles.lanjutBadge}>
-                <View style={styles.lanjutBadgeDot} />
-                <Text style={styles.lanjutBadgeText}>LANJUTKAN</Text>
+                {/* ===== KABKOTA PICKER ===== */}
+                {pickerMode === "kabkota" && (
+                  <>
+                    <View style={styles.modalHeader}>
+                      <TouchableOpacity
+                        style={styles.pickerBackBtn}
+                        onPress={() => setPickerMode("provinsi")}
+                      >
+                        <FontAwesome
+                          name="arrow-left"
+                          size={16}
+                          color={Colors.primary}
+                        />
+                      </TouchableOpacity>
+                      <View style={{ flex: 1, marginLeft: 10 }}>
+                        <Text style={styles.modalTitle}>Pilih Kab/Kota</Text>
+                        <Text style={styles.pickerSubtitle}>
+                          {pickerSelectedProvinsi}
+                        </Text>
+                      </View>
+                      <TouchableOpacity
+                        style={styles.modalCloseBtn}
+                        onPress={() => {
+                          setPickerMode("jadwal");
+                          setSholatModalVisible(false);
+                        }}
+                      >
+                        <FontAwesome
+                          name="times"
+                          size={18}
+                          color={Colors.textSecondary}
+                        />
+                      </TouchableOpacity>
+                    </View>
+                    {pickerLoading ? (
+                      <View style={styles.pickerLoading}>
+                        <ActivityIndicator
+                          size="large"
+                          color={Colors.primary}
+                        />
+                        <Text style={styles.pickerLoadingText}>
+                          Memuat kota...
+                        </Text>
+                      </View>
+                    ) : (
+                      <ScrollView
+                        style={styles.pickerScroll}
+                        showsVerticalScrollIndicator={false}
+                      >
+                        {kabkotaList.map((k) => (
+                          <TouchableOpacity
+                            key={k}
+                            style={[
+                              styles.pickerItem,
+                              locationResult?.kabkota === k &&
+                                styles.pickerItemActive,
+                            ]}
+                            onPress={() => handleSelectKabkota(k)}
+                          >
+                            <Text
+                              style={[
+                                styles.pickerItemText,
+                                locationResult?.kabkota === k &&
+                                  styles.pickerItemTextActive,
+                              ]}
+                            >
+                              {k}
+                            </Text>
+                            {locationResult?.kabkota === k ? (
+                              <FontAwesome
+                                name="check"
+                                size={12}
+                                color={Colors.primary}
+                              />
+                            ) : (
+                              <FontAwesome
+                                name="chevron-right"
+                                size={12}
+                                color={Colors.textSecondary}
+                              />
+                            )}
+                          </TouchableOpacity>
+                        ))}
+                        {kabkotaList.length === 0 && (
+                          <Text style={styles.pickerEmptyText}>
+                            Gagal memuat daftar kota
+                          </Text>
+                        )}
+                      </ScrollView>
+                    )}
+                  </>
+                )}
               </View>
-              <FontAwesome name="bookmark-o" size={18} color="rgba(255,255,255,0.85)" />
             </View>
-            <View style={styles.lanjutBody}>
-              <View style={styles.lanjutTextWrap}>
-                <Text style={styles.lanjutTitle}>Lanjut Bacaan</Text>
-                <Text style={styles.lanjutSurah}>QS. {readingPosition.surahName}</Text>
-                <Text style={styles.lanjutMeta}>
-                  Halaman {readingPosition.page} • Juz {readingPosition.juz}
-                </Text>
-                <TouchableOpacity
-                  style={styles.lanjutButton}
-                  activeOpacity={0.85}
-                  onPress={() =>
-                    router.push({
-                      pathname: "/mushaf",
-                      params: { page: String(readingPosition.page) },
-                    })
-                  }
-                >
-                  <Text style={styles.lanjutButtonText}>Lanjut Membaca</Text>
-                  <FontAwesome name="arrow-right" size={13} color={Colors.primaryDark} />
-                </TouchableOpacity>
-              </View>
-              <Image
-                source={require("@/assets/images/alquran-illustration.png")}
-                style={styles.lanjutImage}
-                resizeMode="contain"
-              />
-            </View>
-          </View>
-        ) : (
-          <View style={styles.lanjutCard}>
-            <View style={styles.lanjutBody}>
-              <View style={styles.lanjutTextWrap}>
-                <Text style={styles.lanjutTitle}>
-                  Belajar Al-Qur'an{"\n"}Lebih Mudah!
-                </Text>
-                <Text style={styles.lanjutMeta}>
-                  Tilawah, Tahsin, dan Talaqi dalam satu aplikasi
-                </Text>
-                <TouchableOpacity
-                  style={styles.lanjutButton}
-                  activeOpacity={0.85}
-                  onPress={() => router.push("/mushaf")}
-                >
-                  <Text style={styles.lanjutButtonText}>Buka Mushaf</Text>
-                  <FontAwesome name="arrow-right" size={13} color={Colors.primaryDark} />
-                </TouchableOpacity>
-              </View>
-              <Image
-                source={require("@/assets/images/alquran-illustration.png")}
-                style={styles.lanjutImage}
-                resizeMode="contain"
-              />
-            </View>
-          </View>
-        )}
+          </Modal>
 
-        {/* ===== Progress & Streak ===== */}
-        <View style={styles.progressRow}>
-          <TouchableOpacity
-            style={styles.progressCard}
-            activeOpacity={0.85}
-            onPress={() => router.push("/tilawah-harian")}
-          >
-            <View style={styles.progressHeaderRow}>
-              <View style={styles.progressIconBox}>
-                <FontAwesome name="book" size={14} color={Colors.primary} />
-              </View>
-              <Text style={styles.progressCardTitle} numberOfLines={2}>
-                Progress Tilawah Hari Ini
-              </Text>
-            </View>
-            <View style={styles.progressValueRow}>
-              <Text style={styles.progressValueBig}>{todayPages}</Text>
-              <Text style={styles.progressValueSep}> / {DAILY_TILAWAH_TARGET}</Text>
-              <Text style={styles.progressValueUnit}> halaman</Text>
-            </View>
-            <View style={styles.progressBarRow}>
-              <View style={styles.progressTrack}>
-                <View
-                  style={[styles.progressFill, { width: `${tilawahPercent}%` }]}
-                />
-              </View>
-              <Text style={styles.progressPercent}>{tilawahPercent}%</Text>
-            </View>
-            <Text style={styles.progressHint} numberOfLines={1}>
-              {todayPages >= DAILY_TILAWAH_TARGET
-                ? "MasyaAllah! Target hari ini tercapai"
-                : `Teruskan! ${DAILY_TILAWAH_TARGET - todayPages} halaman lagi untuk target hari ini`}
-            </Text>
-          </TouchableOpacity>
-
-          <View style={styles.streakCard}>
-            <View style={styles.progressHeaderRow}>
-              <FontAwesome name="fire" size={16} color={Colors.accent} />
-              <Text style={styles.progressCardTitle}>Streak Harian</Text>
-            </View>
-            <View style={styles.progressValueRow}>
-              <Text style={styles.progressValueBig}>{streakDays}</Text>
-              <Text style={styles.progressValueUnit}> hari</Text>
-            </View>
-            <View style={styles.streakBadge}>
-              <FontAwesome name="sun-o" size={16} color={Colors.accent} />
-            </View>
-            <Text style={styles.progressHint} numberOfLines={2}>
-              {streakDays > 0
-                ? "Semangat! Pertahankan kebiasaan baik ini"
-                : "Mulai catat tilawahmu hari ini"}
-            </Text>
-          </View>
-        </View>
-
-        {/* Menu Utama — grid hijau seragam */}
-        <View style={styles.categoryGrid}>
-          <TouchableOpacity
-            style={styles.categoryCard}
-            onPress={() => setMushafModalVisible(true)}
-          >
-            <View style={styles.categoryIcon}>
-              <FontAwesome name="book" size={22} color={Colors.primary} />
-            </View>
-            <Text style={styles.categoryLabel}>Mushaf{"\n"}Al-Qur'an</Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            style={styles.categoryCard}
-            onPress={() => router.push("/hadis")}
-          >
-            <View style={styles.categoryIcon}>
-              <FontAwesome name="list-alt" size={20} color={Colors.primary} />
-            </View>
-            <Text style={styles.categoryLabel}>Koleksi{"\n"}Hadis</Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            style={styles.categoryCard}
-            onPress={() => router.push("/doa")}
-          >
-            <View style={styles.categoryIcon}>
-              <FontAwesome5 name="praying-hands" size={20} color={Colors.primary} />
-            </View>
-            <Text style={styles.categoryLabel}>Untaian{"\n"}Do'a</Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            style={styles.categoryCard}
-            onPress={() => router.push("/sambung-ayat")}
-          >
-            <View style={styles.categoryIcon}>
-              <FontAwesome name="puzzle-piece" size={20} color={Colors.primary} />
-            </View>
-            <Text style={styles.categoryLabel}>Sambung{"\n"}Ayat</Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            style={styles.categoryCard}
-            onPress={() => router.push("/tasbih")}
-          >
-            <View style={styles.categoryIcon}>
-              <FontAwesome name="circle-o-notch" size={20} color={Colors.primary} />
-            </View>
-            <Text style={styles.categoryLabel}>Tasbih{"\n"}Digital</Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            style={styles.categoryCard}
-            onPress={() => router.push("/dzikir")}
-          >
-            <View style={styles.categoryIcon}>
-              <FontAwesome name="leaf" size={20} color={Colors.primary} />
-            </View>
-            <Text style={styles.categoryLabel}>Dzikir{"\n"}Harian</Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            style={styles.categoryCard}
-            onPress={() => router.push("/tarbiyah/tahsin")}
-          >
-            <View style={styles.categoryIcon}>
-              <FontAwesome name="graduation-cap" size={20} color={Colors.primary} />
-            </View>
-            <Text style={styles.categoryLabel}>Tajwid{"\n"}Dasar</Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            style={styles.categoryCard}
-            onPress={() => router.push("/(tabs)/talaqi")}
-          >
-            <View style={styles.categoryIcon}>
-              <FontAwesome name="pencil-square-o" size={20} color={Colors.primary} />
-            </View>
-            <Text style={styles.categoryLabel}>Catatan{"\n"}Talaqi</Text>
-          </TouchableOpacity>
-
+          {/* ===== Qibla Modal ===== */}
           {Platform.OS !== "web" && (
-            <TouchableOpacity
-              style={styles.categoryCard}
-              onPress={() => {
-                setQiblaModalVisible(true);
-                if (!qiblaData && !qiblaLoading) loadQiblaData();
-              }}
+            <Modal
+              visible={qiblaModalVisible}
+              transparent
+              animationType="slide"
+              onRequestClose={() => setQiblaModalVisible(false)}
             >
-              <View style={styles.categoryIcon}>
-                <FontAwesome name="compass" size={22} color={Colors.primary} />
-              </View>
-              <Text style={styles.categoryLabel}>Arah{"\n"}Kiblat</Text>
-            </TouchableOpacity>
-          )}
-        </View>
-
-        {/* ===== Target Hari Ini ===== */}
-        <View style={styles.targetCard}>
-          <View style={styles.targetHeaderRow}>
-            <View style={styles.targetHeaderLeft}>
-              <View style={styles.targetIconBox}>
-                <FontAwesome name="bullseye" size={14} color={Colors.primary} />
-              </View>
-              <Text style={styles.targetTitle}>Target Hari Ini</Text>
-            </View>
-            <FontAwesome name="chevron-right" size={13} color={Colors.textSecondary} />
-          </View>
-          <View style={styles.targetItemsRow}>
-            <TouchableOpacity
-              style={styles.targetItem}
-              activeOpacity={0.8}
-              onPress={() => router.push("/tilawah-harian")}
-            >
-              <View style={styles.targetItemIcon}>
-                <FontAwesome name="book" size={16} color={Colors.primary} />
-              </View>
-              <Text style={styles.targetItemLabel}>Tilawah</Text>
-              <Text style={styles.targetItemValue}>
-                {todayPages} / {DAILY_TILAWAH_TARGET} halaman
-              </Text>
-              <View style={styles.targetItemTrack}>
-                <View
-                  style={[styles.targetItemFill, { width: `${tilawahPercent}%` }]}
-                />
-              </View>
-            </TouchableOpacity>
-
-            <View style={styles.targetDivider} />
-
-            <TouchableOpacity
-              style={styles.targetItem}
-              activeOpacity={0.8}
-              onPress={() => router.push("/(tabs)/tarbiyah")}
-            >
-              <View style={styles.targetItemIcon}>
-                <Text style={styles.targetItemArab}>ي</Text>
-              </View>
-              <Text style={styles.targetItemLabel}>Tajwid</Text>
-              <Text style={styles.targetItemValue} numberOfLines={1}>
-                Pelajari idzhar
-              </Text>
-              <View style={styles.targetItemTrack}>
-                <View style={[styles.targetItemFill, { width: "35%" }]} />
-              </View>
-            </TouchableOpacity>
-
-            <View style={styles.targetDivider} />
-
-            <TouchableOpacity
-              style={styles.targetItem}
-              activeOpacity={0.8}
-              onPress={() => router.push("/dzikir")}
-            >
-              <View style={styles.targetItemIcon}>
-                <FontAwesome name="leaf" size={16} color={Colors.primary} />
-              </View>
-              <Text style={styles.targetItemLabel}>Dzikir Pagi</Text>
-              <Text style={styles.targetItemValue}>
-                {dzikirPagiDone} / {dzikirPagiTotal} dzikir
-              </Text>
-              <View style={styles.targetItemTrack}>
+              <View style={styles.modalOverlay}>
                 <View
                   style={[
-                    styles.targetItemFill,
-                    {
-                      width: `${Math.min(
-                        Math.round((dzikirPagiDone / Math.max(dzikirPagiTotal, 1)) * 100),
-                        100
-                      )}%`,
-                    },
+                    styles.modalSheet,
+                    { paddingBottom: 20, maxHeight: "93%" },
                   ]}
-                />
-              </View>
-            </TouchableOpacity>
-          </View>
-        </View>
-
-        {/* ===== Lanjut Terakhir ===== */}
-        {lastTilawah && (
-          <TouchableOpacity
-            style={styles.lastReadCard}
-            activeOpacity={0.85}
-            onPress={() =>
-              router.push({
-                pathname: "/surah/[surahNumber]",
-                params: {
-                  surahNumber: String(lastTilawah.suratNumber),
-                  surahName: lastTilawah.suratName,
-                },
-              })
-            }
-          >
-            <View style={styles.lastReadLeft}>
-              <View style={styles.lastReadIconBox}>
-                <FontAwesome name="clock-o" size={18} color={Colors.accent} />
-              </View>
-              <View style={styles.lastReadTextWrap}>
-                <Text style={styles.lastReadLabel}>Lanjut Terakhir</Text>
-                <Text style={styles.lastReadSurah}>QS. {lastTilawah.suratName}</Text>
-                <Text style={styles.lastReadMeta}>
-                  {lastTilawah.jumlahHalaman} halaman • Juz {lastTilawah.juz}
-                </Text>
-                <Text style={styles.lastReadTime}>
-                  Terakhir dibaca {relativeDateText(lastTilawah.tanggal)}
-                </Text>
-              </View>
-            </View>
-            <View style={styles.lastReadButton}>
-              <Text style={styles.lastReadButtonText}>Lanjutkan</Text>
-              <FontAwesome name="chevron-right" size={11} color={Colors.primary} />
-            </View>
-          </TouchableOpacity>
-        )}
-
-        {/* ===== Ceramah Video Section ===== */}
-        {ceramahVideos && ceramahVideos.length > 0 && (() => {
-          const liveVideos = ceramahVideos.filter((v) => v.isLive);
-          const regularVideos = ceramahVideos.filter((v) => !v.isLive);
-          const featuredLive = liveVideos[0] ?? null;
-          return (
-            <>
-              {/* Featured Live Video */}
-              {featuredLive && (() => {
-                const videoId = extractYouTubeId(featuredLive.youtubeUrl);
-                const thumbUri = videoId
-                  ? `https://img.youtube.com/vi/${videoId}/hqdefault.jpg`
-                  : null;
-                return (
-                  <View style={styles.ceramahSection}>
-                    <View style={styles.sectionHeader}>
-                      <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
-                        <View style={styles.liveDot} />
-                        <Text style={styles.sectionTitle}>Siaran Langsung</Text>
-                      </View>
+                >
+                  {/* Header */}
+                  <View style={styles.modalHeader}>
+                    <View>
+                      <Text style={styles.modalTitle}>Arah Kiblat</Text>
+                      {qiblaCoords && (
+                        <Text style={styles.modalLocationText}>
+                          {qiblaCoords.lat.toFixed(4)},{" "}
+                          {qiblaCoords.lon.toFixed(4)}
+                        </Text>
+                      )}
                     </View>
                     <TouchableOpacity
-                      style={styles.featuredLiveCard}
-                      activeOpacity={0.9}
-                      onPress={() => {
-                        setSelectedVideo({ youtubeUrl: featuredLive.youtubeUrl, judul: featuredLive.judul, isLive: true });
-                        setIsFullscreen(false);
-                        setVideoModalVisible(true);
-                      }}
+                      style={styles.modalCloseBtn}
+                      onPress={() => setQiblaModalVisible(false)}
                     >
-                      {thumbUri ? (
-                        <Image source={{ uri: thumbUri }} style={styles.featuredLiveThumb} resizeMode="cover" />
-                      ) : (
-                        <View style={[styles.featuredLiveThumb, { backgroundColor: "#1a1a1a" }]} />
-                      )}
-                      <View style={styles.featuredLiveOverlay}>
-                        <View style={styles.liveBadgeRow}>
-                          <View style={styles.liveBadge}>
-                            <View style={styles.liveBadgeDot} />
-                            <Text style={styles.liveBadgeText}>LIVE</Text>
-                          </View>
-                        </View>
-                        <View style={styles.featuredLivePlayBtn}>
-                          <FontAwesome name="play-circle" size={56} color="rgba(255,255,255,0.92)" />
-                        </View>
-                        <View style={styles.featuredLiveInfo}>
-                          <Text style={styles.featuredLiveTitle} numberOfLines={2}>
-                            {featuredLive.judul}
-                          </Text>
-                          {featuredLive.deskripsi ? (
-                            <Text style={styles.featuredLiveDesc} numberOfLines={1}>
-                              {featuredLive.deskripsi}
-                            </Text>
-                          ) : null}
-                        </View>
-                      </View>
+                      <FontAwesome
+                        name="times"
+                        size={18}
+                        color={Colors.textSecondary}
+                      />
                     </TouchableOpacity>
                   </View>
-                );
-              })()}
 
-              {/* Regular Videos List */}
-              {regularVideos.length > 0 && (
-                <View>
-                  <View style={styles.sectionHeader}>
-                    <Text style={styles.sectionTitle}>Video Ceramah</Text>
-                  </View>
-                  <ScrollView
-                    horizontal
-                    showsHorizontalScrollIndicator={false}
-                    contentContainerStyle={styles.ceramahScroll}
-                  >
-                    {regularVideos.map((item) => {
-                      const videoId = extractYouTubeId(item.youtubeUrl);
-                      const thumbUri = videoId
-                        ? `https://img.youtube.com/vi/${videoId}/mqdefault.jpg`
-                        : null;
-                      return (
-                        <TouchableOpacity
-                          key={item._id}
-                          style={styles.ceramahCard}
-                          activeOpacity={0.85}
-                          onPress={() => {
-                            setSelectedVideo({ youtubeUrl: item.youtubeUrl, judul: item.judul, isLive: false });
-                            setIsFullscreen(false);
-                            setVideoModalVisible(true);
-                          }}
-                        >
-                          <View style={styles.ceramahThumbWrap}>
-                            {thumbUri ? (
-                              <Image source={{ uri: thumbUri }} style={styles.ceramahThumb} resizeMode="cover" />
-                            ) : (
-                              <View style={[styles.ceramahThumb, { backgroundColor: "#1a1a1a" }]} />
-                            )}
-                            <View style={styles.ceramahPlayOverlay}>
-                              <FontAwesome name="play-circle" size={30} color="rgba(255,255,255,0.88)" />
-                            </View>
-                          </View>
-                          <Text style={styles.ceramahCardTitle} numberOfLines={2}>
-                            {item.judul}
+                  {/* Body */}
+                  {qiblaLoading ? (
+                    <View style={styles.qiblaCenter}>
+                      <ActivityIndicator size="large" color={Colors.primary} />
+                      <Text style={styles.qiblaLoadingText}>
+                        Mendeteksi lokasi...
+                      </Text>
+                    </View>
+                  ) : qiblaError ? (
+                    <View style={styles.qiblaCenter}>
+                      <FontAwesome
+                        name="exclamation-circle"
+                        size={36}
+                        color="#EF5350"
+                      />
+                      <Text style={styles.qiblaErrorText}>{qiblaError}</Text>
+                      <TouchableOpacity
+                        style={styles.qiblaRetryBtn}
+                        onPress={loadQiblaData}
+                      >
+                        <FontAwesome name="refresh" size={13} color="#fff" />
+                        <Text style={styles.qiblaRetryBtnText}>Coba Lagi</Text>
+                      </TouchableOpacity>
+                    </View>
+                  ) : qiblaData && qiblaData.bearing != null ? (
+                    <ScrollView
+                      showsVerticalScrollIndicator={false}
+                      contentContainerStyle={{ paddingBottom: 8 }}
+                    >
+                      {/* Live compass */}
+                      <View style={styles.qiblaCompassWrap}>
+                        <QiblaCompassLive
+                          bearing={qiblaData.bearing}
+                          deviceHeading={deviceHeading}
+                          compassAvailable={compassAvailable}
+                        />
+                      </View>
+
+                      {/* Bearing info */}
+                      <View style={styles.qiblaBearingRow}>
+                        <View style={styles.qiblaBearingBox}>
+                          <Text style={styles.qiblaBearingValue}>
+                            {qiblaData.bearing.toFixed(1)}°
                           </Text>
-                        </TouchableOpacity>
-                      );
-                    })}
-                  </ScrollView>
-                </View>
-              )}
-            </>
-          );
-        })()}
+                          <Text style={styles.qiblaBearingLabel}>
+                            dari Utara
+                          </Text>
+                        </View>
+                        <View style={styles.qiblaCardinalBox}>
+                          <Text style={styles.qiblaCardinalValue}>
+                            {bearingToCardinal(qiblaData.bearing)}
+                          </Text>
+                          <Text style={styles.qiblaCardinalLabel}>
+                            arah kiblat
+                          </Text>
+                        </View>
+                      </View>
 
-        {/* Hadis Harian */}
-        <View style={styles.sectionHeader}>
-          <Text style={styles.sectionTitle}>Hadis Harian</Text>
-          <View style={{ flexDirection: "row", gap: 12 }}>
+                      {/* Web desktop: static instruction */}
+                      {Platform.OS === "web" && !compassAvailable && (
+                        <View style={styles.qiblaInstructionBox}>
+                          <FontAwesome
+                            name="info-circle"
+                            size={15}
+                            color={Colors.primary}
+                            style={{ marginTop: 1 }}
+                          />
+                          <Text style={styles.qiblaInstructionText}>
+                            Hadapkan diri ke arah{" "}
+                            <Text style={{ fontWeight: "700" }}>
+                              {qiblaData.bearing.toFixed(0)}° dari Utara
+                            </Text>{" "}
+                            ({bearingToCardinal(qiblaData.bearing)}). Gunakan
+                            kompas fisik untuk menentukan Utara terlebih dahulu.
+                          </Text>
+                        </View>
+                      )}
+
+                      {/* Re-detect button */}
+                      <TouchableOpacity
+                        style={styles.qiblaRedetectBtn}
+                        onPress={loadQiblaData}
+                      >
+                        <FontAwesome
+                          name="location-arrow"
+                          size={13}
+                          color={Colors.primary}
+                        />
+                        <Text style={styles.qiblaRedetectText}>
+                          Deteksi Ulang Lokasi
+                        </Text>
+                      </TouchableOpacity>
+                    </ScrollView>
+                  ) : null}
+                </View>
+              </View>
+            </Modal>
+          )}
+
+          {/* ===== Lanjut Bacaan (hero hijau) ===== */}
+          {readingPosition ? (
+            <View style={styles.lanjutCard}>
+              <View style={styles.lanjutBadgeRow}>
+                <View style={styles.lanjutBadge}>
+                  <View style={styles.lanjutBadgeDot} />
+                  <Text style={styles.lanjutBadgeText}>LANJUTKAN</Text>
+                </View>
+                <FontAwesome
+                  name="bookmark-o"
+                  size={18}
+                  color="rgba(255,255,255,0.85)"
+                />
+              </View>
+              <View style={styles.lanjutBody}>
+                <View style={styles.lanjutTextWrap}>
+                  <Text style={styles.lanjutTitle}>Lanjut Bacaan</Text>
+                  <Text style={styles.lanjutSurah}>
+                    QS. {readingPosition.surahName}
+                  </Text>
+                  <Text style={styles.lanjutMeta}>
+                    Halaman {readingPosition.page} • Juz {readingPosition.juz}
+                  </Text>
+                  <TouchableOpacity
+                    style={styles.lanjutButton}
+                    activeOpacity={0.85}
+                    onPress={() =>
+                      router.push({
+                        pathname: "/mushaf",
+                        params: { page: String(readingPosition.page) },
+                      })
+                    }
+                  >
+                    <Text style={styles.lanjutButtonText}>Lanjut Membaca</Text>
+                    <FontAwesome
+                      name="arrow-right"
+                      size={13}
+                      color={Colors.primaryDark}
+                    />
+                  </TouchableOpacity>
+                </View>
+                <Image
+                  source={require("@/assets/images/alquran-illustration.png")}
+                  style={styles.lanjutImage}
+                  resizeMode="contain"
+                />
+              </View>
+            </View>
+          ) : (
+            <View style={styles.lanjutCard}>
+              <View style={styles.lanjutBody}>
+                <View style={styles.lanjutTextWrap}>
+                  <Text style={styles.lanjutTitle}>
+                    Belajar Al-Qur'an{"\n"}Lebih Mudah!
+                  </Text>
+                  <Text style={styles.lanjutMeta}>
+                    Tilawah, Tahsin, dan Talaqi dalam satu aplikasi
+                  </Text>
+                  <TouchableOpacity
+                    style={styles.lanjutButton}
+                    activeOpacity={0.85}
+                    onPress={() => router.push("/mushaf")}
+                  >
+                    <Text style={styles.lanjutButtonText}>Buka Mushaf</Text>
+                    <FontAwesome
+                      name="arrow-right"
+                      size={13}
+                      color={Colors.primaryDark}
+                    />
+                  </TouchableOpacity>
+                </View>
+                <Image
+                  source={require("@/assets/images/alquran-illustration.png")}
+                  style={styles.lanjutImage}
+                  resizeMode="contain"
+                />
+              </View>
+            </View>
+          )}
+
+          {/* ===== Progress & Streak ===== */}
+          {/* <View style={styles.progressRow}>
             <TouchableOpacity
+              style={styles.progressCard}
+              activeOpacity={0.85}
+              onPress={() => router.push("/tilawah-harian")}
+            >
+              <View style={styles.progressHeaderRow}>
+                <View style={styles.progressIconBox}>
+                  <FontAwesome name="book" size={14} color={Colors.primary} />
+                </View>
+                <Text style={styles.progressCardTitle} numberOfLines={2}>
+                  Progress Tilawah Hari Ini
+                </Text>
+              </View>
+              <View style={styles.progressValueRow}>
+                <Text style={styles.progressValueBig}>{todayPages}</Text>
+                <Text style={styles.progressValueSep}>
+                  {" "}
+                  / {DAILY_TILAWAH_TARGET}
+                </Text>
+                <Text style={styles.progressValueUnit}> halaman</Text>
+              </View>
+              <View style={styles.progressBarRow}>
+                <View style={styles.progressTrack}>
+                  <View
+                    style={[
+                      styles.progressFill,
+                      { width: `${tilawahPercent}%` },
+                    ]}
+                  />
+                </View>
+                <Text style={styles.progressPercent}>{tilawahPercent}%</Text>
+              </View>
+              <Text style={styles.progressHint} numberOfLines={1}>
+                {todayPages >= DAILY_TILAWAH_TARGET
+                  ? "MasyaAllah! Target hari ini tercapai"
+                  : `Teruskan! ${DAILY_TILAWAH_TARGET - todayPages} halaman lagi untuk target hari ini`}
+              </Text>
+            </TouchableOpacity>
+
+            <View style={styles.streakCard}>
+              <View style={styles.progressHeaderRow}>
+                <FontAwesome name="fire" size={16} color={Colors.accent} />
+                <Text style={styles.progressCardTitle}>Streak Harian</Text>
+              </View>
+              <View style={styles.progressValueRow}>
+                <Text style={styles.progressValueBig}>{streakDays}</Text>
+                <Text style={styles.progressValueUnit}> hari</Text>
+              </View>
+              <View style={styles.streakBadge}>
+                <FontAwesome name="sun-o" size={16} color={Colors.accent} />
+              </View>
+              <Text style={styles.progressHint} numberOfLines={2}>
+                {streakDays > 0
+                  ? "Semangat! Pertahankan kebiasaan baik ini"
+                  : "Mulai catat tilawahmu hari ini"}
+              </Text>
+            </View>
+          </View> */}
+
+          {/* Menu Utama — grid hijau seragam */}
+          <View style={styles.categoryGrid}>
+            <TouchableOpacity
+              style={styles.categoryCard}
+              onPress={() => setMushafModalVisible(true)}
+            >
+              <View style={styles.categoryIcon}>
+                <FontAwesome name="book" size={22} color={Colors.primary} />
+              </View>
+              <Text style={styles.categoryLabel}>Mushaf{"\n"}Al-Qur'an</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={styles.categoryCard}
               onPress={() => router.push("/hadis")}
             >
-              <FontAwesome name="search" size={16} color={Colors.primary} />
-            </TouchableOpacity>
-            <TouchableOpacity onPress={loadRandomHadis} disabled={hadisLoading}>
-              <FontAwesome name="refresh" size={16} color={Colors.primary} />
-            </TouchableOpacity>
-          </View>
-        </View>
-        <View style={styles.hadisCard}>
-          {hadisLoading ? (
-            <ActivityIndicator size="small" color={Colors.primary} style={{ paddingVertical: 24 }} />
-          ) : hadis ? (
-            <>
-              {hadis.grade || hadis.takhrij ? (
-                <View style={styles.hadisMetaRow}>
-                  {hadis.takhrij ? (
-                    <View style={styles.hadisMetaBadge}>
-                      <Text style={styles.hadisMetaText}>{hadis.takhrij}</Text>
-                    </View>
-                  ) : null}
-                  {hadis.grade ? (
-                    <View style={[styles.hadisMetaBadge, styles.hadisGradeBadge]}>
-                      <Text style={styles.hadisMetaText}>{hadis.grade}</Text>
-                    </View>
-                  ) : null}
-                </View>
-              ) : null}
-              <Text style={styles.hadisArab}>{hadis.text.ar}</Text>
-              <View style={styles.hadisDivider} />
-              <Text style={styles.hadisIndo}>{hadis.text.id}</Text>
-              <View style={styles.hadisNav}>
-                <TouchableOpacity style={styles.hadisNavBtn} onPress={handlePrevHadis}>
-                  <FontAwesome name="chevron-left" size={13} color={Colors.primary} />
-                  <Text style={styles.hadisNavText}>Sebelumnya</Text>
-                </TouchableOpacity>
-                <Text style={styles.hadisId}>#{hadis.id}</Text>
-                <TouchableOpacity style={styles.hadisNavBtn} onPress={handleNextHadis}>
-                  <Text style={styles.hadisNavText}>Berikutnya</Text>
-                  <FontAwesome name="chevron-right" size={13} color={Colors.primary} />
-                </TouchableOpacity>
+              <View style={styles.categoryIcon}>
+                <FontAwesome name="list-alt" size={20} color={Colors.primary} />
               </View>
-            </>
-          ) : (
-            <Text style={styles.hadisError}>Gagal memuat hadis</Text>
-          )}
-        </View>
+              <Text style={styles.categoryLabel}>Koleksi{"\n"}Hadis</Text>
+            </TouchableOpacity>
 
-        {/* Popular Surahs */}
-        <View style={styles.sectionHeader}>
-          <Text style={styles.sectionTitle}>Surah Populer</Text>
-          <TouchableOpacity onPress={() => setMode("surah-list")}>
-            <Text style={styles.viewAll}>Lihat semua →</Text>
-          </TouchableOpacity>
-        </View>
-        <ScrollView
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          contentContainerStyle={styles.popularScroll}
-        >
-          {getPopularSurahs().map((surah) => (
             <TouchableOpacity
-              key={surah.number}
-              style={styles.popularCard}
+              style={styles.categoryCard}
+              onPress={() => router.push("/doa")}
+            >
+              <View style={styles.categoryIcon}>
+                <FontAwesome5
+                  name="praying-hands"
+                  size={20}
+                  color={Colors.primary}
+                />
+              </View>
+              <Text style={styles.categoryLabel}>Untaian{"\n"}Do'a</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={styles.categoryCard}
+              onPress={() => router.push("/sambung-ayat")}
+            >
+              <View style={styles.categoryIcon}>
+                <FontAwesome
+                  name="puzzle-piece"
+                  size={20}
+                  color={Colors.primary}
+                />
+              </View>
+              <Text style={styles.categoryLabel}>Sambung{"\n"}Ayat</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={styles.categoryCard}
+              onPress={() => router.push("/tasbih")}
+            >
+              <View style={styles.categoryIcon}>
+                <FontAwesome
+                  name="circle-o-notch"
+                  size={20}
+                  color={Colors.primary}
+                />
+              </View>
+              <Text style={styles.categoryLabel}>Tasbih{"\n"}Digital</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={styles.categoryCard}
+              onPress={() => router.push("/dzikir")}
+            >
+              <View style={styles.categoryIcon}>
+                <FontAwesome name="leaf" size={20} color={Colors.primary} />
+              </View>
+              <Text style={styles.categoryLabel}>Dzikir{"\n"}Harian</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={styles.categoryCard}
+              onPress={() => router.push("/tarbiyah/tahsin")}
+            >
+              <View style={styles.categoryIcon}>
+                <FontAwesome
+                  name="graduation-cap"
+                  size={20}
+                  color={Colors.primary}
+                />
+              </View>
+              <Text style={styles.categoryLabel}>Tajwid{"\n"}Dasar</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={styles.categoryCard}
+              onPress={() => router.push("/(tabs)/talaqi")}
+            >
+              <View style={styles.categoryIcon}>
+                <FontAwesome
+                  name="pencil-square-o"
+                  size={20}
+                  color={Colors.primary}
+                />
+              </View>
+              <Text style={styles.categoryLabel}>Catatan{"\n"}Talaqi</Text>
+            </TouchableOpacity>
+
+            {Platform.OS !== "web" && (
+              <TouchableOpacity
+                style={styles.categoryCard}
+                onPress={() => {
+                  setQiblaModalVisible(true);
+                  if (!qiblaData && !qiblaLoading) loadQiblaData();
+                }}
+              >
+                <View style={styles.categoryIcon}>
+                  <FontAwesome
+                    name="compass"
+                    size={22}
+                    color={Colors.primary}
+                  />
+                </View>
+                <Text style={styles.categoryLabel}>Arah{"\n"}Kiblat</Text>
+              </TouchableOpacity>
+            )}
+          </View>
+
+          {/* ===== Target Hari Ini ===== */}
+          <View style={styles.targetCard}>
+            <View style={styles.targetHeaderRow}>
+              <View style={styles.targetHeaderLeft}>
+                <View style={styles.targetIconBox}>
+                  <FontAwesome
+                    name="bullseye"
+                    size={14}
+                    color={Colors.primary}
+                  />
+                </View>
+                <Text style={styles.targetTitle}>Target Hari Ini</Text>
+              </View>
+              <FontAwesome
+                name="chevron-right"
+                size={13}
+                color={Colors.textSecondary}
+              />
+            </View>
+            <View style={styles.targetItemsRow}>
+              <TouchableOpacity
+                style={styles.targetItem}
+                activeOpacity={0.8}
+                onPress={() => router.push("/tilawah-harian")}
+              >
+                <View style={styles.targetItemIcon}>
+                  <FontAwesome name="book" size={16} color={Colors.primary} />
+                </View>
+                <Text style={styles.targetItemLabel}>Tilawah</Text>
+                <Text style={styles.targetItemValue}>
+                  {todayPages} / {DAILY_TILAWAH_TARGET} halaman
+                </Text>
+                <View style={styles.targetItemTrack}>
+                  <View
+                    style={[
+                      styles.targetItemFill,
+                      { width: `${tilawahPercent}%` },
+                    ]}
+                  />
+                </View>
+              </TouchableOpacity>
+
+              <View style={styles.targetDivider} />
+
+              <TouchableOpacity
+                style={styles.targetItem}
+                activeOpacity={0.8}
+                onPress={() => router.push("/(tabs)/tarbiyah")}
+              >
+                <View style={styles.targetItemIcon}>
+                  <Text style={styles.targetItemArab}>ي</Text>
+                </View>
+                <Text style={styles.targetItemLabel}>Tajwid</Text>
+                <Text style={styles.targetItemValue} numberOfLines={1}>
+                  Pelajari idzhar
+                </Text>
+                <View style={styles.targetItemTrack}>
+                  <View style={[styles.targetItemFill, { width: "35%" }]} />
+                </View>
+              </TouchableOpacity>
+
+              <View style={styles.targetDivider} />
+
+              <TouchableOpacity
+                style={styles.targetItem}
+                activeOpacity={0.8}
+                onPress={() => router.push("/dzikir")}
+              >
+                <View style={styles.targetItemIcon}>
+                  <FontAwesome name="leaf" size={16} color={Colors.primary} />
+                </View>
+                <Text style={styles.targetItemLabel}>Dzikir Pagi</Text>
+                <Text style={styles.targetItemValue}>
+                  {dzikirPagiDone} / {dzikirPagiTotal} dzikir
+                </Text>
+                <View style={styles.targetItemTrack}>
+                  <View
+                    style={[
+                      styles.targetItemFill,
+                      {
+                        width: `${Math.min(
+                          Math.round(
+                            (dzikirPagiDone / Math.max(dzikirPagiTotal, 1)) *
+                              100,
+                          ),
+                          100,
+                        )}%`,
+                      },
+                    ]}
+                  />
+                </View>
+              </TouchableOpacity>
+            </View>
+          </View>
+
+          {/* ===== Lanjut Terakhir ===== */}
+          {lastTilawah && (
+            <TouchableOpacity
+              style={styles.lastReadCard}
+              activeOpacity={0.85}
               onPress={() =>
                 router.push({
                   pathname: "/surah/[surahNumber]",
                   params: {
-                    surahNumber: surah.number.toString(),
-                    surahName: surah.englishName,
+                    surahNumber: String(lastTilawah.suratNumber),
+                    surahName: lastTilawah.suratName,
                   },
                 })
               }
             >
-              <View style={styles.popularTop}>
-                <View style={styles.popularBadge}>
-                  <Text style={styles.popularBadgeText}>{surah.number}</Text>
+              <View style={styles.lastReadLeft}>
+                <View style={styles.lastReadIconBox}>
+                  <FontAwesome name="clock-o" size={18} color={Colors.accent} />
                 </View>
-                <FontAwesome name="play-circle" size={20} color={Colors.primary} />
+                <View style={styles.lastReadTextWrap}>
+                  <Text style={styles.lastReadLabel}>Lanjut Terakhir</Text>
+                  <Text style={styles.lastReadSurah}>
+                    QS. {lastTilawah.suratName}
+                  </Text>
+                  <Text style={styles.lastReadMeta}>
+                    {lastTilawah.jumlahHalaman} halaman • Juz {lastTilawah.juz}
+                  </Text>
+                  <Text style={styles.lastReadTime}>
+                    Terakhir dibaca {relativeDateText(lastTilawah.tanggal)}
+                  </Text>
+                </View>
               </View>
-              <Text style={styles.popularArabic}>{surah.name}</Text>
-              <Text style={styles.popularName}>{surah.englishName}</Text>
-              <Text style={styles.popularMeta}>
-                {surah.numberOfAyahs} ayat
-              </Text>
+              <View style={styles.lastReadButton}>
+                <Text style={styles.lastReadButtonText}>Lanjutkan</Text>
+                <FontAwesome
+                  name="chevron-right"
+                  size={11}
+                  color={Colors.primary}
+                />
+              </View>
             </TouchableOpacity>
-          ))}
-        </ScrollView>
-        <View style={{ height: 16 }} />
+          )}
+
+          {/* ===== Ceramah Video Section ===== */}
+          {ceramahVideos &&
+            ceramahVideos.length > 0 &&
+            (() => {
+              const liveVideos = ceramahVideos.filter((v) => v.isLive);
+              const regularVideos = ceramahVideos.filter((v) => !v.isLive);
+              const featuredLive = liveVideos[0] ?? null;
+              return (
+                <>
+                  {/* Featured Live Video */}
+                  {featuredLive &&
+                    (() => {
+                      const videoId = extractYouTubeId(featuredLive.youtubeUrl);
+                      const thumbUri = videoId
+                        ? `https://img.youtube.com/vi/${videoId}/hqdefault.jpg`
+                        : null;
+                      return (
+                        <View style={styles.ceramahSection}>
+                          <View style={styles.sectionHeader}>
+                            <View
+                              style={{
+                                flexDirection: "row",
+                                alignItems: "center",
+                                gap: 8,
+                              }}
+                            >
+                              <View style={styles.liveDot} />
+                              <Text style={styles.sectionTitle}>
+                                Siaran Langsung
+                              </Text>
+                            </View>
+                          </View>
+                          <TouchableOpacity
+                            style={styles.featuredLiveCard}
+                            activeOpacity={0.9}
+                            onPress={() => {
+                              setSelectedVideo({
+                                youtubeUrl: featuredLive.youtubeUrl,
+                                judul: featuredLive.judul,
+                                isLive: true,
+                              });
+                              setIsFullscreen(false);
+                              setVideoModalVisible(true);
+                            }}
+                          >
+                            {thumbUri ? (
+                              <Image
+                                source={{ uri: thumbUri }}
+                                style={styles.featuredLiveThumb}
+                                resizeMode="cover"
+                              />
+                            ) : (
+                              <View
+                                style={[
+                                  styles.featuredLiveThumb,
+                                  { backgroundColor: "#1a1a1a" },
+                                ]}
+                              />
+                            )}
+                            <View style={styles.featuredLiveOverlay}>
+                              <View style={styles.liveBadgeRow}>
+                                <View style={styles.liveBadge}>
+                                  <View style={styles.liveBadgeDot} />
+                                  <Text style={styles.liveBadgeText}>LIVE</Text>
+                                </View>
+                              </View>
+                              <View style={styles.featuredLivePlayBtn}>
+                                <FontAwesome
+                                  name="play-circle"
+                                  size={56}
+                                  color="rgba(255,255,255,0.92)"
+                                />
+                              </View>
+                              <View style={styles.featuredLiveInfo}>
+                                <Text
+                                  style={styles.featuredLiveTitle}
+                                  numberOfLines={2}
+                                >
+                                  {featuredLive.judul}
+                                </Text>
+                                {featuredLive.deskripsi ? (
+                                  <Text
+                                    style={styles.featuredLiveDesc}
+                                    numberOfLines={1}
+                                  >
+                                    {featuredLive.deskripsi}
+                                  </Text>
+                                ) : null}
+                              </View>
+                            </View>
+                          </TouchableOpacity>
+                        </View>
+                      );
+                    })()}
+
+                  {/* Regular Videos List */}
+                  {regularVideos.length > 0 && (
+                    <View>
+                      <View style={styles.sectionHeader}>
+                        <Text style={styles.sectionTitle}>Video Ceramah</Text>
+                      </View>
+                      <ScrollView
+                        horizontal
+                        showsHorizontalScrollIndicator={false}
+                        contentContainerStyle={styles.ceramahScroll}
+                      >
+                        {regularVideos.map((item) => {
+                          const videoId = extractYouTubeId(item.youtubeUrl);
+                          const thumbUri = videoId
+                            ? `https://img.youtube.com/vi/${videoId}/mqdefault.jpg`
+                            : null;
+                          return (
+                            <TouchableOpacity
+                              key={item._id}
+                              style={styles.ceramahCard}
+                              activeOpacity={0.85}
+                              onPress={() => {
+                                setSelectedVideo({
+                                  youtubeUrl: item.youtubeUrl,
+                                  judul: item.judul,
+                                  isLive: false,
+                                });
+                                setIsFullscreen(false);
+                                setVideoModalVisible(true);
+                              }}
+                            >
+                              <View style={styles.ceramahThumbWrap}>
+                                {thumbUri ? (
+                                  <Image
+                                    source={{ uri: thumbUri }}
+                                    style={styles.ceramahThumb}
+                                    resizeMode="cover"
+                                  />
+                                ) : (
+                                  <View
+                                    style={[
+                                      styles.ceramahThumb,
+                                      { backgroundColor: "#1a1a1a" },
+                                    ]}
+                                  />
+                                )}
+                                <View style={styles.ceramahPlayOverlay}>
+                                  <FontAwesome
+                                    name="play-circle"
+                                    size={30}
+                                    color="rgba(255,255,255,0.88)"
+                                  />
+                                </View>
+                              </View>
+                              <Text
+                                style={styles.ceramahCardTitle}
+                                numberOfLines={2}
+                              >
+                                {item.judul}
+                              </Text>
+                            </TouchableOpacity>
+                          );
+                        })}
+                      </ScrollView>
+                    </View>
+                  )}
+                </>
+              );
+            })()}
+
+          {/* Hadis Harian */}
+          <View style={styles.sectionHeader}>
+            <Text style={styles.sectionTitle}>Hadis Harian</Text>
+            <View style={{ flexDirection: "row", gap: 12 }}>
+              <TouchableOpacity onPress={() => router.push("/hadis")}>
+                <FontAwesome name="search" size={16} color={Colors.primary} />
+              </TouchableOpacity>
+              <TouchableOpacity
+                onPress={loadRandomHadis}
+                disabled={hadisLoading}
+              >
+                <FontAwesome name="refresh" size={16} color={Colors.primary} />
+              </TouchableOpacity>
+            </View>
+          </View>
+          <View style={styles.hadisCard}>
+            {hadisLoading ? (
+              <ActivityIndicator
+                size="small"
+                color={Colors.primary}
+                style={{ paddingVertical: 24 }}
+              />
+            ) : hadis ? (
+              <>
+                {hadis.grade || hadis.takhrij ? (
+                  <View style={styles.hadisMetaRow}>
+                    {hadis.takhrij ? (
+                      <View style={styles.hadisMetaBadge}>
+                        <Text style={styles.hadisMetaText}>
+                          {hadis.takhrij}
+                        </Text>
+                      </View>
+                    ) : null}
+                    {hadis.grade ? (
+                      <View
+                        style={[styles.hadisMetaBadge, styles.hadisGradeBadge]}
+                      >
+                        <Text style={styles.hadisMetaText}>{hadis.grade}</Text>
+                      </View>
+                    ) : null}
+                  </View>
+                ) : null}
+                <Text style={styles.hadisArab}>{hadis.text.ar}</Text>
+                <View style={styles.hadisDivider} />
+                <Text style={styles.hadisIndo}>{hadis.text.id}</Text>
+                <View style={styles.hadisNav}>
+                  <TouchableOpacity
+                    style={styles.hadisNavBtn}
+                    onPress={handlePrevHadis}
+                  >
+                    <FontAwesome
+                      name="chevron-left"
+                      size={13}
+                      color={Colors.primary}
+                    />
+                    <Text style={styles.hadisNavText}>Sebelumnya</Text>
+                  </TouchableOpacity>
+                  <Text style={styles.hadisId}>#{hadis.id}</Text>
+                  <TouchableOpacity
+                    style={styles.hadisNavBtn}
+                    onPress={handleNextHadis}
+                  >
+                    <Text style={styles.hadisNavText}>Berikutnya</Text>
+                    <FontAwesome
+                      name="chevron-right"
+                      size={13}
+                      color={Colors.primary}
+                    />
+                  </TouchableOpacity>
+                </View>
+              </>
+            ) : (
+              <Text style={styles.hadisError}>Gagal memuat hadis</Text>
+            )}
+          </View>
+
+          {/* Popular Surahs */}
+          <View style={styles.sectionHeader}>
+            <Text style={styles.sectionTitle}>Surah Populer</Text>
+            <TouchableOpacity onPress={() => setMode("surah-list")}>
+              <Text style={styles.viewAll}>Lihat semua →</Text>
+            </TouchableOpacity>
+          </View>
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={styles.popularScroll}
+          >
+            {getPopularSurahs().map((surah) => (
+              <TouchableOpacity
+                key={surah.number}
+                style={styles.popularCard}
+                onPress={() =>
+                  router.push({
+                    pathname: "/surah/[surahNumber]",
+                    params: {
+                      surahNumber: surah.number.toString(),
+                      surahName: surah.englishName,
+                    },
+                  })
+                }
+              >
+                <View style={styles.popularTop}>
+                  <View style={styles.popularBadge}>
+                    <Text style={styles.popularBadgeText}>{surah.number}</Text>
+                  </View>
+                  <FontAwesome
+                    name="play-circle"
+                    size={20}
+                    color={Colors.primary}
+                  />
+                </View>
+                <Text style={styles.popularArabic}>{surah.name}</Text>
+                <Text style={styles.popularName}>{surah.englishName}</Text>
+                <Text style={styles.popularMeta}>
+                  {surah.numberOfAyahs} ayat
+                </Text>
+              </TouchableOpacity>
+            ))}
+          </ScrollView>
+          <View style={{ height: 16 }} />
         </View>
       </Animated.ScrollView>
 
@@ -1978,13 +2508,21 @@ export default function TilawahScreen() {
         }}
         supportedOrientations={["portrait", "landscape"]}
       >
-        <View style={[styles.videoModalContainer, isFullscreen && styles.videoModalFullscreen]}>
+        <View
+          style={[
+            styles.videoModalContainer,
+            isFullscreen && styles.videoModalFullscreen,
+          ]}
+        >
           {/* Header bar */}
           {!isFullscreen && (
             <View style={[styles.videoModalHeader, { paddingTop: 48 }]}>
               <TouchableOpacity
                 style={styles.videoModalCloseBtn}
-                onPress={() => { setVideoModalVisible(false); setIsFullscreen(false); }}
+                onPress={() => {
+                  setVideoModalVisible(false);
+                  setIsFullscreen(false);
+                }}
               >
                 <FontAwesome name="arrow-left" size={18} color="#fff" />
               </TouchableOpacity>
@@ -2007,17 +2545,29 @@ export default function TilawahScreen() {
           )}
 
           {/* Player */}
-          <View style={isFullscreen ? styles.videoPlayerFullscreen : styles.videoPlayer}>
-            {selectedVideo && (() => {
-              const videoId = extractYouTubeId(selectedVideo.youtubeUrl);
-              if (!videoId) return (
-                <View style={styles.videoPlayerError}>
-                  <FontAwesome name="exclamation-circle" size={32} color="#aaa" />
-                  <Text style={{ color: "#aaa", marginTop: 8 }}>URL YouTube tidak valid</Text>
-                </View>
-              );
-              return <YouTubePlayer videoId={videoId} style={{ flex: 1 }} />;
-            })()}
+          <View
+            style={
+              isFullscreen ? styles.videoPlayerFullscreen : styles.videoPlayer
+            }
+          >
+            {selectedVideo &&
+              (() => {
+                const videoId = extractYouTubeId(selectedVideo.youtubeUrl);
+                if (!videoId)
+                  return (
+                    <View style={styles.videoPlayerError}>
+                      <FontAwesome
+                        name="exclamation-circle"
+                        size={32}
+                        color="#aaa"
+                      />
+                      <Text style={{ color: "#aaa", marginTop: 8 }}>
+                        URL YouTube tidak valid
+                      </Text>
+                    </View>
+                  );
+                return <YouTubePlayer videoId={videoId} style={{ flex: 1 }} />;
+              })()}
           </View>
 
           {/* Fullscreen exit button */}
@@ -2047,17 +2597,25 @@ export default function TilawahScreen() {
         onRequestClose={() => setMushafModalVisible(false)}
       >
         <View style={styles.modalOverlay}>
-          <View style={[styles.modalSheet, { paddingBottom: insets.bottom + 20 }]}>
+          <View
+            style={[styles.modalSheet, { paddingBottom: insets.bottom + 20 }]}
+          >
             <View style={styles.modalHeader}>
               <View>
                 <Text style={styles.modalTitle}>Mushaf Al-Qur'an</Text>
-                <Text style={styles.modalDateText}>Pilih cara membaca Al-Qur'an</Text>
+                <Text style={styles.modalDateText}>
+                  Pilih cara membaca Al-Qur'an
+                </Text>
               </View>
               <TouchableOpacity
                 style={styles.modalCloseBtn}
                 onPress={() => setMushafModalVisible(false)}
               >
-                <FontAwesome name="times" size={18} color={Colors.textSecondary} />
+                <FontAwesome
+                  name="times"
+                  size={18}
+                  color={Colors.textSecondary}
+                />
               </TouchableOpacity>
             </View>
 
@@ -2069,7 +2627,12 @@ export default function TilawahScreen() {
               }}
               activeOpacity={0.8}
             >
-              <View style={[styles.mushafChoiceIcon, { backgroundColor: "#E8F5E9" }]}>
+              <View
+                style={[
+                  styles.mushafChoiceIcon,
+                  { backgroundColor: "#E8F5E9" },
+                ]}
+              >
                 <FontAwesome name="list" size={22} color={Colors.primary} />
               </View>
               <View style={styles.mushafChoiceTextWrap}>
@@ -2078,7 +2641,11 @@ export default function TilawahScreen() {
                   Pilih surah dari daftar untuk dibaca
                 </Text>
               </View>
-              <FontAwesome name="chevron-right" size={14} color={Colors.textSecondary} />
+              <FontAwesome
+                name="chevron-right"
+                size={14}
+                color={Colors.textSecondary}
+              />
             </TouchableOpacity>
 
             <TouchableOpacity
@@ -2089,7 +2656,12 @@ export default function TilawahScreen() {
               }}
               activeOpacity={0.8}
             >
-              <View style={[styles.mushafChoiceIcon, { backgroundColor: "#FFF3E0" }]}>
+              <View
+                style={[
+                  styles.mushafChoiceIcon,
+                  { backgroundColor: "#FFF3E0" },
+                ]}
+              >
                 <FontAwesome name="book" size={22} color="#E65100" />
               </View>
               <View style={styles.mushafChoiceTextWrap}>
@@ -2098,7 +2670,11 @@ export default function TilawahScreen() {
                   Baca mushaf lengkap per halaman
                 </Text>
               </View>
-              <FontAwesome name="chevron-right" size={14} color={Colors.textSecondary} />
+              <FontAwesome
+                name="chevron-right"
+                size={14}
+                color={Colors.textSecondary}
+              />
             </TouchableOpacity>
           </View>
         </View>
@@ -2773,16 +3349,16 @@ const styles = StyleSheet.create({
   },
   categoryCard: {
     width: (width - 48) / 4 - 5, // 4 columns with 14px horizontal padding and 10px gap
-    backgroundColor: "#fff",
+    // backgroundColor: "#fff",
     borderRadius: 18,
     padding: 12,
     flexDirection: "column",
     alignItems: "center",
     gap: 8,
-    shadowColor: "#0F4A28",
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.05,
-    shadowRadius: 6,
+    // shadowColor: "#0F4A28",
+    // shadowOffset: { width: 0, height: 1 },
+    // shadowOpacity: 0.05,
+    // shadowRadius: 6,
     elevation: 1,
   },
   categoryIcon: {
