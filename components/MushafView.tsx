@@ -2,7 +2,6 @@ import ConfirmModal from "@/components/ConfirmModal";
 import { api } from "@/convex/_generated/api";
 import { getPageData, PageAyah, PageData } from "@/lib/alquran-api";
 import { useAuthContext } from "@/lib/auth-context";
-import { AyahAudioPlayer } from "@/lib/mushaf-audio";
 import {
   AUDIO_EDITIONS,
   Colors,
@@ -12,6 +11,7 @@ import {
   QURAN_EDITION_TRANSLATION,
   WEB_MAX_WIDTH,
 } from "@/lib/constants";
+import { AyahAudioPlayer } from "@/lib/mushaf-audio";
 import {
   colorizeArabicText,
   colorizeWordsByLine,
@@ -2894,7 +2894,7 @@ export default function MushafView({ initialPage = 0 }: Props) {
                 isDesktop
                   ? { top: 4, right: 30 }
                   : {
-                      top: (insets.top || TOP_INSET) + 4,
+                      top: 0,
                       right: 14,
                     },
               ]}
