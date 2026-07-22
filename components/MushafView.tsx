@@ -2,6 +2,7 @@ import ConfirmModal from "@/components/ConfirmModal";
 import { api } from "@/convex/_generated/api";
 import { getPageData, PageAyah, PageData } from "@/lib/alquran-api";
 import { useAuthContext } from "@/lib/auth-context";
+import { AyahAudioPlayer } from "@/lib/mushaf-audio";
 import {
   AUDIO_EDITIONS,
   Colors,
@@ -1373,7 +1374,7 @@ export default function MushafView({ initialPage = 0 }: Props) {
   const isCover = page === COVER_PAGE;
   const [data, setData] = useState<PageData | null>(null);
   const [loading, setLoading] = useState(true);
-  const [showTajwid, setShowTajwid] = useState(false);
+  const [showTajwid, setShowTajwid] = useState(true);
   const [legendVisible, setLegendVisible] = useState(false);
   const swipeX = useRef(new Animated.Value(0)).current;
 
@@ -1390,9 +1391,16 @@ export default function MushafView({ initialPage = 0 }: Props) {
   const [bookmarksVisible, setBookmarksVisible] = useState(false);
 
   // Audio
-  const soundRef = useRef<Audio.Sound | null>(null);
+  // AyahAudioPlayer membungkus elemen audio yang dipakai ulang — penting di
+  // browser HP agar lanjutan otomatis ke ayat berikutnya tidak diblokir
+  // autoplay policy (lihat lib/mushaf-audio.web.ts).
+  const ayahPlayerRef = useRef<AyahAudioPlayer | null>(null);
+  const getAyahPlayer = () => {
+    if (!ayahPlayerRef.current) ayahPlayerRef.current = new AyahAudioPlayer();
+    return ayahPlayerRef.current;
+  };
   // Page-turn sound effect — a separate Audio.Sound instance so it never
-  // interferes with ayah recitation playback (soundRef above).
+  // interferes with ayah recitation playback (ayahPlayerRef above).
   const pageTurnSoundRef = useRef<Audio.Sound | null>(null);
   const [audioUrls, setAudioUrls] = useState<string[]>([]);
   const [playingAyahIdx, setPlayingAyahIdx] = useState<number | null>(null);
@@ -2111,24 +2119,12 @@ export default function MushafView({ initialPage = 0 }: Props) {
     setIsPlayingAll(false);
     setPlayingAyahIdx(null);
     playingIdxRef.current = null;
-    if (soundRef.current) {
-      try {
-        await soundRef.current.stopAsync();
-        await soundRef.current.unloadAsync();
-      } catch {}
-      soundRef.current = null;
-    }
+    await getAyahPlayer().stop();
   };
 
   /** Unload current sound without resetting the sequential-play flag */
   const unloadCurrentSound = async () => {
-    if (soundRef.current) {
-      try {
-        await soundRef.current.stopAsync();
-        await soundRef.current.unloadAsync();
-      } catch {}
-      soundRef.current = null;
-    }
+    await getAyahPlayer().stop();
   };
 
   const playAyah = async (idx: number, isRepeat = false) => {
@@ -2143,36 +2139,28 @@ export default function MushafView({ initialPage = 0 }: Props) {
     setPlayingAyahIdx(idx);
     playingIdxRef.current = idx;
     try {
-      const { sound } = await Audio.Sound.createAsync(
-        { uri: audioUrls[idx] },
-        { shouldPlay: true },
-      );
-      soundRef.current = sound;
-      setAudioLoading(false);
-      sound.setOnPlaybackStatusUpdate((status) => {
-        if (status.isLoaded && status.didJustFinish) {
-          currentRepeatRef.current += 1;
+      await getAyahPlayer().play(audioUrls[idx], () => {
+        currentRepeatRef.current += 1;
 
-          // Check if we need to repeat this ayah
-          if (currentRepeatRef.current < repeatCountRef.current) {
-            playAyah(idx, true);
-            return;
-          }
+        // Check if we need to repeat this ayah
+        if (currentRepeatRef.current < repeatCountRef.current) {
+          playAyah(idx, true);
+          return;
+        }
 
-          if (isPlayingAllRef.current) {
-            const nextIdx = (playingIdxRef.current ?? 0) + 1;
-            if (nextIdx < audioUrls.length) {
-              playAyah(nextIdx);
-            } else {
-              stopAudio();
-            }
+        if (isPlayingAllRef.current) {
+          const nextIdx = (playingIdxRef.current ?? 0) + 1;
+          if (nextIdx < audioUrls.length) {
+            playAyah(nextIdx);
           } else {
-            setPlayingAyahIdx(null);
-            playingIdxRef.current = null;
-            soundRef.current = null;
+            stopAudio();
           }
+        } else {
+          setPlayingAyahIdx(null);
+          playingIdxRef.current = null;
         }
       });
+      setAudioLoading(false);
     } catch {
       setAudioLoading(false);
       setPlayingAyahIdx(null);
@@ -2200,10 +2188,7 @@ export default function MushafView({ initialPage = 0 }: Props) {
 
   useEffect(() => {
     return () => {
-      if (soundRef.current) {
-        soundRef.current.stopAsync().catch(() => {});
-        soundRef.current.unloadAsync().catch(() => {});
-      }
+      ayahPlayerRef.current?.stop().catch(() => {});
     };
   }, []);
 
@@ -2512,8 +2497,7 @@ export default function MushafView({ initialPage = 0 }: Props) {
               const audioIdx = verseKeyToAyahIdx.get(w.verseKey) ?? 0;
               const isActive = interactive && playingAyahIdx === audioIdx;
               const isLast = wi === lineWords.length - 1;
-              const nextIsEnd =
-                !isLast && lineWords[wi + 1].charType === "end";
+              const nextIsEnd = !isLast && lineWords[wi + 1].charType === "end";
 
               if (w.charType === "end") {
                 return (
@@ -2546,10 +2530,7 @@ export default function MushafView({ initialPage = 0 }: Props) {
               return (
                 <Text
                   key={w.id}
-                  style={[
-                    s.mushafLineWord,
-                    isActive && s.mushafWordActive,
-                  ]}
+                  style={[s.mushafLineWord, isActive && s.mushafWordActive]}
                   onPress={
                     interactive
                       ? () => {
@@ -2902,23 +2883,26 @@ export default function MushafView({ initialPage = 0 }: Props) {
             // </View>
           }
 
-          {/* Bookmark ribbon indicator — floats over the mushaf so it never
-              shifts the page content. pointerEvents="none" lets taps pass through
-              to the mushaf beneath it. */}
+          {/* Bookmark ribbon — a vertical cloth-like tab that hangs down from
+              the top edge of the page, mimicking a ribbon bookmark tucked into a
+              physical mushaf. pointerEvents="none" lets taps pass through. */}
           {isBookmarked && (
             <View
               pointerEvents="none"
               style={[
                 s.bookmarkRibbonWrap,
                 isDesktop
-                  ? { top: 12 }
-                  : { top: (insets.top || TOP_INSET) + 8 },
+                  ? { top: 4, right: 30 }
+                  : {
+                      top: (insets.top || TOP_INSET) + 4,
+                      right: 14,
+                    },
               ]}
             >
-              <View style={s.bookmarkRibbon}>
-                <FontAwesome name="bookmark" size={14} color={M.bookmark} />
+              <View style={s.bookmarkRibbonBody}>
                 <Text style={s.bookmarkRibbonText}>Batas Baca</Text>
               </View>
+              <View style={s.bookmarkRibbonTip} />
             </View>
           )}
 
@@ -4055,35 +4039,44 @@ const s = StyleSheet.create({
     marginTop: 2,
   },
 
-  // Bookmark ribbon — floating, absolute overlay (does not consume layout)
+  // Bookmark ribbon — a vertical cloth-like tab hanging from the top edge
+  // of the page, like a real ribbon bookmark tucked into a printed mushaf.
   bookmarkRibbonWrap: {
     position: "absolute",
-    left: 0,
-    right: 0,
     alignItems: "center",
     zIndex: 30,
     elevation: 30,
-  },
-  bookmarkRibbon: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 6,
-    backgroundColor: M.bookmark + "22",
-    paddingHorizontal: 12,
-    paddingVertical: 5,
-    borderRadius: 14,
-    borderWidth: 1,
-    borderColor: M.bookmark + "44",
-    shadowColor: M.bookmark,
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.2,
+    shadowColor: "transparent",
+    shadowOffset: { width: 1, height: 2 },
+    shadowOpacity: 0.28,
     shadowRadius: 3,
-    elevation: 4,
+  },
+  bookmarkRibbonBody: {
+    width: 26,
+    height: 104,
+    backgroundColor: M.bookmark,
+    alignItems: "center",
+    justifyContent: "center",
+    borderTopLeftRadius: 2,
+    borderTopRightRadius: 2,
   },
   bookmarkRibbonText: {
     fontSize: 11,
-    fontWeight: "600",
-    color: M.bookmark,
+    fontWeight: "700",
+    color: "#fff",
+    letterSpacing: 0.5,
+    transform: [{ rotate: "90deg" }],
+  },
+  // Pointed tail at the bottom of the ribbon (triangle pointing down).
+  bookmarkRibbonTip: {
+    width: 0,
+    height: 0,
+    borderLeftWidth: 13,
+    borderRightWidth: 13,
+    borderTopWidth: 12,
+    borderLeftColor: "transparent",
+    borderRightColor: "transparent",
+    borderTopColor: M.bookmark,
   },
 
   // Loading
