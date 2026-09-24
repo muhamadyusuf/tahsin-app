@@ -13,7 +13,7 @@ import {
   StyleSheet,
   Text,
   TouchableOpacity,
-  View
+  View,
 } from "react-native";
 
 const ROLE_LABELS: Record<string, string> = {
@@ -265,7 +265,7 @@ export default function ProfilScreen() {
 
       {/* Version */}
       <Text style={styles.version}>
-        Tangsel Mengaji v1.0.0 &copy; 2026 Diskominfo Tangsel
+        Tangsel Mengaji v1.0.0 &copy; 2026 Diskominfo Tangsel.
       </Text>
 
       <ConfirmModal
