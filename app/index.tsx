@@ -61,7 +61,7 @@ export default function Index() {
 
   return (
     <View style={styles.container}>
-      <Text style={styles.title}>Tahsin</Text>
+      <Text style={styles.title}>Tangsel Mengaji</Text>
       <Text style={styles.subtitle}>Belajar Al-Qur'an</Text>
       <ActivityIndicator size="large" color={Colors.primary} style={styles.spinner} />
     </View>
@@ -76,9 +76,10 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.primary,
   },
   title: {
-    fontSize: 42,
+    fontSize: 36,
     fontWeight: "bold",
     color: Colors.textLight,
+    textAlign: "center",
     marginBottom: 8,
   },
   subtitle: {

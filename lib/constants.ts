@@ -1,7 +1,7 @@
 import { Platform, Dimensions } from "react-native";
 
 // App-wide constants
-export const APP_NAME = "Tahsin";
+export const APP_NAME = "Tangsel Mengaji";
 export const APP_VERSION = "1.0.0";
 
 // Roles

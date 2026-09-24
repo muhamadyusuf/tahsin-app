@@ -1,5 +1,6 @@
 import { query, mutation } from "./_generated/server";
 import { v } from "convex/values";
+import { Doc } from "./_generated/dataModel";
 import {
   ADMIN_EMAILS,
   getAuthUser,
@@ -7,8 +8,9 @@ import {
   isStaff,
   requireAdministrator,
   requireSelf,
-  requireUser,
+  verifiedIdentityEmail,
 } from "./authz";
+import { assertMaxLength, cleanText, safeImageUrl, assertImageUrl } from "./sanitize";
 
 const ALL_ROLES = [
   "administrator",
@@ -18,6 +20,16 @@ const ALL_ROLES = [
 ] as const;
 
 type Role = (typeof ALL_ROLES)[number];
+
+// Profil pengguna sebagaimana dilihat pemanggil: field pribadi hanya terisi
+// untuk diri sendiri / staf (lihat getById).
+type VisibleUser = Pick<
+  Doc<"users">,
+  "_id" | "_creationTime" | "name" | "avatarUrl" | "role" | "isActive"
+> &
+  Partial<
+    Pick<Doc<"users">, "clerkId" | "email" | "phone" | "location" | "adminPengajianId">
+  >;
 
 // Get current user by Clerk ID — hanya mengembalikan profil pemanggil sendiri.
 // Mengembalikan null (bukan error) saat token belum terpasang agar alur
@@ -85,6 +97,12 @@ export const getAvailableRoles = query({
 
 // Create or update user from first login — identitas diambil dari JWT Clerk,
 // argumen clerkId harus cocok dengan identitas pemanggil.
+//
+// KEAMANAN: `args.email` berasal dari client dan TIDAK boleh dipercaya untuk
+// otorisasi. Email yang dipakai untuk promosi administrator (ADMIN_EMAILS)
+// hanya boleh berasal dari klaim `email` di JWT yang sudah diverifikasi.
+// Tanpa ini, siapa pun yang login bisa mengirim email admin dan otomatis
+// menjadi administrator.
 export const upsertUser = mutation({
   args: {
     clerkId: v.string(),
@@ -102,31 +120,53 @@ export const upsertUser = mutation({
       throw new Error("clerkId tidak cocok dengan akun yang sedang login");
     }
 
+    const trustedEmail = verifiedIdentityEmail(identity);
+    const claimedEmail = args.email.trim().slice(0, 254);
+
+    // Email admin tanpa bukti dari JWT = percobaan eskalasi (atau template JWT
+    // Clerk belum menyertakan klaim email). Tolak, jangan simpan.
+    if (!trustedEmail && ADMIN_EMAILS.includes(claimedEmail.toLowerCase())) {
+      throw new Error(
+        "Email administrator harus berasal dari token login yang terverifikasi"
+      );
+    }
+
+    const name = cleanText(args.name, 120) ?? "User";
+    const phone = cleanText(args.phone, 32);
+    const avatarUrl = safeImageUrl(args.avatarUrl);
+
     const existing = await ctx.db
       .query("users")
       .withIndex("by_clerkId", (q) => q.eq("clerkId", args.clerkId))
       .first();
 
     if (existing) {
-      const updates: Record<string, any> = {
-        email: args.email,
-        avatarUrl: args.avatarUrl,
-      };
-      // Auto-promote admin emails on every login
-      if (ADMIN_EMAILS.includes(args.email.toLowerCase()) && existing.role !== "administrator") {
+      const updates: Record<string, unknown> = { avatarUrl };
+      // Email hanya diperbarui dari sumber tepercaya; tanpa itu biarkan apa adanya.
+      if (trustedEmail) updates.email = trustedEmail;
+      // Auto-promote admin emails on every login (hanya via email terverifikasi)
+      if (
+        trustedEmail &&
+        ADMIN_EMAILS.includes(trustedEmail) &&
+        existing.role !== "administrator"
+      ) {
         updates.role = "administrator";
       }
       await ctx.db.patch(existing._id, updates);
       return existing._id;
     }
 
+    const email = trustedEmail ?? claimedEmail;
     return await ctx.db.insert("users", {
       clerkId: args.clerkId,
-      name: args.name,
-      email: args.email,
-      phone: args.phone,
-      role: ADMIN_EMAILS.includes(args.email.toLowerCase()) ? "administrator" : "santri",
-      avatarUrl: args.avatarUrl,
+      name,
+      email,
+      phone,
+      role:
+        trustedEmail && ADMIN_EMAILS.includes(trustedEmail)
+          ? "administrator"
+          : "santri",
+      avatarUrl,
       isActive: true,
     });
   },
@@ -143,6 +183,10 @@ export const updateProfile = mutation({
   },
   handler: async (ctx, args) => {
     await requireSelf(ctx, args.userId);
+    assertMaxLength(args.name, 120, "Nama");
+    assertMaxLength(args.phone, 32, "Nomor telepon");
+    assertMaxLength(args.location, 200, "Lokasi");
+    assertImageUrl(args.avatarUrl, "Foto profil");
     const { userId, ...updates } = args;
     const filtered = Object.fromEntries(
       Object.entries(updates).filter(([_, val]) => val !== undefined)
@@ -219,19 +263,39 @@ export const listAll = query({
   },
 });
 
-// Get user by ID — perlu login (dipakai menampilkan nama/avatar pengguna lain)
+// Get user by ID — profil lengkap (email, telepon, clerkId) hanya untuk diri
+// sendiri atau staf. Pengguna lain hanya mendapat data publik (nama & avatar),
+// karena ID pengguna mudah didapat dari leaderboard / daftar peserta meeting.
 export const getById = query({
   args: { userId: v.id("users") },
-  handler: async (ctx, args) => {
+  handler: async (ctx, args): Promise<VisibleUser | null> => {
     const caller = await getAuthUser(ctx);
     if (!caller) return null;
-    return await ctx.db.get(args.userId);
+    const user = await ctx.db.get(args.userId);
+    if (!user) return null;
+    if (caller._id === user._id || (await isStaff(ctx, caller))) return user;
+    return {
+      _id: user._id,
+      _creationTime: user._creationTime,
+      name: user.name,
+      avatarUrl: user.avatarUrl,
+      role: user.role,
+      isActive: user.isActive,
+    };
   },
 });
 
 // Promote a user to administrator by email (admin only)
 export const promoteByEmail = mutation({
-  args: { email: v.string(), role: v.string() },
+  args: {
+    email: v.string(),
+    role: v.union(
+      v.literal("administrator"),
+      v.literal("admin_pengajian"),
+      v.literal("ustadz"),
+      v.literal("santri")
+    ),
+  },
   handler: async (ctx, args) => {
     await requireAdministrator(ctx);
     const user = await ctx.db
@@ -239,7 +303,7 @@ export const promoteByEmail = mutation({
       .withIndex("by_email", (q) => q.eq("email", args.email))
       .first();
     if (!user) throw new Error("User not found");
-    await ctx.db.patch(user._id, { role: args.role as any });
+    await ctx.db.patch(user._id, { role: args.role });
     return user._id;
   },
 });

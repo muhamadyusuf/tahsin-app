@@ -71,6 +71,18 @@ export const create = mutation({
   },
   handler: async (ctx, args) => {
     await requireSelf(ctx, args.userId);
+
+    const lembaga = await ctx.db.get(args.adminPengajianId);
+    if (!lembaga || !lembaga.isActive) {
+      throw new Error("Lembaga tidak ditemukan atau tidak aktif");
+    }
+    if (args.requestedKelasId) {
+      const requested = await ctx.db.get(args.requestedKelasId);
+      if (!requested || requested.adminPengajianId !== args.adminPengajianId) {
+        throw new Error("Kelas yang dipilih bukan milik lembaga ini");
+      }
+    }
+
     let santri = await ctx.db
       .query("santri")
       .withIndex("by_userId", (q) => q.eq("userId", args.userId))
@@ -173,19 +185,33 @@ export const approve = mutation({
 
     const kelas = await ctx.db.get(args.assignedKelasId);
     if (!kelas) throw new Error("Kelas not found");
+    // Pemilik LKM A tidak boleh memasukkan santri ke kelas milik LKM B.
+    if (kelas.adminPengajianId !== request.adminPengajianId) {
+      throw new Error("Kelas bukan milik lembaga ini");
+    }
 
     await ctx.db.patch(request.santriId, {
       adminPengajianId: request.adminPengajianId,
       ustadzId: kelas.ustadzId,
     });
 
-    await ctx.db.insert("kelas_santri", {
-      kelasId: args.assignedKelasId,
-      santriId: request.santriId,
-      userId: request.userId,
-      joinedAt: new Date().toISOString(),
-      isActive: true,
-    });
+    const alreadyEnrolled = await ctx.db
+      .query("kelas_santri")
+      .withIndex("by_kelasId_santriId", (q) =>
+        q.eq("kelasId", args.assignedKelasId).eq("santriId", request.santriId)
+      )
+      .first();
+    if (alreadyEnrolled) {
+      await ctx.db.patch(alreadyEnrolled._id, { isActive: true });
+    } else {
+      await ctx.db.insert("kelas_santri", {
+        kelasId: args.assignedKelasId,
+        santriId: request.santriId,
+        userId: request.userId,
+        joinedAt: new Date().toISOString(),
+        isActive: true,
+      });
+    }
 
     await ctx.db.patch(args.id, {
       status: "approved",

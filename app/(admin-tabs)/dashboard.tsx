@@ -51,6 +51,8 @@ export default function DashboardScreen() {
     api.adminPengajianRequest.listByStatus,
     isLembaga ? "skip" : { status: "pending" },
   );
+  // Jumlah catatan perangkap keamanan yang belum ditinjau (maks. 100).
+  const newTrapHits = useQuery(api.trap.countNew, isLembaga ? "skip" : {});
 
   // --- Query khusus admin_pengajian (dibatasi lembaga sendiri) ---
   const lembaga = useQuery(
@@ -276,6 +278,14 @@ export default function DashboardScreen() {
           icon: "picture-o" as const,
           label: "Header Tilawah",
           onPress: () => router.push("/tilawah-header-form"),
+        },
+        {
+          icon: "shield" as const,
+          label:
+            newTrapHits && newTrapHits > 0
+              ? `Perangkap (${newTrapHits >= 100 ? "99+" : newTrapHits} baru)`
+              : "Perangkap Keamanan",
+          onPress: () => router.push("/admin-perangkap"),
         },
         {
           icon: "exchange" as const,

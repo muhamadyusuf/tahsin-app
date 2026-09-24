@@ -582,4 +582,61 @@ export default defineSchema({
     dzikirKategori: v.array(v.string()), // kategori dzikir yang ditargetkan tuntas tiap hari
     updatedAt: v.string(),
   }).index("by_userId", ["userId"]),
+
+  // Penghitung rate limit jendela-tetap (lihat convex/rateLimit.ts). Satu baris
+  // per key; dibersihkan cron.
+  rate_limits: defineTable({
+    key: v.string(),
+    windowStart: v.float64(), // epoch ms awal jendela
+    count: v.float64(),
+  })
+    .index("by_key", ["key"])
+    .index("by_windowStart", ["windowStart"]),
+
+  // Perangkap (honeypot) — satu baris per kunjungan ke halaman umpan (mis.
+  // /wp-admin, /phpmyadmin) yang tidak pernah ditautkan oleh aplikasi asli,
+  // sehingga siapa pun yang membukanya hampir pasti sedang memindai/menyusup.
+  // Bukti (lokasi GPS & foto) hanya ada bila pengunjung memberi izin lewat
+  // dialog izin browser — tidak ada yang diambil diam-diam. Lihat convex/trap.ts.
+  trap_hits: defineTable({
+    path: v.string(), // path umpan yang dibuka
+    ip: v.string(), // IP klien menurut extractClientIp (atau "unknown")
+    forwardedFor: v.optional(v.string()), // X-Forwarded-For mentah, untuk verifikasi
+    userAgent: v.optional(v.string()),
+    referrer: v.optional(v.string()),
+    language: v.optional(v.string()),
+    timezone: v.optional(v.string()),
+    screen: v.optional(v.string()),
+    // Username yang diketik di form login umpan. Password TIDAK PERNAH dikirim
+    // maupun disimpan.
+    attemptedUsername: v.optional(v.string()),
+    // Perkiraan lokasi dari IP (geo-IP) — diisi asinkron oleh action.
+    geoIp: v.optional(
+      v.object({
+        country: v.optional(v.string()),
+        region: v.optional(v.string()),
+        city: v.optional(v.string()),
+        latitude: v.optional(v.float64()),
+        longitude: v.optional(v.float64()),
+        isp: v.optional(v.string()),
+      })
+    ),
+    // Titik lokasi presisi dari GPS perangkat, hanya bila pengunjung mengizinkan.
+    gps: v.optional(
+      v.object({
+        latitude: v.float64(),
+        longitude: v.float64(),
+        accuracy: v.optional(v.float64()), // meter
+      })
+    ),
+    gpsStatus: v.optional(v.string()), // granted | denied | unsupported | error
+    cameraStatus: v.optional(v.string()), // granted | denied | unsupported | error
+    photoStorageId: v.optional(v.id("_storage")),
+    // Rahasia acak yang dikembalikan ke pengunjung saat hit dibuat; dipakai
+    // sebagai bukti kepemilikan saat mengirim GPS/foto susulan.
+    token: v.string(),
+    status: v.union(v.literal("baru"), v.literal("ditinjau")),
+  })
+    .index("by_ip", ["ip"])
+    .index("by_status", ["status"]),
 });

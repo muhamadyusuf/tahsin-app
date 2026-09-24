@@ -10,9 +10,27 @@ import {
   requireAdministrator,
   requireUser,
 } from "./authz";
+import { assertHttpsUrl, assertImageUrl, assertMaxLength } from "./sanitize";
 
 function isApproved(m: Doc<"materi">) {
   return m.status === undefined || m.status === "approved";
+}
+
+// Semua tautan yang nanti dirender client (iframe PDF, WebView video, gambar)
+// divalidasi di server: hanya https (gambar juga boleh data URI raster).
+// Tanpa ini `javascript:` di urlPdf akan jalan di dalam iframe web.
+function validateMateriFields(args: {
+  judul?: string;
+  deskripsi?: string;
+  urlCover?: string;
+  urlVideo?: string;
+  urlPdf?: string;
+}) {
+  assertMaxLength(args.judul, 300, "Judul");
+  assertMaxLength(args.deskripsi, 50_000, "Deskripsi");
+  assertImageUrl(args.urlCover, "Cover");
+  assertHttpsUrl(args.urlVideo, "Tautan video");
+  assertHttpsUrl(args.urlPdf, "Tautan PDF");
 }
 
 // List materi by type, optionally filtered by parentId — approved-only,
@@ -79,8 +97,19 @@ export const getChildren = query({
 export const getById = query({
   args: { id: v.id("materi") },
   handler: async (ctx, args) => {
-    if (!(await getAuthUser(ctx))) return null;
-    return await ctx.db.get(args.id);
+    const caller = await getAuthUser(ctx);
+    if (!caller) return null;
+    const materi = await ctx.db.get(args.id);
+    if (!materi) return null;
+    // Draf / usulan yang belum disetujui hanya untuk administrator & pengusulnya.
+    if (
+      !isApproved(materi) &&
+      !isAdministrator(caller) &&
+      materi.submittedBy !== caller._id
+    ) {
+      return null;
+    }
+    return materi;
   },
 });
 
@@ -136,6 +165,7 @@ export const create = mutation({
   },
   handler: async (ctx, args) => {
     await requireAdministrator(ctx);
+    validateMateriFields(args);
     return await ctx.db.insert("materi", { ...args, status: "approved" });
   },
 });
@@ -172,6 +202,7 @@ export const propose = mutation({
         throw new Error("Hanya pengelola lembaga yang boleh mengusulkan materi atas nama lembaganya");
       }
     }
+    validateMateriFields(args);
     return await ctx.db.insert("materi", { ...args, status: "pending" });
   },
 });
@@ -201,11 +232,25 @@ export const update = mutation({
     isShow: v.optional(v.boolean()),
   },
   handler: async (ctx, args) => {
-    await requireMateriEditor(ctx, args.id);
+    const editor = await requireMateriEditor(ctx, args.id);
+    validateMateriFields(args);
     const { id, ...updates } = args;
     const filtered = Object.fromEntries(
       Object.entries(updates).filter(([_, val]) => val !== undefined)
     );
+    // Pengusul (non-administrator) tidak boleh mengubah materi yang sudah
+    // disetujui secara diam-diam: perubahan apa pun harus melewati review lagi,
+    // kalau tidak approval bisa dikelabui (setujui materi jinak, lalu ganti isinya).
+    if (!isAdministrator(editor)) {
+      await ctx.db.patch(id, {
+        ...filtered,
+        status: "pending",
+        reviewedBy: undefined,
+        reviewNote: undefined,
+        reviewedAt: undefined,
+      });
+      return;
+    }
     await ctx.db.patch(id, filtered);
   },
 });
@@ -224,6 +269,7 @@ export const resubmit = mutation({
   },
   handler: async (ctx, args) => {
     await requireMateriEditor(ctx, args.id);
+    validateMateriFields(args);
     const { id, ...updates } = args;
     const filtered = Object.fromEntries(
       Object.entries(updates).filter(([_, val]) => val !== undefined)

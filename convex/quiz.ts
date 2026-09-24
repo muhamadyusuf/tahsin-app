@@ -1,12 +1,47 @@
-import { query, mutation } from "./_generated/server";
+import { query, mutation, MutationCtx } from "./_generated/server";
 import { v } from "convex/values";
 import { Id } from "./_generated/dataModel";
 import {
   assertSelfOrStaff,
   getAuthUser,
+  isAdministrator,
   requireContentManager,
   requireSelf,
+  requireUser,
 } from "./authz";
+import { assertImageUrl, assertHttpsUrl, assertMaxLength } from "./sanitize";
+
+// Pengelola kuis suatu materi: administrator, atau pengusul materi itu sendiri.
+// Sebelumnya cukup "pemilik LKM mana pun", sehingga LKM A bisa mengubah/menghapus
+// kuis materi milik administrator atau LKM B.
+async function requireQuizEditorForMateri(
+  ctx: MutationCtx,
+  materiId: Id<"materi">
+) {
+  const user = await requireUser(ctx);
+  if (isAdministrator(user)) return user;
+  const materi = await ctx.db.get(materiId);
+  if (!materi || materi.submittedBy !== user._id) {
+    throw new Error("Tidak punya akses mengelola kuis materi ini");
+  }
+  return user;
+}
+
+async function materiIdOfQuiz(ctx: MutationCtx, quizId: Id<"quiz">) {
+  const quiz = await ctx.db.get(quizId);
+  if (!quiz) throw new Error("Kuis tidak ditemukan");
+  return quiz.materiId;
+}
+
+function validateQuizMedia(args: {
+  question?: string;
+  urlImage?: string;
+  urlVideo?: string;
+}) {
+  assertMaxLength(args.question, 5000, "Pertanyaan");
+  assertImageUrl(args.urlImage, "Gambar");
+  assertHttpsUrl(args.urlVideo, "Tautan video");
+}
 
 // List quizzes for a materi
 export const listByMateri = query({
@@ -46,6 +81,7 @@ export const getQuizCountsByMateriIds = query({
   args: { materiIds: v.array(v.id("materi")) },
   handler: async (ctx, args) => {
     if (!(await getAuthUser(ctx))) return [];
+    if (args.materiIds.length > 500) return [];
     if (args.materiIds.length === 0) {
       return [] as { materiId: string; count: number }[];
     }
@@ -70,7 +106,16 @@ export const getQuizCountsByMateriIds = query({
 export const getUsageByQuizIds = query({
   args: { quizIds: v.array(v.id("quiz")) },
   handler: async (ctx, args) => {
-    if (!(await getAuthUser(ctx))) return [];
+    // Memindai seluruh tabel jawaban & progres → mahal. Hanya untuk pengelola
+    // konten (layar kelola kuis), bukan sembarang pengguna login.
+    const caller = await getAuthUser(ctx);
+    if (!caller) return [];
+    try {
+      await requireContentManager(ctx);
+    } catch {
+      return [];
+    }
+    if (args.quizIds.length > 500) return [];
     if (args.quizIds.length === 0) {
       return [] as {
         quizId: string;
@@ -126,7 +171,8 @@ export const createQuiz = mutation({
     type: v.union(v.literal("pilihan_ganda"), v.literal("essay")),
   },
   handler: async (ctx, args) => {
-    await requireContentManager(ctx);
+    await requireQuizEditorForMateri(ctx, args.materiId);
+    validateQuizMedia(args);
     return await ctx.db.insert("quiz", args);
   },
 });
@@ -141,7 +187,9 @@ export const createOption = mutation({
     poin: v.float64(),
   },
   handler: async (ctx, args) => {
-    await requireContentManager(ctx);
+    await requireQuizEditorForMateri(ctx, await materiIdOfQuiz(ctx, args.quizId));
+    assertMaxLength(args.deskripsi, 2000, "Opsi jawaban");
+    assertImageUrl(args.urlImage, "Gambar opsi");
     return await ctx.db.insert("quiz_options", args);
   },
 });
@@ -169,7 +217,16 @@ export const bulkCreateFromJson = mutation({
     ),
   },
   handler: async (ctx, args) => {
-    await requireContentManager(ctx);
+    await requireQuizEditorForMateri(ctx, args.materiId);
+    if (args.quizzes.length > 500) throw new Error("Maksimal 500 soal per impor");
+    for (const item of args.quizzes) {
+      validateQuizMedia(item);
+      if ((item.options?.length ?? 0) > 20) throw new Error("Maksimal 20 opsi per soal");
+      for (const option of item.options ?? []) {
+        assertMaxLength(option.deskripsi, 2000, "Opsi jawaban");
+        assertImageUrl(option.urlImage, "Gambar opsi");
+      }
+    }
     let createdQuizCount = 0;
     let createdOptionCount = 0;
 
@@ -268,7 +325,8 @@ export const updateQuiz = mutation({
     type: v.union(v.literal("pilihan_ganda"), v.literal("essay")),
   },
   handler: async (ctx, args) => {
-    await requireContentManager(ctx);
+    await requireQuizEditorForMateri(ctx, await materiIdOfQuiz(ctx, args.quizId));
+    validateQuizMedia(args);
     const { quizId, ...updates } = args;
     await ctx.db.patch(quizId, updates);
     return quizId;
@@ -289,7 +347,12 @@ export const replaceOptions = mutation({
     ),
   },
   handler: async (ctx, args) => {
-    await requireContentManager(ctx);
+    await requireQuizEditorForMateri(ctx, await materiIdOfQuiz(ctx, args.quizId));
+    if (args.options.length > 20) throw new Error("Maksimal 20 opsi per soal");
+    for (const option of args.options) {
+      assertMaxLength(option.deskripsi, 2000, "Opsi jawaban");
+      assertImageUrl(option.urlImage, "Gambar opsi");
+    }
     const existingOptions = await ctx.db
       .query("quiz_options")
       .withIndex("by_quizId", (q) => q.eq("quizId", args.quizId))
@@ -317,7 +380,7 @@ export const replaceOptions = mutation({
 export const removeQuiz = mutation({
   args: { quizId: v.id("quiz"), force: v.optional(v.boolean()) },
   handler: async (ctx, args) => {
-    await requireContentManager(ctx);
+    await requireQuizEditorForMateri(ctx, await materiIdOfQuiz(ctx, args.quizId));
     const allAnswers = await ctx.db.query("user_quiz_answers").collect();
     const answerCount = allAnswers.filter((answer) => answer.quizId === args.quizId).length;
 
@@ -365,6 +428,7 @@ export const submitAnswer = mutation({
   },
   handler: async (ctx, args) => {
     await requireSelf(ctx, args.userId);
+    assertMaxLength(args.answer, 10_000, "Jawaban");
     return await ctx.db.insert("user_quiz_answers", {
       userId: args.userId,
       quizId: args.quizId,

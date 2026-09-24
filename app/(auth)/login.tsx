@@ -140,7 +140,7 @@ export default function LoginScreen() {
       <View style={styles.contentArea}>
         <View style={styles.pill} />
 
-        <Text style={styles.title}>Tahsin</Text>
+        <Text style={styles.title}>Tangsel Mengaji</Text>
         <Text style={styles.subtitle}>
           Belajar membaca Al-Qur'an dengan{"\n"}tajwid yang benar
         </Text>

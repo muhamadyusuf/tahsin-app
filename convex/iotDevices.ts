@@ -1,6 +1,9 @@
 import { query, mutation, internalQuery, internalMutation } from "./_generated/server";
 import { v } from "convex/values";
 import { getAuthUser, isAdministrator, requireSelf, requireUser } from "./authz";
+import { assertMaxLength } from "./sanitize";
+
+const MAX_DEVICES_PER_USER = 10;
 
 function generateApiKey(): string {
   return `${crypto.randomUUID()}${crypto.randomUUID()}`.replace(/-/g, "");
@@ -14,6 +17,15 @@ export const registerDevice = mutation({
   },
   handler: async (ctx, args) => {
     await requireSelf(ctx, args.userId);
+    assertMaxLength(args.deviceName, 60, "Nama perangkat");
+    // Batasi jumlah perangkat agar tidak jadi jalan menumpuk data / API key.
+    const owned = await ctx.db
+      .query("iot_devices")
+      .withIndex("by_userId", (q) => q.eq("userId", args.userId))
+      .take(MAX_DEVICES_PER_USER + 1);
+    if (owned.length >= MAX_DEVICES_PER_USER) {
+      throw new Error(`Maksimal ${MAX_DEVICES_PER_USER} perangkat per akun`);
+    }
     const apiKey = generateApiKey();
     const id = await ctx.db.insert("iot_devices", {
       userId: args.userId,

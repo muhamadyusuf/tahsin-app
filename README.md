@@ -1,4 +1,4 @@
-# Tahsin
+# Tangsel Mengaji
 
 Aplikasi pembelajaran Al-Qur'an berbasis mobile-first yang membantu pengguna belajar membaca dan mentadaburi Al-Qur'an dengan benar. Dibangun dengan React Native (Expo) dan Convex.
 

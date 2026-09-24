@@ -1,6 +1,25 @@
 import { action, mutation, query } from "./_generated/server";
 import { v } from "convex/values";
+import { internal } from "./_generated/api";
 import { assertSelfOrStaff, getAuthUser, requireSelf } from "./authz";
+
+// Pelindung biaya API transkripsi (berbayar): ukuran audio, format, dan laju
+// per pengguna dibatasi. ~5 juta karakter base64 ≈ 3,7 MB audio.
+const MAX_AUDIO_BASE64_CHARS = 5_000_000;
+const MAX_EXPECTED_TEXT_CHARS = 5_000;
+const ANALYZE_LIMIT_PER_HOUR = 60;
+const ALLOWED_AUDIO_TYPES = new Set([
+  "audio/webm",
+  "audio/ogg",
+  "audio/mp4",
+  "audio/m4a",
+  "audio/x-m4a",
+  "audio/aac",
+  "audio/mpeg",
+  "audio/wav",
+  "audio/x-wav",
+  "audio/3gpp",
+]);
 
 type MistakeItem = {
   wordIndex: number;
@@ -440,8 +459,27 @@ export const analyzeRecitation = action({
   },
   handler: async (ctx, args) => {
     // Cegah pemakaian kuota API transkripsi oleh pemanggil anonim.
-    if (!(await ctx.auth.getUserIdentity())) {
+    const identity = await ctx.auth.getUserIdentity();
+    if (!identity) {
       throw new Error("Harus login untuk menggunakan Ngaji AI");
+    }
+    if (
+      args.audioBase64.length > MAX_AUDIO_BASE64_CHARS ||
+      args.expectedText.length > MAX_EXPECTED_TEXT_CHARS
+    ) {
+      throw new Error("Rekaman atau teks terlalu besar");
+    }
+    const baseMime = (args.mimeType ?? "audio/webm").split(";")[0].trim().toLowerCase();
+    if (!ALLOWED_AUDIO_TYPES.has(baseMime)) {
+      throw new Error("Format audio tidak didukung");
+    }
+    const allowed: boolean = await ctx.runMutation(internal.rateLimit.consume, {
+      key: `ngaji:${identity.tokenIdentifier}`,
+      limit: ANALYZE_LIMIT_PER_HOUR,
+      windowMs: 60 * 60 * 1000,
+    });
+    if (!allowed) {
+      throw new Error("Terlalu banyak analisis dalam satu jam. Coba lagi nanti.");
     }
     const keys = {
       gemini: process.env.GEMINI_API_KEY,

@@ -30,8 +30,12 @@ yarn-error.*
 .DS_Store
 *.pem
 
-# local env files
-.env*.local
+# local env files — JANGAN PERNAH commit. Berisi kunci rahasia (mis. CLERK_SECRET_KEY).
+# Hanya .env.example (tanpa nilai asli) yang boleh masuk repo.
+.env
+.env.*
+.env *
+!.env.example
 
 # typescript
 *.tsbuildinfo

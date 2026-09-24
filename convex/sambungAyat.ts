@@ -1,6 +1,11 @@
 import { query, mutation } from "./_generated/server";
 import { v } from "convex/values";
 import { assertSelfOrStaff, getAuthUser, requireSelf } from "./authz";
+import { assertMaxLength } from "./sanitize";
+
+// Poin maksimum per jawaban benar di client: (100 + bonus waktu 50) × pengali 5.
+const MAX_POINTS_PER_ANSWER = 150 * 5;
+const MAX_QUESTIONS_PER_RUN = 1000;
 
 // Get the logged-in user's personal best score
 export const getMyBest = query({
@@ -62,6 +67,19 @@ export const submitScore = mutation({
   },
   handler: async (ctx, args) => {
     await requireSelf(ctx, args.userId);
+    // Skor dikirim client sehingga bisa dipalsukan; setidaknya tolak nilai yang
+    // mustahil secara matematis agar papan peringkat tidak diisi angka sembarang.
+    const nums = [args.score, args.correctCount, args.totalCount, args.bestCombo];
+    if (
+      nums.some((n) => !Number.isFinite(n) || n < 0) ||
+      args.totalCount > MAX_QUESTIONS_PER_RUN ||
+      args.correctCount > args.totalCount ||
+      args.bestCombo > args.correctCount ||
+      args.score > args.correctCount * MAX_POINTS_PER_ANSWER
+    ) {
+      throw new Error("Skor tidak valid");
+    }
+    assertMaxLength(args.juzRange, 60, "Rentang juz");
     const existing = await ctx.db
       .query("sambung_ayat_scores")
       .withIndex("by_userId", (q) => q.eq("userId", args.userId))

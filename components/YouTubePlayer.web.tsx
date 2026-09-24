@@ -7,7 +7,7 @@ interface Props {
 }
 
 export default function YouTubePlayer({ videoId, style }: Props) {
-  const embedUrl = `https://www.youtube.com/embed/${videoId}?autoplay=1&rel=0&modestbranding=1`;
+  const embedUrl = `https://www.youtube.com/embed/${encodeURIComponent(videoId)}?autoplay=1&rel=0&modestbranding=1`;
 
   return (
     <View style={[{ flex: 1, backgroundColor: "#000" }, style]}>

@@ -1,17 +1,17 @@
+import { Colors } from "@/lib/constants";
+import FontAwesome from "@expo/vector-icons/FontAwesome";
 import React, { useState } from "react";
 import {
-  View,
-  Text,
-  StyleSheet,
-  ScrollView,
-  TouchableOpacity,
-  Linking,
   LayoutAnimation,
+  Linking,
   Platform,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
   UIManager,
+  View,
 } from "react-native";
-import FontAwesome from "@expo/vector-icons/FontAwesome";
-import { Colors } from "@/lib/constants";
 
 if (
   Platform.OS === "android" &&
@@ -44,7 +44,7 @@ const FAQ_DATA = [
   {
     question: "Apakah aplikasi ini gratis?",
     answer:
-      "Ya, aplikasi Tahsin sepenuhnya gratis untuk digunakan. Kami berkomitmen untuk memudahkan semua orang dalam belajar Al-Qur'an.",
+      "Ya, aplikasi Tangsel Mengaji sepenuhnya gratis untuk digunakan. Kami berkomitmen untuk memudahkan semua orang dalam belajar Al-Qur'an.",
   },
   {
     question: "Bagaimana cara mengganti qari/suara bacaan?",
@@ -105,14 +105,18 @@ export default function BantuanScreen() {
       <View style={styles.contactCard}>
         <TouchableOpacity
           style={styles.contactRow}
-          onPress={() => Linking.openURL("mailto:support@tahsin.singkat.in")}
+          onPress={() =>
+            Linking.openURL("mailto:diskominfo@tangerangselatankota.go.id")
+          }
         >
           <View style={[styles.contactIcon, { backgroundColor: "#E3F2FD" }]}>
             <FontAwesome name="envelope" size={18} color="#1565C0" />
           </View>
           <View style={styles.contactInfo}>
             <Text style={styles.contactLabel}>Email</Text>
-            <Text style={styles.contactValue}>support@tahsin.singkat.in</Text>
+            <Text style={styles.contactValue}>
+              diskominfo@tangerangselatankota.go.id
+            </Text>
           </View>
           <FontAwesome
             name="external-link"
@@ -125,14 +129,18 @@ export default function BantuanScreen() {
 
         <TouchableOpacity
           style={styles.contactRow}
-          onPress={() => Linking.openURL("https://tahsin.singkat.in")}
+          onPress={() =>
+            Linking.openURL("https://diskominfo.tangerangselatankota.go.id/")
+          }
         >
           <View style={[styles.contactIcon, { backgroundColor: "#E8F5E9" }]}>
             <FontAwesome name="globe" size={18} color={Colors.primary} />
           </View>
           <View style={styles.contactInfo}>
             <Text style={styles.contactLabel}>Website</Text>
-            <Text style={styles.contactValue}>tahsin.singkat.in</Text>
+            <Text style={styles.contactValue}>
+              diskominfo.tangerangselatankota.go.id
+            </Text>
           </View>
           <FontAwesome
             name="external-link"

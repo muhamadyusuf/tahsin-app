@@ -1,8 +1,34 @@
 import { query, mutation } from "./_generated/server";
 import { v } from "convex/values";
-import { getAuthUser, isAdministrator, requireAdministrator, requireSelf, requireUser } from "./authz";
+import { getAuthUser, isAdministrator, requireAdministrator, requireUser } from "./authz";
+import { assertImageUrl, assertMaxLength } from "./sanitize";
 
-// Create admin pengajian — untuk diri sendiri (administrator boleh untuk siapa pun)
+function validateLembagaFields(args: {
+  namaLembaga?: string;
+  alamat?: string;
+  kota?: string;
+  provinsi?: string;
+  fotoUrl?: string;
+  latitude?: number;
+  longitude?: number;
+}) {
+  assertMaxLength(args.namaLembaga, 200, "Nama lembaga");
+  assertMaxLength(args.alamat, 500, "Alamat");
+  assertMaxLength(args.kota, 100, "Kota");
+  assertMaxLength(args.provinsi, 100, "Provinsi");
+  assertImageUrl(args.fotoUrl, "Foto lembaga");
+  if (
+    (args.latitude !== undefined && !(args.latitude >= -90 && args.latitude <= 90)) ||
+    (args.longitude !== undefined && !(args.longitude >= -180 && args.longitude <= 180))
+  ) {
+    throw new Error("Koordinat tidak valid");
+  }
+}
+
+// Create admin pengajian — HANYA administrator. User biasa mengajukan lewat
+// adminPengajianRequest.create dan menunggu persetujuan; jika mutation ini
+// terbuka untuk diri sendiri, siapa pun bisa melewati approval, otomatis
+// menjadi staf (isStaff) dan membaca daftar seluruh pengguna.
 export const create = mutation({
   args: {
     userId: v.id("users"),
@@ -15,7 +41,8 @@ export const create = mutation({
     fotoUrl: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
-    await requireSelf(ctx, args.userId);
+    await requireAdministrator(ctx);
+    validateLembagaFields(args);
     const existing = await ctx.db
       .query("admin_pengajian")
       .withIndex("by_userId", (q) => q.eq("userId", args.userId))
@@ -93,6 +120,7 @@ export const update = mutation({
     if (row.userId !== user._id && !isAdministrator(user)) {
       throw new Error("Bukan pengelola lembaga ini");
     }
+    validateLembagaFields(args);
     const { id, ...updates } = args;
     const filtered = Object.fromEntries(
       Object.entries(updates).filter(([_, val]) => val !== undefined)
@@ -104,7 +132,7 @@ export const update = mutation({
 export const remove = mutation({
   args: { id: v.id("admin_pengajian") },
   handler: async (ctx, args) => {
-    const user = await requireAdministrator(ctx);
+    await requireAdministrator(ctx);
     const row = await ctx.db.get(args.id);
     if (!row) throw new Error("Lembaga tidak ditemukan");
     await ctx.db.delete(args.id);

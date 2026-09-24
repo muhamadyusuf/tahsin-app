@@ -1,6 +1,6 @@
 {
   "expo": {
-    "name": "Tahsin",
+    "name": "Tangsel Mengaji",
     "slug": "tahsin",
     "version": "1.0.0",
     "orientation": "portrait",
@@ -11,7 +11,7 @@
     "splash": {
       "image": "./assets/images/splash-icon.png",
       "resizeMode": "contain",
-      "backgroundColor": "#2E7D32"
+      "backgroundColor": "#FFFFFF"
     },
     "ios": {
       "supportsTablet": true,
@@ -20,7 +20,7 @@
     "android": {
       "adaptiveIcon": {
         "foregroundImage": "./assets/images/adaptive-icon.png",
-        "backgroundColor": "#2E7D32"
+        "backgroundColor": "#FFFFFF"
       },
       "package": "com.tahsin.app",
       "edgeToEdgeEnabled": true,

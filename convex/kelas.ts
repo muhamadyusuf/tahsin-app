@@ -1,6 +1,28 @@
 import { query, mutation } from "./_generated/server";
 import { v } from "convex/values";
-import { assertSelfOrStaff, getAuthUser, requireLkmOwner } from "./authz";
+import {
+  assertSelfOrStaff,
+  canManageKelas,
+  getAuthUser,
+  requireLkmOwner,
+} from "./authz";
+import { assertIsoDate, assertMaxLength } from "./sanitize";
+import { Id } from "./_generated/dataModel";
+import { MutationCtx } from "./_generated/server";
+
+// Ustadz pengampu harus bagian dari lembaga pemilik kelas — tanpa ini pemilik
+// LKM bisa menunjuk ustadz lembaga lain sehingga ustadz itu mendapat hak
+// kelola atas kelas yang bukan miliknya.
+async function assertUstadzInLembaga(
+  ctx: MutationCtx,
+  ustadzId: Id<"ustadz">,
+  adminPengajianId: Id<"admin_pengajian">
+) {
+  const ustadz = await ctx.db.get(ustadzId);
+  if (!ustadz || ustadz.adminPengajianId !== adminPengajianId) {
+    throw new Error("Ustadz bukan bagian dari lembaga ini");
+  }
+}
 
 const jadwalArg = v.object({
   hari: v.union(
@@ -61,6 +83,18 @@ export const create = mutation({
   },
   handler: async (ctx, args) => {
     await requireLkmOwner(ctx, args.adminPengajianId);
+    await assertUstadzInLembaga(ctx, args.ustadzId, args.adminPengajianId);
+    assertIsoDate(args.tanggalMulai, "Tanggal mulai");
+    assertMaxLength(args.nama, 200, "Nama kelas");
+    assertMaxLength(args.silabus, 5000, "Silabus");
+    if (
+      !Number.isInteger(args.jumlahPertemuan) ||
+      args.jumlahPertemuan < 1 ||
+      args.jumlahPertemuan > 200
+    ) {
+      throw new Error("Jumlah pertemuan harus 1-200");
+    }
+    if (args.jadwal.length > 14) throw new Error("Terlalu banyak slot jadwal");
     const { jadwal, ...kelasArgs } = args;
     const kelasId = await ctx.db.insert("kelas", {
       ...kelasArgs,
@@ -110,6 +144,11 @@ export const update = mutation({
     const kelas = await ctx.db.get(args.id);
     if (!kelas) throw new Error("Kelas tidak ditemukan");
     await requireLkmOwner(ctx, kelas.adminPengajianId);
+    if (args.ustadzId) {
+      await assertUstadzInLembaga(ctx, args.ustadzId, kelas.adminPengajianId);
+    }
+    assertMaxLength(args.nama, 200, "Nama kelas");
+    assertMaxLength(args.silabus, 5000, "Silabus");
     const { id, ...updates } = args;
     const filtered = Object.fromEntries(
       Object.entries(updates).filter(([_, val]) => val !== undefined)
@@ -128,6 +167,7 @@ export const setJadwal = mutation({
     const kelas = await ctx.db.get(args.kelasId);
     if (!kelas) throw new Error("Kelas tidak ditemukan");
     await requireLkmOwner(ctx, kelas.adminPengajianId);
+    if (args.jadwal.length > 14) throw new Error("Terlalu banyak slot jadwal");
     const existing = await ctx.db
       .query("kelas_jadwal")
       .withIndex("by_kelasId", (q) => q.eq("kelasId", args.kelasId))
@@ -187,11 +227,18 @@ export const getById = query({
 export const listSantri = query({
   args: { kelasId: v.id("kelas") },
   handler: async (ctx, args) => {
-    if (!(await getAuthUser(ctx))) return [];
-    return await ctx.db
+    // Roster lengkap hanya untuk pengelola kelas; santri hanya melihat
+    // keanggotaannya sendiri (bukan daftar teman sekelas).
+    const caller = await getAuthUser(ctx);
+    if (!caller) return [];
+    const kelas = await ctx.db.get(args.kelasId);
+    if (!kelas) return [];
+    const rows = await ctx.db
       .query("kelas_santri")
       .withIndex("by_kelasId", (q) => q.eq("kelasId", args.kelasId))
       .collect();
+    if (await canManageKelas(ctx, caller, kelas)) return rows;
+    return rows.filter((r) => r.userId === caller._id);
   },
 });
 

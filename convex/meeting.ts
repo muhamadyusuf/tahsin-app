@@ -1,7 +1,48 @@
 import { mutation, query, MutationCtx } from "./_generated/server";
 import { v } from "convex/values";
 import { Doc, Id } from "./_generated/dataModel";
-import { canManageKelas, getAuthUser, requireSelf, requireUser } from "./authz";
+import {
+  canManageKelas,
+  getAuthUser,
+  getPertemuanAccess,
+  isAdministrator,
+  requirePertemuanAccess,
+  requireSelf,
+  requireUser,
+} from "./authz";
+
+// Batas ukuran field yang dikirim client (cegah penyalahgunaan storage).
+const MAX_SESSION_ID = 100;
+const MAX_SIGNAL_PAYLOAD = 64 * 1024;
+
+function assertSessionId(sessionId: string) {
+  if (sessionId.length === 0 || sessionId.length > MAX_SESSION_ID) {
+    throw new Error("sessionId tidak valid");
+  }
+}
+
+/**
+ * Baris peserta milik sesi ini, dan pastikan sesi tersebut milik `userId`.
+ * Sesi (sessionId) dibuat di client, jadi tanpa pengecekan ini pengguna lain
+ * bisa "mengambil alih" / mengeluarkan sesi orang lain hanya dengan menebak id-nya.
+ */
+async function getOwnedParticipant(
+  ctx: MutationCtx,
+  pertemuanId: Id<"kelas_pertemuan">,
+  sessionId: string,
+  user: Doc<"users">
+): Promise<Doc<"meeting_participants"> | null> {
+  const row = await ctx.db
+    .query("meeting_participants")
+    .withIndex("by_pertemuanId_sessionId", (q) =>
+      q.eq("pertemuanId", pertemuanId).eq("sessionId", sessionId)
+    )
+    .unique();
+  if (row && row.userId !== user._id && !isAdministrator(user)) {
+    throw new Error("Sesi meeting ini milik pengguna lain");
+  }
+  return row;
+}
 
 // Peserta dianggap terputus jika heartbeat berhenti selama ini.
 const STALE_PARTICIPANT_MS = 60_000;
@@ -79,14 +120,17 @@ export const join = mutation({
   },
   handler: async (ctx, args) => {
     const user = await requireSelf(ctx, args.userId);
+    assertSessionId(args.sessionId);
+    // Hanya pengelola kelas & santri terdaftar yang boleh masuk room.
+    await requirePertemuanAccess(ctx, user, args.pertemuanId);
     const isHost = await verifyHost(ctx, user, args.pertemuanId, args.isHost);
     await purgeStale(ctx, args.pertemuanId);
-    const existing = await ctx.db
-      .query("meeting_participants")
-      .withIndex("by_pertemuanId_sessionId", (q) =>
-        q.eq("pertemuanId", args.pertemuanId).eq("sessionId", args.sessionId)
-      )
-      .unique();
+    const existing = await getOwnedParticipant(
+      ctx,
+      args.pertemuanId,
+      args.sessionId,
+      user
+    );
     if (existing) {
       await ctx.db.patch(existing._id, {
         lastSeen: Date.now(),
@@ -97,7 +141,8 @@ export const join = mutation({
         pertemuanId: args.pertemuanId,
         sessionId: args.sessionId,
         userId: args.userId,
-        name: args.name,
+        // Nama tampilan diambil dari profil, bukan argumen — cegah penyamaran.
+        name: user._id === args.userId ? user.name : args.name.slice(0, 120),
         micOn: true,
         camOn: true,
         isHost,
@@ -124,13 +169,17 @@ export const heartbeat = mutation({
   },
   handler: async (ctx, args) => {
     const user = await requireSelf(ctx, args.userId);
+    assertSessionId(args.sessionId);
+    const existing = await getOwnedParticipant(
+      ctx,
+      args.pertemuanId,
+      args.sessionId,
+      user
+    );
+    // Baris yang sudah ada berarti akses sudah diverifikasi saat join; hanya
+    // pendaftaran ulang (baris hilang karena purge) yang perlu cek akses lagi.
+    if (!existing) await requirePertemuanAccess(ctx, user, args.pertemuanId);
     const isHost = await verifyHost(ctx, user, args.pertemuanId, args.isHost);
-    const existing = await ctx.db
-      .query("meeting_participants")
-      .withIndex("by_pertemuanId_sessionId", (q) =>
-        q.eq("pertemuanId", args.pertemuanId).eq("sessionId", args.sessionId)
-      )
-      .unique();
     const fields = {
       lastSeen: Date.now(),
       micOn: args.micOn,
@@ -148,7 +197,7 @@ export const heartbeat = mutation({
         pertemuanId: args.pertemuanId,
         sessionId: args.sessionId,
         userId: args.userId,
-        name: args.name,
+        name: user._id === args.userId ? user.name : args.name.slice(0, 120),
         ...fields,
       });
     }
@@ -162,13 +211,15 @@ export const leave = mutation({
     sessionId: v.string(),
   },
   handler: async (ctx, args) => {
-    await requireUser(ctx);
-    const existing = await ctx.db
-      .query("meeting_participants")
-      .withIndex("by_pertemuanId_sessionId", (q) =>
-        q.eq("pertemuanId", args.pertemuanId).eq("sessionId", args.sessionId)
-      )
-      .unique();
+    const user = await requireUser(ctx);
+    assertSessionId(args.sessionId);
+    // Hanya pemilik sesi (atau administrator) yang boleh mengeluarkannya.
+    const existing = await getOwnedParticipant(
+      ctx,
+      args.pertemuanId,
+      args.sessionId,
+      user
+    );
     if (existing) await ctx.db.delete(existing._id);
     await deleteSignalsOfSession(ctx, args.pertemuanId, args.sessionId);
     return null;
@@ -178,7 +229,9 @@ export const leave = mutation({
 export const participants = query({
   args: { pertemuanId: v.id("kelas_pertemuan") },
   handler: async (ctx, args) => {
-    if (!(await getAuthUser(ctx))) return [];
+    const caller = await getAuthUser(ctx);
+    if (!caller) return [];
+    if (!(await getPertemuanAccess(ctx, caller, args.pertemuanId))) return [];
     return await ctx.db
       .query("meeting_participants")
       .withIndex("by_pertemuanId", (q) => q.eq("pertemuanId", args.pertemuanId))
@@ -200,18 +253,26 @@ export const signal = mutation({
     payload: v.string(),
   },
   handler: async (ctx, args) => {
-    await requireUser(ctx);
+    const user = await requireUser(ctx);
+    assertSessionId(args.fromSession);
+    assertSessionId(args.toSession);
+    if (args.payload.length > MAX_SIGNAL_PAYLOAD) {
+      throw new Error("Payload signal terlalu besar");
+    }
+    await requirePertemuanAccess(ctx, user, args.pertemuanId);
+    // Pengirim harus sesi yang terdaftar dan MILIKNYA sendiri — cegah
+    // penyusup memalsukan signal atas nama peserta lain. Signal dari sesi yang
+    // sudah di-purge dibuang diam-diam (klien akan join ulang lewat heartbeat).
+    const sender = await getOwnedParticipant(
+      ctx,
+      args.pertemuanId,
+      args.fromSession,
+      user
+    );
+    if (!sender) return null;
     // Perintah moderasi (mute / minta unmute) hanya sah dari host yang
     // terdaftar di room — cegah peserta biasa mem-mute peserta lain.
-    if (args.kind === "ctrl") {
-      const sender = await ctx.db
-        .query("meeting_participants")
-        .withIndex("by_pertemuanId_sessionId", (q) =>
-          q.eq("pertemuanId", args.pertemuanId).eq("sessionId", args.fromSession)
-        )
-        .unique();
-      if (!sender?.isHost) return null;
-    }
+    if (args.kind === "ctrl" && !sender.isHost) return null;
     await ctx.db.insert("meeting_signals", args);
     return null;
   },
@@ -228,13 +289,14 @@ export const sendMessage = mutation({
   },
   handler: async (ctx, args) => {
     const user = await requireSelf(ctx, args.userId);
+    await requirePertemuanAccess(ctx, user, args.pertemuanId);
     const text = args.text.trim().slice(0, 2000);
     if (!text) return null;
     await ctx.db.insert("meeting_messages", {
       pertemuanId: args.pertemuanId,
       userId: args.userId,
       // Nama diambil dari profil pemanggil, bukan argumen — cegah penyamaran.
-      name: user._id === args.userId ? user.name : args.name,
+      name: user._id === args.userId ? user.name : args.name.slice(0, 120),
       text,
     });
     return null;
@@ -244,7 +306,9 @@ export const sendMessage = mutation({
 export const listMessages = query({
   args: { pertemuanId: v.id("kelas_pertemuan") },
   handler: async (ctx, args) => {
-    if (!(await getAuthUser(ctx))) return [];
+    const caller = await getAuthUser(ctx);
+    if (!caller) return [];
+    if (!(await getPertemuanAccess(ctx, caller, args.pertemuanId))) return [];
     const rows = await ctx.db
       .query("meeting_messages")
       .withIndex("by_pertemuanId", (q) => q.eq("pertemuanId", args.pertemuanId))
@@ -260,7 +324,19 @@ export const signalsFor = query({
     sessionId: v.string(),
   },
   handler: async (ctx, args) => {
-    if (!(await getAuthUser(ctx))) return [];
+    // Signal berisi SDP/ICE (termasuk alamat IP peserta): hanya pemilik sesi
+    // penerima yang boleh membacanya.
+    const caller = await getAuthUser(ctx);
+    if (!caller) return [];
+    const session = await ctx.db
+      .query("meeting_participants")
+      .withIndex("by_pertemuanId_sessionId", (q) =>
+        q.eq("pertemuanId", args.pertemuanId).eq("sessionId", args.sessionId)
+      )
+      .unique();
+    if (!session || (session.userId !== caller._id && !isAdministrator(caller))) {
+      return [];
+    }
     return await ctx.db
       .query("meeting_signals")
       .withIndex("by_pertemuanId_toSession", (q) =>
@@ -273,10 +349,20 @@ export const signalsFor = query({
 export const consumeSignals = mutation({
   args: { ids: v.array(v.id("meeting_signals")) },
   handler: async (ctx, args) => {
-    await requireUser(ctx);
+    const user = await requireUser(ctx);
+    if (args.ids.length > 200) throw new Error("Terlalu banyak signal");
     for (const id of args.ids) {
       const row = await ctx.db.get(id);
-      if (row) await ctx.db.delete(id);
+      if (!row) continue;
+      // Hanya penerima signal yang boleh mengonsumsinya (bukan sembarang id).
+      const owner = await ctx.db
+        .query("meeting_participants")
+        .withIndex("by_pertemuanId_sessionId", (q) =>
+          q.eq("pertemuanId", row.pertemuanId).eq("sessionId", row.toSession)
+        )
+        .unique();
+      if (owner && owner.userId !== user._id && !isAdministrator(user)) continue;
+      await ctx.db.delete(id);
     }
     return null;
   },

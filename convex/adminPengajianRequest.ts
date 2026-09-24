@@ -7,6 +7,7 @@ import {
   requireAdministrator,
   requireSelf,
 } from "./authz";
+import { assertImageUrl, assertMaxLength } from "./sanitize";
 
 // User mengajukan diri menjadi admin_pengajian (membuka lembaga).
 // Menunggu persetujuan administrator.
@@ -23,6 +24,11 @@ export const create = mutation({
   },
   handler: async (ctx, args) => {
     const user = await requireSelf(ctx, args.userId);
+    assertMaxLength(args.namaLembaga, 200, "Nama lembaga");
+    assertMaxLength(args.alamat, 500, "Alamat");
+    assertMaxLength(args.kota, 100, "Kota");
+    assertMaxLength(args.provinsi, 100, "Provinsi");
+    assertImageUrl(args.fotoUrl, "Foto lembaga");
 
     // Sudah menjadi admin_pengajian? tidak perlu mengajukan.
     const existingLkm = await getLkmRow(ctx, user);

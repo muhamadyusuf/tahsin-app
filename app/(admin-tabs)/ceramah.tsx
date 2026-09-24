@@ -22,19 +22,7 @@ import FontAwesome from "@expo/vector-icons/FontAwesome";
 import { Colors } from "@/lib/constants";
 import ConfirmModal from "@/components/ConfirmModal";
 import { useAuthContext } from "@/lib/auth-context";
-
-function extractYouTubeId(url: string): string | null {
-  const patterns = [
-    /(?:youtube\.com\/watch\?v=|youtu\.be\/|youtube\.com\/embed\/)([^&?#\s]+)/,
-    /youtube\.com\/shorts\/([^&?#\s]+)/,
-    /youtube\.com\/live\/([^&?#\s]+)/,
-  ];
-  for (const pattern of patterns) {
-    const match = url.match(pattern);
-    if (match?.[1]) return match[1];
-  }
-  return null;
-}
+import { extractYouTubeId } from "@/lib/youtube";
 
 type VideoDoc = {
   _id: Id<"ceramah_video">;

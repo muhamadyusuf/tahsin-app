@@ -1,6 +1,7 @@
 import { mutation, query } from "./_generated/server";
 import { v } from "convex/values";
 import { getAuthUser, isAdministrator, requireAdministrator } from "./authz";
+import { assertHttpsUrl, assertMaxLength } from "./sanitize";
 
 // List all active ceramah videos (live first, then by createdAt desc)
 export const listActiveVideos = query({
@@ -44,6 +45,9 @@ export const addVideo = mutation({
   },
   handler: async (ctx, args) => {
     const admin = await requireAdministrator(ctx);
+    assertHttpsUrl(args.youtubeUrl, "Tautan YouTube");
+    assertMaxLength(args.judul, 200, "Judul");
+    assertMaxLength(args.deskripsi, 2000, "Deskripsi");
     return await ctx.db.insert("ceramah_video", {
       judul: args.judul,
       deskripsi: args.deskripsi,
@@ -68,6 +72,9 @@ export const updateVideo = mutation({
   },
   handler: async (ctx, args) => {
     await requireAdministrator(ctx);
+    assertHttpsUrl(args.youtubeUrl, "Tautan YouTube");
+    assertMaxLength(args.judul, 200, "Judul");
+    assertMaxLength(args.deskripsi, 2000, "Deskripsi");
     const { id, ...updates } = args;
     const patch: Partial<{
       judul: string;

@@ -9,6 +9,7 @@
 // - Query: mulai dengan getAuthUser() dan kembalikan hasil kosong bila belum
 //   login (token bisa belum terpasang sesaat setelah app dibuka), lalu pakai
 //   assert* untuk pelanggaran akses yang sesungguhnya.
+import type { UserIdentity } from "convex/server";
 import { QueryCtx, MutationCtx } from "./_generated/server";
 import { Doc, Id } from "./_generated/dataModel";
 
@@ -22,6 +23,21 @@ export const ADMIN_EMAILS = [
   "badrudin.on@gmail.com",
   "muhamadyusuf0012@gmail.com",
 ];
+
+/**
+ * Email pemanggil menurut JWT Clerk (ditandatangani & diverifikasi Convex),
+ * atau null bila klaim `email` tidak ada / Clerk menandainya belum terverifikasi.
+ *
+ * SATU-SATUNYA sumber email yang boleh dipercaya untuk keputusan otorisasi
+ * (mis. promosi ADMIN_EMAILS). Email yang dikirim client lewat argumen
+ * mutation tidak boleh dipakai untuk itu — client bisa mengisinya sesukanya.
+ */
+export function verifiedIdentityEmail(identity: UserIdentity): string | null {
+  const email = identity.email?.trim().toLowerCase();
+  if (!email) return null;
+  if (identity.emailVerified === false) return null;
+  return email;
+}
 
 /** Profil users milik pemanggil, atau null bila belum login / belum terdaftar. */
 export async function getAuthUser(ctx: Ctx): Promise<Doc<"users"> | null> {
@@ -171,4 +187,74 @@ export async function requireKelasManager(
     throw new Error("Tidak punya akses mengelola kelas ini");
   }
   return user;
+}
+
+/** Santri terdaftar aktif di kelas ini. */
+export async function isEnrolledInKelas(
+  ctx: Ctx,
+  user: Doc<"users">,
+  kelasId: Id<"kelas">
+): Promise<boolean> {
+  const santri = await ctx.db
+    .query("santri")
+    .withIndex("by_userId", (q) => q.eq("userId", user._id))
+    .first();
+  if (!santri) return false;
+  const enrollment = await ctx.db
+    .query("kelas_santri")
+    .withIndex("by_kelasId_santriId", (q) =>
+      q.eq("kelasId", kelasId).eq("santriId", santri._id)
+    )
+    .first();
+  return !!enrollment && enrollment.isActive;
+}
+
+/**
+ * Boleh melihat isi sebuah kelas (meeting, chat, rekaman, nilai): pengelola
+ * kelas (administrator / pemilik LKM / ustadz pengampu) atau santri yang
+ * terdaftar aktif di kelas tersebut.
+ */
+export async function canAccessKelas(
+  ctx: Ctx,
+  user: Doc<"users">,
+  kelas: Doc<"kelas">
+): Promise<boolean> {
+  if (await canManageKelas(ctx, user, kelas)) return true;
+  return await isEnrolledInKelas(ctx, user, kelas._id);
+}
+
+/**
+ * Hak akses pemanggil atas sebuah pertemuan (room meeting). Null bila
+ * pertemuan tidak ada atau pemanggil bukan pengelola/peserta kelasnya.
+ */
+export async function getPertemuanAccess(
+  ctx: Ctx,
+  user: Doc<"users">,
+  pertemuanId: Id<"kelas_pertemuan">
+): Promise<{
+  pertemuan: Doc<"kelas_pertemuan">;
+  kelas: Doc<"kelas">;
+  isManager: boolean;
+} | null> {
+  const pertemuan = await ctx.db.get(pertemuanId);
+  if (!pertemuan) return null;
+  const kelas = await ctx.db.get(pertemuan.kelasId);
+  if (!kelas) return null;
+  if (await canManageKelas(ctx, user, kelas)) {
+    return { pertemuan, kelas, isManager: true };
+  }
+  if (await isEnrolledInKelas(ctx, user, kelas._id)) {
+    return { pertemuan, kelas, isManager: false };
+  }
+  return null;
+}
+
+export async function requirePertemuanAccess(
+  ctx: Ctx,
+  user: Doc<"users">,
+  pertemuanId: Id<"kelas_pertemuan">
+) {
+  const access = await getPertemuanAccess(ctx, user, pertemuanId);
+  if (!access) throw new Error("Tidak punya akses ke pertemuan ini");
+  return access;
 }

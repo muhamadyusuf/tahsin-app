@@ -8,6 +8,23 @@ import {
 import { v } from "convex/values";
 import { Doc, Id } from "./_generated/dataModel";
 import { assertSelfOrStaff, getAuthUser, requireSelf } from "./authz";
+import { assertIsoDate, assertMaxLength, assertMushafPage } from "./sanitize";
+
+function validatePosition(args: {
+  page: number;
+  surahNumber: number;
+  surahName: string;
+  juz: number;
+}) {
+  assertMushafPage(args.page);
+  if (!Number.isInteger(args.surahNumber) || args.surahNumber < 1 || args.surahNumber > 114) {
+    throw new Error("Nomor surah tidak valid");
+  }
+  if (!Number.isInteger(args.juz) || args.juz < 1 || args.juz > 30) {
+    throw new Error("Nomor juz tidak valid");
+  }
+  assertMaxLength(args.surahName, 100, "Nama surah");
+}
 
 const sourceValidator = v.union(v.literal("app"), v.literal("iot"));
 
@@ -131,6 +148,8 @@ export const recordPageRead = mutation({
   args: recordPageReadArgs,
   handler: async (ctx, args) => {
     await requireSelf(ctx, args.userId);
+    validatePosition(args);
+    assertIsoDate(args.tanggal);
     return recordPageReadImpl(ctx, args);
   },
 });
@@ -152,6 +171,7 @@ export const updateReadingPosition = mutation({
   args: positionArgs,
   handler: async (ctx, args) => {
     await requireSelf(ctx, args.userId);
+    validatePosition(args);
     await upsertReadingPosition(ctx, { ...args, source: "app" });
   },
 });
@@ -178,6 +198,10 @@ export const finishReadingSession = mutation({
   },
   handler: async (ctx, args) => {
     await requireSelf(ctx, args.userId);
+    assertIsoDate(args.tanggal);
+    // Satu sesi baca tidak mungkin melebihi jumlah halaman mushaf.
+    if (args.pages.length > 604) throw new Error("Terlalu banyak halaman");
+    for (const p of args.pages) validatePosition(p);
     let saved = 0;
     for (const p of args.pages) {
       const result = await recordPageReadImpl(ctx, {

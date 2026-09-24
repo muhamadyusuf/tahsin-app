@@ -1,6 +1,7 @@
 import React from "react";
-import { StyleSheet } from "react-native";
+import { StyleSheet, Text, View } from "react-native";
 import { WebView } from "react-native-webview";
+import { isSafeHttpsUrl } from "@/lib/safe-url";
 
 interface Props {
   url: string;
@@ -11,6 +12,14 @@ interface Props {
 // kedua platform (Android WebView tidak bisa membuka PDF langsung). Berkas PDF
 // harus dapat diakses publik.
 export default function PdfViewer({ url, style }: Props) {
+  // `url` bisa berasal dari parameter rute yang dibuat penyerang — hanya https.
+  if (!isSafeHttpsUrl(url)) {
+    return (
+      <View style={[styles.web, styles.invalid, style]}>
+        <Text style={styles.invalidText}>Tautan berkas tidak valid.</Text>
+      </View>
+    );
+  }
   const viewerUrl = `https://docs.google.com/gview?embedded=1&url=${encodeURIComponent(
     url
   )}`;
@@ -18,7 +27,7 @@ export default function PdfViewer({ url, style }: Props) {
     <WebView
       source={{ uri: viewerUrl }}
       style={[styles.web, style]}
-      originWhitelist={["*"]}
+      originWhitelist={["https://*"]}
       startInLoadingState
       javaScriptEnabled
       domStorageEnabled
@@ -30,4 +39,6 @@ export default function PdfViewer({ url, style }: Props) {
 
 const styles = StyleSheet.create({
   web: { flex: 1, backgroundColor: "#fff" },
+  invalid: { alignItems: "center", justifyContent: "center", padding: 24 },
+  invalidText: { color: "#6F7F73", fontSize: 14 },
 });

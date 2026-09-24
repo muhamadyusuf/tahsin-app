@@ -1,6 +1,7 @@
 import { mutation, query } from "./_generated/server";
 import { v } from "convex/values";
 import { requireAdministrator } from "./authz";
+import { assertImageUrl } from "./sanitize";
 
 const APP_CONFIG_KEY = "global";
 
@@ -19,9 +20,12 @@ export const getPublicConfig = query({
   },
 });
 
+// Hanya administrator. Tanpa pemeriksaan ini siapa pun (bahkan tanpa login)
+// bisa mengunggah file sembarang ke storage proyek.
 export const generateUploadUrl = mutation({
   args: {},
   handler: async (ctx) => {
+    await requireAdministrator(ctx);
     return await ctx.storage.generateUploadUrl();
   },
 });
@@ -34,7 +38,7 @@ export const upsertTilawahHeaderImage = mutation({
   handler: async (ctx, args) => {
     await requireAdministrator(ctx);
 
-    let url = args.tilawahHeaderImageUrl;
+    let url = assertImageUrl(args.tilawahHeaderImageUrl, "Gambar header");
     if (args.storageId) {
       url = (await ctx.storage.getUrl(args.storageId)) ?? undefined;
     }

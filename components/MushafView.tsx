@@ -39,7 +39,6 @@ import {
   Modal,
   PanResponder,
   Platform,
-  Pressable,
   ScrollView,
   StatusBar,
   StyleSheet,
@@ -63,6 +62,7 @@ const SWIPE_ANIM_MS = 180;
 const PAGE_TURN_MS = 340; // outgoing-leaf turn duration (feel of a real page)
 const FLOATING_TOOLBAR_H = 64; // approx height of the floating glass toolbar pill
 const SCREEN_WIDTH = getDisplayWidth();
+const IS_MOBILE_SWIPE = Platform.OS === "ios" || Platform.OS === "android";
 
 // Regex to match bismillah prefix with any diacritics ordering (quran-uthmani)
 // Matches: بسم الله الرحمن الرحيم — base consonants with any combining marks
@@ -1374,7 +1374,7 @@ export default function MushafView({ initialPage = 0 }: Props) {
   const isCover = page === COVER_PAGE;
   const [data, setData] = useState<PageData | null>(null);
   const [loading, setLoading] = useState(true);
-  const [showTajwid, setShowTajwid] = useState(true);
+  const [showTajwid, setShowTajwid] = useState(false);
   const [legendVisible, setLegendVisible] = useState(false);
   const swipeX = useRef(new Animated.Value(0)).current;
 
@@ -1439,6 +1439,8 @@ export default function MushafView({ initialPage = 0 }: Props) {
   // Word-level mushaf data (quran.com API) for exact Madinah Mushaf line breaks
   const [pageWords, setPageWords] = useState<MushafWord[]>([]);
   const [wordsLoading, setWordsLoading] = useState(false);
+  const [pageScrollEnabled, setPageScrollEnabled] = useState(true);
+  const [showPageLoading, setShowPageLoading] = useState(false);
   const wordsCache = useRef<Record<number, MushafWord[]>>({});
 
   const cache = useRef<Record<number, PageData>>({});
@@ -1482,7 +1484,7 @@ export default function MushafView({ initialPage = 0 }: Props) {
   const dragRevealRef = useRef<number | null>(null);
 
   const animateToPage = useCallback(
-    (targetPage: number) => {
+    (targetPage: number, _direction?: number, _releaseDx?: number) => {
       playPageTurnSound();
 
       // Langsung pindah ke halaman tujuan
@@ -1556,38 +1558,54 @@ export default function MushafView({ initialPage = 0 }: Props) {
     };
   }, [page, animateToPage]);
 
-  const panResponder = useMemo(
+  // ===== Swipe navigation (mobile only) =====
+  // Al-Qur'an is read right-to-left, so the gesture is reversed compared to
+  // a typical LTR e-book: swipe right -> next page, swipe left -> previous page.
+  const mobileSwipeResponder = useMemo(
     () =>
       PanResponder.create({
         onMoveShouldSetPanResponder: (_, gestureState) => {
+          if (!IS_MOBILE_SWIPE) return false;
+          const { dx, dy } = gestureState;
+          return Math.abs(dx) > 8 && Math.abs(dx) > Math.abs(dy);
+        },
+        // Capture phase: ambil alih gestur horizontal sebelum ScrollView di dalamnya mengklaim.
+        onMoveShouldSetPanResponderCapture: (_, gestureState) => {
+          if (!IS_MOBILE_SWIPE) return false;
           const { dx, dy } = gestureState;
           return Math.abs(dx) > 8 && Math.abs(dx) > Math.abs(dy);
         },
         onPanResponderMove: (_, gestureState) => {
           const { dx } = gestureState;
-          const canMovePrev = page > COVER_PAGE && dx > 0;
-          const canMoveNext = page < TOTAL_PAGES && dx < 0;
-          if (canMovePrev || canMoveNext) {
+          // Rightward drag reveals the next page (RTL page turn).
+          const canMoveNext = page < TOTAL_PAGES && dx > 0;
+          const canMovePrev = page > COVER_PAGE && dx < 0;
+          if (canMoveNext || canMovePrev) {
             swipeX.setValue(dx);
             // Reveal the neighbor being uncovered behind the dragged page.
             // Only page >= 1 has mushaf content to show (0 is the cover).
-            const reveal = dx < 0 ? page + 1 : page - 1;
+            const reveal = dx > 0 ? page + 1 : page - 1;
             if (reveal >= 1 && dragRevealRef.current !== reveal) {
               dragRevealRef.current = reveal;
               setDragRevealPage(reveal);
             }
+            // Matikan scroll vertikal ScrollView saat sedang swipe horizontal.
+            setPageScrollEnabled(false);
           }
         },
         onPanResponderRelease: (_, gestureState) => {
           const { dx } = gestureState;
+          setPageScrollEnabled(true);
 
-          if (dx < -SWIPE_THRESHOLD && page < TOTAL_PAGES) {
-            animateToPage(page + 1, 1, dx);
+          // Swipe right -> next page (RTL).
+          if (dx > SWIPE_THRESHOLD && page < TOTAL_PAGES) {
+            animateToPage(page + 1);
             return;
           }
 
-          if (dx > SWIPE_THRESHOLD && page > COVER_PAGE) {
-            animateToPage(page - 1, -1, dx);
+          // Swipe left -> previous page (RTL).
+          if (dx < -SWIPE_THRESHOLD && page > COVER_PAGE) {
+            animateToPage(page - 1);
             return;
           }
 
@@ -1602,8 +1620,11 @@ export default function MushafView({ initialPage = 0 }: Props) {
             }
           });
         },
+        onPanResponderTerminate: () => {
+          setPageScrollEnabled(true);
+        },
       }),
-    [animateToPage, page, swipeX],
+    [animateToPage, page, swipeX, setPageScrollEnabled],
   );
 
   // ===== Bookmarks persistence =====
@@ -1797,6 +1818,18 @@ export default function MushafView({ initialPage = 0 }: Props) {
   useEffect(() => {
     if (page >= 1) load(page);
   }, [page, load]);
+
+  // Tampilkan indikator loading hanya kalau proses memuat halaman memakan
+  // waktu sedikit lama, supaya tidak berkedip saat halaman sudah tercache.
+  useEffect(() => {
+    if (loading || wordsLoading) {
+      const timer = setTimeout(() => {
+        if (loading || wordsLoading) setShowPageLoading(true);
+      }, 200);
+      return () => clearTimeout(timer);
+    }
+    setShowPageLoading(false);
+  }, [loading, wordsLoading]);
 
   // Track reading progress: once the user has stayed on a page for a couple
   // of seconds (so scrubbing through the slider/index doesn't count), (a)
@@ -2785,7 +2818,7 @@ export default function MushafView({ initialPage = 0 }: Props) {
 
                     {/* Latin title */}
                     <Text style={s.coverLatinTitle}>Al-Quran Al-Karim</Text>
-                    <Text style={s.coverSubtitle}>Aplikasi Tahsin</Text>
+                    <Text style={s.coverSubtitle}>Aplikasi Tangsel Mengaji</Text>
 
                     {/* Bottom ornament */}
                     <Text style={s.coverOrnamentBottom}>❁ ❁ ❁</Text>
@@ -2842,46 +2875,25 @@ export default function MushafView({ initialPage = 0 }: Props) {
               Placed top-left so it never sits under the reading thumb/swipe zone,
               and stays visible at all times (not tied to showBars) so the mushaf
               can always be closed. */}
-          {
-            !isDesktop && ""
-            // <View
-            //   pointerEvents="box-none"
-            //   style={[s.floatingTopRow, { top: (insets.top || TOP_INSET) + 8 }]}
-            // >
-            //   <TouchableOpacity
-            //     style={s.floatingGlassBtn}
-            //     onPress={() => router.push("/")}
-            //     hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-            //   >
-            //     <BlurView intensity={45} tint="light" style={s.floatingGlassBlur} />
-            //     <FontAwesome name="times" size={18} color={M.toolbarText} />
-            //   </TouchableOpacity>
-
-            //   {/* Floating page/surah info pill — replaces the info that used to
-            //       live in the header. Tap to bookmark this page. */}
-            //   <TouchableOpacity
-            //     style={s.floatingInfoPill}
-            //     onPress={toggleBookmark}
-            //     hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-            //   >
-            //     <BlurView intensity={45} tint="light" style={s.floatingGlassBlur} />
-            //     <View style={s.floatingInfoTextWrap}>
-            //       <Text style={s.floatingInfoSurah} numberOfLines={1}>
-            //         {surahNames.join(" · ")}
-            //       </Text>
-            //       <Text style={s.floatingInfoMeta} numberOfLines={1}>
-            //         Hal. {page} · Juz {juz}
-            //         {hizbInfo ? ` · ${hizbInfo.label}` : ""}
-            //       </Text>
-            //     </View>
-            //     <FontAwesome
-            //       name={isBookmarked ? "bookmark" : "bookmark-o"}
-            //       size={15}
-            //       color={isBookmarked ? M.bookmark : M.toolbarText}
-            //     />
-            //   </TouchableOpacity>
-            // </View>
-          }
+          {!isDesktop && (
+            <View
+              pointerEvents="box-none"
+              style={[s.floatingTopRow, { top: (insets.top || TOP_INSET) + 8 }]}
+            >
+              <TouchableOpacity
+                style={s.floatingGlassBtn}
+                onPress={() => router.back()}
+                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+              >
+                <BlurView
+                  intensity={45}
+                  tint="light"
+                  style={s.floatingGlassBlur}
+                />
+                <FontAwesome name="times" size={18} color={M.toolbarText} />
+              </TouchableOpacity>
+            </View>
+          )}
 
           {/* Bookmark ribbon — a vertical cloth-like tab that hangs down from
               the top edge of the page, mimicking a ribbon bookmark tucked into a
@@ -3155,7 +3167,8 @@ export default function MushafView({ initialPage = 0 }: Props) {
             )}
 
             {/* Center: Mushaf Page */}
-            <Pressable
+            <View
+              collapsable={false}
               style={[
                 s.pageOuter,
                 isDesktop && s.desktopPageArea,
@@ -3166,7 +3179,7 @@ export default function MushafView({ initialPage = 0 }: Props) {
                   paddingBottom: insets.bottom + FLOATING_TOOLBAR_H + 10,
                 },
               ]}
-              {...panResponder.panHandlers}
+              {...(IS_MOBILE_SWIPE ? mobileSwipeResponder.panHandlers : {})}
             >
               <View
                 style={isDesktop ? s.desktopPageTurnStage : s.pageTurnStage}
@@ -3231,6 +3244,7 @@ export default function MushafView({ initialPage = 0 }: Props) {
                   <ScrollView
                     contentContainerStyle={s.pageContent}
                     showsVerticalScrollIndicator={false}
+                    scrollEnabled={pageScrollEnabled}
                   >
                     {renderMushafLines()}
                   </ScrollView>
@@ -3270,8 +3284,23 @@ export default function MushafView({ initialPage = 0 }: Props) {
                   </Animated.View>
                 )}
               </View>
+
+              {/* Loading overlay — muncul saat halaman berikut/sebelumnya
+                  masih dimuat, supaya pengguna tahu konten belum siap. */}
+              {showPageLoading && (
+                <View
+                  pointerEvents="none"
+                  style={[StyleSheet.absoluteFillObject, s.pageLoadingOverlay]}
+                >
+                  <View style={s.pageLoadingCard}>
+                    <ActivityIndicator size="large" color={M.border} />
+                    <Text style={s.pageLoadingText}>Memuat halaman...</Text>
+                  </View>
+                </View>
+              )}
+
               {/* <Text style={s.swipeHint}>Geser kiri/kanan untuk pindah halaman</Text> */}
-            </Pressable>
+            </View>
 
             {/* Right: Sidebar with header + tools (desktop only) */}
             {isDesktop && (
@@ -4002,6 +4031,7 @@ const s = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: M.headerBg,
+    paddingTop: 20,
   },
 
   // Top bar (replaces header — full screen)
@@ -4089,6 +4119,35 @@ const s = StyleSheet.create({
     marginTop: 10,
     color: Colors.textSecondary,
     fontSize: 13,
+  },
+
+  // Loading overlay untuk transisi halaman next/back
+  pageLoadingOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: "rgba(255, 248, 231, 0.82)",
+    justifyContent: "center",
+    alignItems: "center",
+    zIndex: 100,
+  },
+  pageLoadingCard: {
+    backgroundColor: M.headerBg,
+    paddingHorizontal: 28,
+    paddingVertical: 22,
+    borderRadius: 14,
+    alignItems: "center",
+    borderWidth: 1,
+    borderColor: M.border + "30",
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.14,
+    shadowRadius: 14,
+    elevation: 10,
+  },
+  pageLoadingText: {
+    marginTop: 12,
+    color: M.toolbarText,
+    fontSize: 13,
+    fontWeight: "600",
   },
 
   // Page wrapper
@@ -5159,6 +5218,7 @@ const s = StyleSheet.create({
     color: "#C5A64599",
     letterSpacing: 4,
     textTransform: "uppercase",
+    textAlign: "center",
     marginBottom: 32,
   },
   coverOrnamentBottom: {

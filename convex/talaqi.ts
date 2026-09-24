@@ -3,26 +3,70 @@ import { v } from "convex/values";
 import { Doc, Id } from "./_generated/dataModel";
 import {
   assertSelfOrStaff,
+  canManageKelas,
   getAuthUser,
   getLkmRow,
   getUstadzRow,
   isAdministrator,
-  isStaff,
+  isEnrolledInKelas,
   requireUser,
 } from "./authz";
+import { assertIsoDate, assertMaxLength } from "./sanitize";
 
-// Pengisi nilai/presensi talaqi: administrator, LKM, atau ustadz yang
-// bersangkutan (ustadzId argumen harus dirinya sendiri).
+type TalaqiScope = {
+  userId: Id<"users">; // santri yang dinilai
+  ustadzId: Id<"users">;
+  kelasId?: Id<"kelas">;
+  kelasPertemuanId?: Id<"kelas_pertemuan">;
+};
+
+// Pengisi nilai/presensi talaqi. Nilai adalah data sensitif santri, jadi
+// penulis dibatasi ke lingkup yang sah — bukan sekadar "LKM mana pun":
+//  - administrator: bebas.
+//  - bila terkait kelas: pengelola kelas itu (pemilik LKM / ustadz pengampu),
+//    pertemuan harus milik kelas tsb dan santri harus terdaftar di kelas.
+//  - tanpa kelas: ustadz sendiri / pemilik LKM, dan santri harus berafiliasi
+//    ke lembaga yang sama.
 async function requireTalaqiWriter(
   ctx: MutationCtx,
-  ustadzId: Id<"users">
+  scope: TalaqiScope
 ): Promise<Doc<"users">> {
   const user = await requireUser(ctx);
   if (isAdministrator(user)) return user;
-  if (await getLkmRow(ctx, user)) return user;
+
+  if (scope.kelasId) {
+    const kelas = await ctx.db.get(scope.kelasId);
+    if (!kelas) throw new Error("Kelas tidak ditemukan");
+    if (!(await canManageKelas(ctx, user, kelas))) {
+      throw new Error("Tidak punya akses menilai di kelas ini");
+    }
+    if (scope.kelasPertemuanId) {
+      const pertemuan = await ctx.db.get(scope.kelasPertemuanId);
+      if (!pertemuan || pertemuan.kelasId !== kelas._id) {
+        throw new Error("Pertemuan bukan bagian dari kelas ini");
+      }
+    }
+    const santriUser = await ctx.db.get(scope.userId);
+    if (!santriUser || !(await isEnrolledInKelas(ctx, santriUser, kelas._id))) {
+      throw new Error("Santri tidak terdaftar di kelas ini");
+    }
+    return user;
+  }
+
+  const lkm = await getLkmRow(ctx, user);
   const ustadzRow = await getUstadzRow(ctx, user);
-  if (ustadzRow && ustadzId === user._id) return user;
-  throw new Error("Hanya ustadz yang bersangkutan yang boleh mengisi talaqi");
+  if (!lkm && !(ustadzRow && scope.ustadzId === user._id)) {
+    throw new Error("Hanya ustadz yang bersangkutan yang boleh mengisi talaqi");
+  }
+  const lembagaId = lkm?._id ?? ustadzRow?.adminPengajianId;
+  const santri = await ctx.db
+    .query("santri")
+    .withIndex("by_userId", (q) => q.eq("userId", scope.userId))
+    .first();
+  if (!lembagaId || !santri || santri.adminPengajianId !== lembagaId) {
+    throw new Error("Santri bukan bagian dari lembaga Anda");
+  }
+  return user;
 }
 
 const nilaiValues = v.union(
@@ -61,7 +105,9 @@ export const create = mutation({
     kelasPertemuanId: v.optional(v.id("kelas_pertemuan")),
   },
   handler: async (ctx, args) => {
-    await requireTalaqiWriter(ctx, args.ustadzId);
+    await requireTalaqiWriter(ctx, args);
+    assertIsoDate(args.tanggal);
+    assertMaxLength(args.catatan, 2000, "Catatan");
     return await ctx.db.insert("talaqi", args);
   },
 });
@@ -92,7 +138,9 @@ export const upsertForPertemuan = mutation({
     catatan: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
-    await requireTalaqiWriter(ctx, args.ustadzId);
+    await requireTalaqiWriter(ctx, args);
+    assertIsoDate(args.tanggal);
+    assertMaxLength(args.catatan, 2000, "Catatan");
     const existing = await ctx.db
       .query("talaqi")
       .withIndex("by_kelasPertemuanId_userId", (q) =>
@@ -136,12 +184,20 @@ export const getByUstadz = query({
   },
 });
 
-// Get talaqi sessions by admin pengajian — staf saja
+// Get talaqi sessions by admin pengajian — administrator, pemilik LKM tsb,
+// atau ustadz LKM tsb (bukan staf lembaga lain).
 export const getByAdminPengajian = query({
   args: { adminPengajianId: v.id("admin_pengajian") },
   handler: async (ctx, args) => {
     const caller = await getAuthUser(ctx);
-    if (!caller || !(await isStaff(ctx, caller))) return [];
+    if (!caller) return [];
+    if (!isAdministrator(caller)) {
+      const lkm = await ctx.db.get(args.adminPengajianId);
+      const ustadzRow = await getUstadzRow(ctx, caller);
+      const isOwner = lkm?.userId === caller._id;
+      const isUstadzHere = ustadzRow?.adminPengajianId === args.adminPengajianId;
+      if (!isOwner && !isUstadzHere) return [];
+    }
     return await ctx.db
       .query("talaqi")
       .withIndex("by_adminPengajianId", (q) =>
@@ -155,13 +211,22 @@ export const getByAdminPengajian = query({
 export const getByKelasPertemuan = query({
   args: { kelasPertemuanId: v.id("kelas_pertemuan") },
   handler: async (ctx, args) => {
-    if (!(await getAuthUser(ctx))) return [];
-    return await ctx.db
+    // Pengelola kelas melihat seluruh roster; santri hanya melihat catatannya
+    // sendiri — nilai & catatan santri lain tidak boleh bocor.
+    const caller = await getAuthUser(ctx);
+    if (!caller) return [];
+    const pertemuan = await ctx.db.get(args.kelasPertemuanId);
+    if (!pertemuan) return [];
+    const kelas = await ctx.db.get(pertemuan.kelasId);
+    if (!kelas) return [];
+    const rows = await ctx.db
       .query("talaqi")
       .withIndex("by_kelasPertemuanId_userId", (q) =>
         q.eq("kelasPertemuanId", args.kelasPertemuanId)
       )
       .collect();
+    if (await canManageKelas(ctx, caller, kelas)) return rows;
+    return rows.filter((r) => r.userId === caller._id);
   },
 });
 
@@ -169,11 +234,16 @@ export const getByKelasPertemuan = query({
 export const getByKelas = query({
   args: { kelasId: v.id("kelas") },
   handler: async (ctx, args) => {
-    if (!(await getAuthUser(ctx))) return [];
-    return await ctx.db
+    const caller = await getAuthUser(ctx);
+    if (!caller) return [];
+    const kelas = await ctx.db.get(args.kelasId);
+    if (!kelas) return [];
+    const rows = await ctx.db
       .query("talaqi")
       .withIndex("by_kelasId", (q) => q.eq("kelasId", args.kelasId))
       .collect();
+    if (await canManageKelas(ctx, caller, kelas)) return rows;
+    return rows.filter((r) => r.userId === caller._id);
   },
 });
 
@@ -188,7 +258,8 @@ export const update = mutation({
   handler: async (ctx, args) => {
     const row = await ctx.db.get(args.id);
     if (!row) throw new Error("Catatan talaqi tidak ditemukan");
-    await requireTalaqiWriter(ctx, row.ustadzId);
+    await requireTalaqiWriter(ctx, row);
+    assertMaxLength(args.catatan, 2000, "Catatan");
     const { id, ...updates } = args;
     const filtered = Object.fromEntries(
       Object.entries(updates).filter(([_, val]) => val !== undefined)

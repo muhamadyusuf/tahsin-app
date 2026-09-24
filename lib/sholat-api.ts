@@ -176,7 +176,7 @@ async function reverseGeocodeNominatim(
       `${NOMINATIM_URL}?format=json&lat=${lat}&lon=${lon}&accept-language=id`,
       {
         headers: {
-          "User-Agent": "TahsinApp/1.0 (quran-learning-app)",
+          "User-Agent": "TangselMengajiApp/1.0 (quran-learning-app)",
           Accept: "application/json",
         },
       }

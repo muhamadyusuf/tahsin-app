@@ -13,12 +13,27 @@ import {
 } from "./_generated/server";
 import { internal } from "./_generated/api";
 import { v } from "convex/values";
-import { getAuthUser, requireSelf, requireUser } from "./authz";
+import {
+  canManageKelas,
+  getAuthUser,
+  getPertemuanAccess,
+  isStaff,
+  requireSelf,
+  requireUser,
+} from "./authz";
 
+// Rekaman ≤ 1 GB, hanya audio/video.
+const MAX_RECORDING_BYTES = 1024 * 1024 * 1024;
+
+// Hanya staf (administrator / LKM / ustadz) yang merekam sesi. Tanpa batas ini
+// setiap akun terdaftar bisa mengunggah file sembarang ke storage.
 export const generateUploadUrl = mutation({
   args: {},
   handler: async (ctx) => {
-    await requireUser(ctx);
+    const user = await requireUser(ctx);
+    if (!(await isStaff(ctx, user))) {
+      throw new Error("Hanya pengajar yang boleh mengunggah rekaman");
+    }
     return await ctx.storage.generateUploadUrl();
   },
 });
@@ -37,16 +52,34 @@ export const finalize = mutation({
     const user = await requireSelf(ctx, args.byUserId);
     const pertemuan = await ctx.db.get(args.pertemuanId);
     if (!pertemuan) throw new Error("Pertemuan tidak ditemukan");
+    const kelas = await ctx.db.get(pertemuan.kelasId);
+    if (!kelas) throw new Error("Kelas tidak ditemukan");
+
+    // Metadata file diambil dari storage (bukan dari klaim client) dan file
+    // yang tidak sah langsung dihapus agar tidak jadi tempat sampah/penyimpanan gelap.
+    const meta = await ctx.db.system.get(args.storageId);
+    const contentType = meta?.contentType ?? args.mimeType;
+    const isMedia = /^(video|audio)\//.test(contentType);
+    if (
+      !meta ||
+      !isMedia ||
+      meta.size > MAX_RECORDING_BYTES ||
+      !(await canManageKelas(ctx, user, kelas))
+    ) {
+      if (meta) await ctx.storage.delete(args.storageId);
+      throw new Error("Rekaman ditolak: bukan pengelola kelas atau file tidak valid");
+    }
+
     const recordingId = await ctx.db.insert("meeting_recordings", {
       pertemuanId: args.pertemuanId,
       kelasId: pertemuan.kelasId,
       byUserId: args.byUserId,
-      byName: user._id === args.byUserId ? user.name : args.byName,
+      byName: user._id === args.byUserId ? user.name : args.byName.slice(0, 120),
       storageId: args.storageId,
       status: "processing",
-      mimeType: args.mimeType,
-      sizeBytes: args.sizeBytes,
-      durationSec: args.durationSec,
+      mimeType: contentType,
+      sizeBytes: meta.size,
+      durationSec: Math.max(0, Math.min(args.durationSec, 24 * 3600)),
       createdAt: new Date().toISOString(),
     });
     await ctx.scheduler.runAfter(0, internal.recordingsNode.uploadToDrive, {
@@ -59,7 +92,11 @@ export const finalize = mutation({
 export const listByPertemuan = query({
   args: { pertemuanId: v.id("kelas_pertemuan") },
   handler: async (ctx, args) => {
-    if (!(await getAuthUser(ctx))) return [];
+    // Hanya pengelola kelas & santri terdaftar yang boleh melihat rekaman
+    // (berisi video/suara peserta; link storage/Drive-nya berlaku publik).
+    const caller = await getAuthUser(ctx);
+    if (!caller) return [];
+    if (!(await getPertemuanAccess(ctx, caller, args.pertemuanId))) return [];
     const rows = await ctx.db
       .query("meeting_recordings")
       .withIndex("by_pertemuanId", (q) => q.eq("pertemuanId", args.pertemuanId))

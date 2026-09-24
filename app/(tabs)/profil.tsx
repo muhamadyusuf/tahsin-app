@@ -1,22 +1,20 @@
+import ConfirmModal from "@/components/ConfirmModal";
+import { api } from "@/convex/_generated/api";
+import { useAuthContext } from "@/lib/auth-context";
+import { Colors, ROLES } from "@/lib/constants";
+import { useClerk } from "@clerk/expo";
+import FontAwesome from "@expo/vector-icons/FontAwesome";
+import { useQuery } from "convex/react";
+import { useRouter } from "expo-router";
 import React from "react";
 import {
-  View,
-  Text,
-  StyleSheet,
-  ScrollView,
-  TouchableOpacity,
-  Alert,
   Image,
-  Platform,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View
 } from "react-native";
-import FontAwesome from "@expo/vector-icons/FontAwesome";
-import { useClerk } from "@clerk/expo";
-import { useRouter } from "expo-router";
-import { useQuery } from "convex/react";
-import { api } from "@/convex/_generated/api";
-import { Colors, ROLES } from "@/lib/constants";
-import { useAuthContext } from "@/lib/auth-context";
-import ConfirmModal from "@/components/ConfirmModal";
 
 const ROLE_LABELS: Record<string, string> = {
   [ROLES.ADMINISTRATOR]: "Administrator",
@@ -34,22 +32,22 @@ export default function ProfilScreen() {
 
   const santriProfile = useQuery(
     api.santri.getByUserId,
-    role === "santri" && userData?._id ? { userId: userData._id } : "skip"
+    role === "santri" && userData?._id ? { userId: userData._id } : "skip",
   );
-  const affiliatedLembagaId = santriProfile?.adminPengajianId ?? userData?.adminPengajianId;
+  const affiliatedLembagaId =
+    santriProfile?.adminPengajianId ?? userData?.adminPengajianId;
   const lembaga = useQuery(
     api.adminPengajian.getById,
-    affiliatedLembagaId ? { id: affiliatedLembagaId } : "skip"
+    affiliatedLembagaId ? { id: affiliatedLembagaId } : "skip",
   );
 
   // Lembaga yang dimiliki user (jika sudah jadi admin pengajian) — dipakai
   // untuk memutuskan apakah menampilkan menu pengajuan jadi admin pengajian.
   const ownLembaga = useQuery(
     api.adminPengajian.getByUserId,
-    userData?._id ? { userId: userData._id } : "skip"
+    userData?._id ? { userId: userData._id } : "skip",
   );
-  const canApplyLembaga =
-    role !== ROLES.ADMINISTRATOR && ownLembaga === null;
+  const canApplyLembaga = role !== ROLES.ADMINISTRATOR && ownLembaga === null;
 
   const doLogout = async () => {
     setLogoutModalVisible(false);
@@ -88,7 +86,11 @@ export default function ProfilScreen() {
         </View>
         {lembaga && (
           <View style={styles.lembagaRow}>
-            <FontAwesome name="building" size={12} color={Colors.textSecondary} />
+            <FontAwesome
+              name="building"
+              size={12}
+              color={Colors.textSecondary}
+            />
             <Text style={styles.lembagaText}>{lembaga.namaLembaga}</Text>
           </View>
         )}
@@ -112,7 +114,10 @@ export default function ProfilScreen() {
 
       {/* Menu Items */}
       <View style={styles.menuSection}>
-        <TouchableOpacity style={styles.menuItem} onPress={() => router.push("/edit-profil")}>
+        <TouchableOpacity
+          style={styles.menuItem}
+          onPress={() => router.push("/edit-profil")}
+        >
           <FontAwesome name="edit" size={18} color={Colors.primary} />
           <Text style={styles.menuText}>Edit Profil</Text>
           <FontAwesome
@@ -123,7 +128,10 @@ export default function ProfilScreen() {
         </TouchableOpacity>
 
         {role === "santri" && (
-          <TouchableOpacity style={styles.menuItem} onPress={() => router.push("/lembaga-pengajian")}>
+          <TouchableOpacity
+            style={styles.menuItem}
+            onPress={() => router.push("/lembaga-pengajian")}
+          >
             <FontAwesome name="building" size={18} color={Colors.primary} />
             <Text style={styles.menuText}>Lembaga Pengajian</Text>
             <FontAwesome
@@ -134,7 +142,10 @@ export default function ProfilScreen() {
           </TouchableOpacity>
         )}
 
-        <TouchableOpacity style={styles.menuItem} onPress={() => router.push("/statistik")}>
+        <TouchableOpacity
+          style={styles.menuItem}
+          onPress={() => router.push("/statistik")}
+        >
           <FontAwesome name="bar-chart" size={18} color={Colors.primary} />
           <Text style={styles.menuText}>Statistik</Text>
           <FontAwesome
@@ -144,7 +155,10 @@ export default function ProfilScreen() {
           />
         </TouchableOpacity>
 
-        <TouchableOpacity style={styles.menuItem} onPress={() => router.push("/pengaturan")}>
+        <TouchableOpacity
+          style={styles.menuItem}
+          onPress={() => router.push("/pengaturan")}
+        >
           <FontAwesome name="cog" size={18} color={Colors.primary} />
           <Text style={styles.menuText}>Pengaturan</Text>
           <FontAwesome
@@ -155,7 +169,10 @@ export default function ProfilScreen() {
         </TouchableOpacity>
 
         {hasMultipleRoles && (
-          <TouchableOpacity style={styles.menuItem} onPress={() => router.push("/pilih-role")}>
+          <TouchableOpacity
+            style={styles.menuItem}
+            onPress={() => router.push("/pilih-role")}
+          >
             <FontAwesome name="exchange" size={18} color={Colors.primary} />
             <Text style={styles.menuText}>Pilih Role Aktif</Text>
             <FontAwesome
@@ -167,7 +184,10 @@ export default function ProfilScreen() {
         )}
 
         {canApplyLembaga && (
-          <TouchableOpacity style={styles.menuItem} onPress={() => router.push("/ajukan-lembaga")}>
+          <TouchableOpacity
+            style={styles.menuItem}
+            onPress={() => router.push("/ajukan-lembaga")}
+          >
             <FontAwesome name="institution" size={18} color={Colors.primary} />
             <Text style={styles.menuText}>Ajukan Jadi Admin Pengajian</Text>
             <FontAwesome
@@ -179,7 +199,10 @@ export default function ProfilScreen() {
         )}
 
         {isAdmin && (
-          <TouchableOpacity style={styles.menuItem} onPress={() => router.push("/(admin-tabs)/dashboard")}>
+          <TouchableOpacity
+            style={styles.menuItem}
+            onPress={() => router.push("/(admin-tabs)/dashboard")}
+          >
             <FontAwesome name="dashboard" size={18} color={Colors.primary} />
             <Text style={styles.menuText}>Panel Admin</Text>
             <FontAwesome
@@ -190,7 +213,10 @@ export default function ProfilScreen() {
           </TouchableOpacity>
         )}
 
-        <TouchableOpacity style={styles.menuItem} onPress={() => router.push("/info-api")}>
+        <TouchableOpacity
+          style={styles.menuItem}
+          onPress={() => router.push("/info-api")}
+        >
           <FontAwesome name="plug" size={18} color={Colors.primary} />
           <Text style={styles.menuText}>Informasi API</Text>
           <FontAwesome
@@ -200,7 +226,23 @@ export default function ProfilScreen() {
           />
         </TouchableOpacity>
 
-        <TouchableOpacity style={styles.menuItem} onPress={() => router.push("/bantuan")}>
+        <TouchableOpacity
+          style={styles.menuItem}
+          onPress={() => router.push("/kontributor")}
+        >
+          <FontAwesome name="handshake-o" size={18} color={Colors.primary} />
+          <Text style={styles.menuText}>Kontributor</Text>
+          <FontAwesome
+            name="chevron-right"
+            size={14}
+            color={Colors.textSecondary}
+          />
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          style={styles.menuItem}
+          onPress={() => router.push("/bantuan")}
+        >
           <FontAwesome
             name="question-circle"
             size={18}
@@ -222,7 +264,9 @@ export default function ProfilScreen() {
       </TouchableOpacity>
 
       {/* Version */}
-      <Text style={styles.version}>Tahsin v1.0.0</Text>
+      <Text style={styles.version}>
+        Tangsel Mengaji v1.0.0 &copy; 2026 Diskominfo Tangsel
+      </Text>
 
       <ConfirmModal
         visible={logoutModalVisible}

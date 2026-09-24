@@ -35,7 +35,7 @@ import { useQuery } from "convex/react";
 import * as Location from "expo-location";
 import { useRouter } from "expo-router";
 import { StatusBar } from "expo-status-bar";
-import React, { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Animated,
@@ -1200,14 +1200,14 @@ export default function TilawahScreen() {
       ) : null}
 
       <Animated.ScrollView
-        stickyHeaderIndices={[0]}
-        showsVerticalScrollIndicator={false}
-        contentContainerStyle={{ paddingBottom: 0 }}
-        onScroll={Animated.event(
-          [{ nativeEvent: { contentOffset: { y: scrollY } } }],
-          { useNativeDriver: false },
-        )}
-        scrollEventThrottle={16}
+      // stickyHeaderIndices={[0]}
+      // showsVerticalScrollIndicator={false}
+      // contentContainerStyle={{ paddingBottom: 0 }}
+      // onScroll={Animated.event(
+      //   [{ nativeEvent: { contentOffset: { y: scrollY } } }],
+      //   { useNativeDriver: true },
+      // )}
+      // scrollEventThrottle={16}
       >
         {/* ── child 0: sticky search bar (top) ── */}
         <Animated.View
@@ -1887,67 +1887,6 @@ export default function TilawahScreen() {
             </View>
           )}
 
-          {/* ===== Progress & Streak ===== */}
-          {/* <View style={styles.progressRow}>
-            <TouchableOpacity
-              style={styles.progressCard}
-              activeOpacity={0.85}
-              onPress={() => router.push("/tilawah-harian")}
-            >
-              <View style={styles.progressHeaderRow}>
-                <View style={styles.progressIconBox}>
-                  <FontAwesome name="book" size={14} color={Colors.primary} />
-                </View>
-                <Text style={styles.progressCardTitle} numberOfLines={2}>
-                  Progress Tilawah Hari Ini
-                </Text>
-              </View>
-              <View style={styles.progressValueRow}>
-                <Text style={styles.progressValueBig}>{todayPages}</Text>
-                <Text style={styles.progressValueSep}>
-                  {" "}
-                  / {DAILY_TILAWAH_TARGET}
-                </Text>
-                <Text style={styles.progressValueUnit}> halaman</Text>
-              </View>
-              <View style={styles.progressBarRow}>
-                <View style={styles.progressTrack}>
-                  <View
-                    style={[
-                      styles.progressFill,
-                      { width: `${tilawahPercent}%` },
-                    ]}
-                  />
-                </View>
-                <Text style={styles.progressPercent}>{tilawahPercent}%</Text>
-              </View>
-              <Text style={styles.progressHint} numberOfLines={1}>
-                {todayPages >= DAILY_TILAWAH_TARGET
-                  ? "MasyaAllah! Target hari ini tercapai"
-                  : `Teruskan! ${DAILY_TILAWAH_TARGET - todayPages} halaman lagi untuk target hari ini`}
-              </Text>
-            </TouchableOpacity>
-
-            <View style={styles.streakCard}>
-              <View style={styles.progressHeaderRow}>
-                <FontAwesome name="fire" size={16} color={Colors.accent} />
-                <Text style={styles.progressCardTitle}>Streak Harian</Text>
-              </View>
-              <View style={styles.progressValueRow}>
-                <Text style={styles.progressValueBig}>{streakDays}</Text>
-                <Text style={styles.progressValueUnit}> hari</Text>
-              </View>
-              <View style={styles.streakBadge}>
-                <FontAwesome name="sun-o" size={16} color={Colors.accent} />
-              </View>
-              <Text style={styles.progressHint} numberOfLines={2}>
-                {streakDays > 0
-                  ? "Semangat! Pertahankan kebiasaan baik ini"
-                  : "Mulai catat tilawahmu hari ini"}
-              </Text>
-            </View>
-          </View> */}
-
           {/* Menu Utama — grid hijau seragam */}
           <View style={styles.categoryGrid}>
             <TouchableOpacity
@@ -2166,7 +2105,7 @@ export default function TilawahScreen() {
           </View> */}
 
           {/* ===== Lanjut Terakhir ===== */}
-          {lastTilawah && (
+          {/* {lastTilawah && (
             <TouchableOpacity
               style={styles.lastReadCard}
               activeOpacity={0.85}
@@ -2206,7 +2145,68 @@ export default function TilawahScreen() {
                 />
               </View>
             </TouchableOpacity>
-          )}
+          )} */}
+
+          {/* ===== Progress & Streak ===== */}
+          {/* <View style={styles.progressRow}>
+            <TouchableOpacity
+              style={styles.progressCard}
+              activeOpacity={0.85}
+              onPress={() => router.push("/tilawah-harian")}
+            >
+              <View style={styles.progressHeaderRow}>
+                <View style={styles.progressIconBox}>
+                  <FontAwesome name="book" size={14} color={Colors.primary} />
+                </View>
+                <Text style={styles.progressCardTitle} numberOfLines={2}>
+                  Progress Tilawah Hari Ini
+                </Text>
+              </View>
+              <View style={styles.progressValueRow}>
+                <Text style={styles.progressValueBig}>{todayPages}</Text>
+                <Text style={styles.progressValueSep}>
+                  {" "}
+                  / {DAILY_TILAWAH_TARGET}
+                </Text>
+                <Text style={styles.progressValueUnit}> halaman</Text>
+              </View>
+              <View style={styles.progressBarRow}>
+                <View style={styles.progressTrack}>
+                  <View
+                    style={[
+                      styles.progressFill,
+                      { width: `${tilawahPercent}%` },
+                    ]}
+                  />
+                </View>
+                <Text style={styles.progressPercent}>{tilawahPercent}%</Text>
+              </View>
+              <Text style={styles.progressHint} numberOfLines={1}>
+                {todayPages >= DAILY_TILAWAH_TARGET
+                  ? "MasyaAllah! Target hari ini tercapai"
+                  : `Teruskan! ${DAILY_TILAWAH_TARGET - todayPages} halaman lagi untuk target hari ini`}
+              </Text>
+            </TouchableOpacity>
+
+            <View style={styles.streakCard}>
+              <View style={styles.progressHeaderRow}>
+                <FontAwesome name="fire" size={16} color={Colors.accent} />
+                <Text style={styles.progressCardTitle}>Streak Harian</Text>
+              </View>
+              <View style={styles.progressValueRow}>
+                <Text style={styles.progressValueBig}>{streakDays}</Text>
+                <Text style={styles.progressValueUnit}> hari</Text>
+              </View>
+              <View style={styles.streakBadge}>
+                <FontAwesome name="sun-o" size={16} color={Colors.accent} />
+              </View>
+              <Text style={styles.progressHint} numberOfLines={2}>
+                {streakDays > 0
+                  ? "Semangat! Pertahankan kebiasaan baik ini"
+                  : "Mulai catat tilawahmu hari ini"}
+              </Text>
+            </View>
+          </View> */}
 
           {/* ===== Ceramah Video Section ===== */}
           {ceramahVideos &&
@@ -3431,13 +3431,13 @@ const styles = StyleSheet.create({
   },
   categoryCard: {
     width: (width - 48) / 4 - 5, // 4 columns with 14px horizontal padding and 10px gap
-    // backgroundColor: "#fff",
+    backgroundColor: "transparent",
     borderRadius: 18,
     padding: 12,
     flexDirection: "column",
     alignItems: "center",
     gap: 8,
-    // shadowColor: "#0F4A28",
+    shadowColor: "transparent",
     // shadowOffset: { width: 0, height: 1 },
     // shadowOpacity: 0.05,
     // shadowRadius: 6,

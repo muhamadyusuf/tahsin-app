@@ -1,7 +1,7 @@
 import { api } from "@/convex/_generated/api";
 import { getJuzAyahs } from "@/lib/alquran-api";
 import { useAuthContext } from "@/lib/auth-context";
-import { Colors } from "@/lib/constants";
+import { Colors, QURAN_EDITION_AUDIO } from "@/lib/constants";
 import FontAwesome from "@expo/vector-icons/FontAwesome";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useMutation, useQuery } from "convex/react";
@@ -44,7 +44,8 @@ const T = {
   textDim2: "#7c948c",
 };
 
-const QUESTION_TIME = 15; // seconds
+const QUESTION_TIME_TEXT = 15; // seconds — mode teks
+const QUESTION_TIME_AUDIO = 28; // seconds — mode suara (perlu waktu mendengarkan)
 const MAX_LIVES = 3;
 const COMBO_STEP = 3;
 const MAX_MULTIPLIER = 5;
@@ -66,6 +67,8 @@ type JuzAyah = {
   ayahNumber: number;
   surahNumber: number;
   surahName: string;
+  globalNumber: number; // ayah number 1..6236, dipakai untuk URL audio murattal
+  audioUrl: string; // CDN audio per-ayah (mushaf standar al-Quran Cloud)
 };
 type Choice = { ayah: JuzAyah; isCorrect: boolean };
 type Stats = {
@@ -250,11 +253,63 @@ export default function SambungAyatScreen() {
     AsyncStorage.setItem(SOUND_ENABLED_KEY, next ? "1" : "0").catch(() => {});
   }
 
+  // ── audio prompt (mode suara) ───────────────────────────────
+  // Bersumber dari CDN islamic.network (dipakai pula oleh layar surah)
+  // untuk mushaf murattal standar — bukan TTS atau rekaman tiruan, jadi
+  // tidak ada risiko teks ayat berubah/dipotong. Satu Sound aktif.
+  async function stopPromptAudio() {
+    const s = promptSoundRef.current;
+    promptSoundRef.current = null;
+    setPromptAudioState("idle");
+    setPromptAudioPos(0);
+    setPromptAudioDur(0);
+    if (s) {
+      try {
+        await s.unloadAsync();
+      } catch {
+        // abaikan — sound mungkin sudah di-unload
+      }
+    }
+  }
+
+  function onPromptPlaybackStatus(status: any) {
+    if (!status?.isLoaded) return;
+    if (status.durationMillis) setPromptAudioDur(status.durationMillis);
+    setPromptAudioPos(status.positionMillis ?? 0);
+    if (status.isPlaying) setPromptAudioState("playing");
+    if (status.didJustFinish) {
+      setPromptAudioState("ended");
+      setPromptAudioPos(0);
+    }
+  }
+
+  async function playPromptFromStart(uri: string) {
+    if (!uri) return;
+    await stopPromptAudio();
+    setPromptAudioState("loading");
+    try {
+      const { sound } = await Audio.Sound.createAsync(
+        { uri },
+        {
+          shouldPlay: true,
+          volume: 1.0,
+          progressUpdateIntervalMillis: 100,
+        },
+        onPromptPlaybackStatus,
+      );
+      promptSoundRef.current = sound;
+      // status awal akan mengisi durasi via callback
+    } catch {
+      setPromptAudioState("idle");
+    }
+  }
+
   // ── setup / mode selection ─────────────────────────────────
   const [mode, setMode] = useState<"single" | "range">("single");
   const [startJuz, setStartJuz] = useState(30);
   const [endJuz, setEndJuz] = useState(30);
   const [howToOpen, setHowToOpen] = useState(false);
+  const [quizMode, setQuizMode] = useState<"text" | "audio">("text");
 
   useEffect(() => {
     if (mode === "single") setEndJuz(startJuz);
@@ -269,6 +324,18 @@ export default function SambungAyatScreen() {
   const [loadError, setLoadError] = useState<string | null>(null);
   const loadAbortRef = useRef(false);
   const juzCacheRef = useRef<Map<number, JuzAyah[]>>(new Map());
+  const questionTimeRef = useRef(QUESTION_TIME_TEXT);
+
+  // ── audio playback (mode suara) ───────────────────────────────
+  // Memutar satu ayat murattal sebagai pengganti teks prompt. Memakai
+  // expo-av (sudah dipakai untuk efek suara & di layar surah). Pakai
+  // satu Sound aktif yang di-unload bila berganti ayat / keluar layar.
+  const promptSoundRef = useRef<Audio.Sound | null>(null);
+  const [promptAudioState, setPromptAudioState] = useState<
+    "idle" | "loading" | "playing" | "ended"
+  >("idle");
+  const [promptAudioPos, setPromptAudioPos] = useState(0); // ms
+  const [promptAudioDur, setPromptAudioDur] = useState(0); // ms
 
   // ── game data ───────────────────────────────────────────────
   const poolRef = useRef<JuzAyah[]>([]);
@@ -282,7 +349,7 @@ export default function SambungAyatScreen() {
   const [prompt, setPrompt] = useState<JuzAyah | null>(null);
   const [choices, setChoices] = useState<Choice[]>([]);
   const [answeredIdx, setAnsweredIdx] = useState<number | null>(null);
-  const [timeLeft, setTimeLeft] = useState(QUESTION_TIME);
+  const [timeLeft, setTimeLeft] = useState(QUESTION_TIME_TEXT);
 
   const statsRef = useRef<Stats>({
     score: 0,
@@ -379,6 +446,8 @@ export default function SambungAyatScreen() {
       ayahNumber: a.numberInSurah,
       surahNumber: a.surah.number,
       surahName: a.surah.englishName,
+      globalNumber: a.number,
+      audioUrl: `https://cdn.islamic.network/quran/audio/128/${QURAN_EDITION_AUDIO}/${a.number}.mp3`,
     }));
     juzCacheRef.current.set(n, normalized);
     return normalized;
@@ -412,6 +481,8 @@ export default function SambungAyatScreen() {
   async function beginNewGame() {
     const start = Math.min(startJuz, endJuz);
     const end = Math.max(startJuz, endJuz);
+    questionTimeRef.current =
+      quizMode === "audio" ? QUESTION_TIME_AUDIO : QUESTION_TIME_TEXT;
     const pool = await loadRange(start, end);
     if (!pool) return;
     const valid = buildValidIndices(pool);
@@ -450,6 +521,7 @@ export default function SambungAyatScreen() {
     answeringRef.current = false;
     setAnsweredIdx(null);
     setFloatText(null);
+    void stopPromptAudio();
     const qIdx = pickQuestionIndex();
     const promptAyah = poolRef.current[qIdx];
     const correctAyah = poolRef.current[qIdx + 1];
@@ -466,6 +538,7 @@ export default function SambungAyatScreen() {
     ]);
     setChoices(shuffled);
     startTimer();
+    if (quizMode === "audio") playPromptFromStart(promptAyah.audioUrl);
   }
 
   function clearTimer() {
@@ -476,14 +549,14 @@ export default function SambungAyatScreen() {
   }
   function startTimer() {
     clearTimer();
-    setTimeLeft(QUESTION_TIME);
+    setTimeLeft(questionTimeRef.current);
     warnPlayedRef.current = false;
     const startedAt = Date.now();
     timerRef.current = setInterval(() => {
       const elapsed = (Date.now() - startedAt) / 1000;
-      const remain = Math.max(0, QUESTION_TIME - elapsed);
+      const remain = Math.max(0, questionTimeRef.current - elapsed);
       setTimeLeft(remain);
-      if (!warnPlayedRef.current && remain / QUESTION_TIME <= 0.25) {
+      if (!warnPlayedRef.current && remain / questionTimeRef.current <= 0.25) {
         warnPlayedRef.current = true;
         playSound(SOUND_TICK, 0.5);
       }
@@ -498,6 +571,7 @@ export default function SambungAyatScreen() {
     if (answeringRef.current) return;
     answeringRef.current = true;
     setAnsweredIdx(-1);
+    void stopPromptAudio();
     registerWrong();
   }
 
@@ -506,6 +580,7 @@ export default function SambungAyatScreen() {
     answeringRef.current = true;
     clearTimer();
     setAnsweredIdx(idx);
+    void stopPromptAudio();
     const chosen = choices[idx];
     if (chosen.isCorrect) registerCorrect();
     else registerWrong();
@@ -516,7 +591,7 @@ export default function SambungAyatScreen() {
       1 + Math.floor(statsRef.current.combo / COMBO_STEP),
       MAX_MULTIPLIER,
     );
-    const timeBonus = Math.round((timeLeft / QUESTION_TIME) * 50);
+    const timeBonus = Math.round((timeLeft / questionTimeRef.current) * 50);
     const points = Math.round((100 + timeBonus) * mult);
     const newCombo = statsRef.current.combo + 1;
     updateStats({
@@ -551,6 +626,7 @@ export default function SambungAyatScreen() {
 
   function endGame() {
     clearTimer();
+    void stopPromptAudio();
     setScreen("gameover");
     setSubmitResult(null);
     playSound(SOUND_GAMEOVER);
@@ -561,7 +637,7 @@ export default function SambungAyatScreen() {
         correctCount: statsRef.current.correctCount,
         totalCount: statsRef.current.totalCount,
         bestCombo: statsRef.current.bestCombo,
-        juzRange: juzLabel,
+        juzRange: `${juzLabel}${quizMode === "audio" ? " (Suara)" : ""}`,
       })
         .then((res) => setSubmitResult(res))
         .catch(() => {});
@@ -577,6 +653,7 @@ export default function SambungAyatScreen() {
 
   function goToMenu() {
     clearTimer();
+    void stopPromptAudio();
     if (pendingTimeoutRef.current) clearTimeout(pendingTimeoutRef.current);
     setScreen("start");
   }
@@ -585,6 +662,7 @@ export default function SambungAyatScreen() {
     () => () => {
       clearTimer();
       if (pendingTimeoutRef.current) clearTimeout(pendingTimeoutRef.current);
+      void stopPromptAudio();
       soundCacheRef.current.forEach((s) => s.unloadAsync().catch(() => {}));
     },
     [],
@@ -616,7 +694,7 @@ export default function SambungAyatScreen() {
     router.back();
   }
 
-  const timeFrac = timeLeft / QUESTION_TIME;
+  const timeFrac = timeLeft / questionTimeRef.current;
   const multiplier = Math.min(
     1 + Math.floor(stats.combo / COMBO_STEP),
     MAX_MULTIPLIER,
@@ -742,6 +820,61 @@ export default function SambungAyatScreen() {
               </Text>
             </View>
 
+            <View style={styles.panelSelect}>
+              <Text style={styles.panelLabel}>MODE SOAL</Text>
+              <View style={styles.modeToggle}>
+                <TouchableOpacity
+                  style={[
+                    styles.modeBtn,
+                    quizMode === "text" && styles.modeBtnActive,
+                  ]}
+                  onPress={() => setQuizMode("text")}
+                >
+                  <FontAwesome
+                    name="file-text-o"
+                    size={12}
+                    color={quizMode === "text" ? "#241c09" : T.textDim}
+                    style={{ marginBottom: 2 }}
+                  />
+                  <Text
+                    style={[
+                      styles.modeBtnText,
+                      quizMode === "text" && styles.modeBtnTextActive,
+                    ]}
+                  >
+                    Teks
+                  </Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[
+                    styles.modeBtn,
+                    quizMode === "audio" && styles.modeBtnActive,
+                  ]}
+                  onPress={() => setQuizMode("audio")}
+                >
+                  <FontAwesome
+                    name="headphones"
+                    size={12}
+                    color={quizMode === "audio" ? "#241c09" : T.textDim}
+                    style={{ marginBottom: 2 }}
+                  />
+                  <Text
+                    style={[
+                      styles.modeBtnText,
+                      quizMode === "audio" && styles.modeBtnTextActive,
+                    ]}
+                  >
+                    Suara
+                  </Text>
+                </TouchableOpacity>
+              </View>
+              <Text style={styles.hintText}>
+                {quizMode === "audio"
+                  ? "Dengarkan bacaan murattal satu ayat, lalu pilih sambungan yang tepat dari 4 pilihan teks. Waktu menjawab lebih lama untuk mendengarkan."
+                  : "Bacalah ayat yang ditampilkan, lalu pilih sambungan yang tepat dari 4 pilihan."}
+              </Text>
+            </View>
+
             <TouchableOpacity
               style={styles.ctaBtn}
               onPress={() => {
@@ -785,14 +918,22 @@ export default function SambungAyatScreen() {
                   4. Permainan berakhir saat nyawa habis. Kumpulkan skor
                   tertinggi!
                 </Text>
+                <Text style={[styles.howToText, { marginTop: 8, fontStyle: "italic" }]}>
+                  Mode &quot;Suara&quot;: persis seperti mode Teks, tetapi ayat
+                  utama diputar sebagai rekaman murattal — Anda mengenali ayat
+                  dari bacaannya, lalu memilih sambungannya. Anda dapat memutar
+                  ulang ayat sebanyak yang dibutuhkan.
+                </Text>
               </View>
             )}
 
             <Text style={styles.sourceNote}>
               Teks Arab menggunakan mushaf Utsmani (Uthmani script) dari Al
               Quran Cloud API — bersumber dari proyek Tanzil yang telah
-              diverifikasi dan lazim dipakai aplikasi Qur'an. Penomoran
-              surah/ayat mengikuti standar mushaf.
+              diverifikasi dan lazim dipakai aplikasi Qur&apos;an. Penomoran
+              surah/ayat mengikuti standar mushaf. Audio murattal (mode Suara)
+              bersumber dari CDN islamic.network dengan qari Mishary Rashid
+              Alafasy — rekaman per-ayat standar, bukan sintesis suara.
             </Text>
           </View>
         </ScrollView>
@@ -855,6 +996,16 @@ export default function SambungAyatScreen() {
           <View style={styles.topbar}>
             <View style={styles.chip}>
               <Text style={styles.chipText}>{juzLabel}</Text>
+            </View>
+            <View style={[styles.chip, { flexDirection: "row", gap: 5, alignItems: "center" }]}>
+              <FontAwesome
+                name={quizMode === "audio" ? "headphones" : "file-text-o"}
+                size={11}
+                color={T.textDim}
+              />
+              <Text style={styles.chipText}>
+                {quizMode === "audio" ? "Suara" : "Teks"}
+              </Text>
             </View>
           </View>
 
@@ -923,17 +1074,83 @@ export default function SambungAyatScreen() {
           <Animated.View
             style={[styles.ayahCard, { transform: [{ translateX: shakeX }] }]}
           >
-            <View style={styles.ayahBadge}>
-              <Text style={styles.ayahBadgeText} numberOfLines={1}>
-                {prompt.surahName} {"•"} Ayat {prompt.ayahNumber}
-              </Text>
-            </View>
-            <ScrollView
-              style={styles.ayahScroll}
-              showsVerticalScrollIndicator={false}
-            >
-              <VerseSvg text={prompt.text} fontSize={24} lineHeight={46} color="#241c0c" />
-            </ScrollView>
+            {quizMode === "audio" ? (
+              <>
+                {answeredIdx !== null && (
+                  <View style={styles.ayahBadge}>
+                    <Text style={styles.ayahBadgeText} numberOfLines={1}>
+                      {prompt.surahName} {"•"} Ayat {prompt.ayahNumber}
+                    </Text>
+                  </View>
+                )}
+                <View style={styles.audioPromptWrap}>
+                  <TouchableOpacity
+                    style={[
+                      styles.audioPlayBtn,
+                      promptAudioState === "loading" && styles.audioPlayBtnLoading,
+                    ]}
+                    activeOpacity={0.85}
+                    disabled={promptAudioState === "loading"}
+                    onPress={() => playPromptFromStart(prompt.audioUrl)}
+                  >
+                    {promptAudioState === "loading" ? (
+                      <ActivityIndicator size="large" color="#241c0c" />
+                    ) : (
+                      <FontAwesome
+                        name={
+                          promptAudioState === "playing"
+                            ? "pause"
+                            : "play"
+                        }
+                        size={32}
+                        color="#241c0c"
+                      />
+                    )}
+                  </TouchableOpacity>
+                  <Text style={styles.audioPromptHint}>
+                    {promptAudioState === "loading"
+                      ? "Memuat bacaan…"
+                      : promptAudioState === "playing"
+                        ? "Memutar ayat…"
+                        : answeredIdx !== null
+                          ? "Putar ulang ayat"
+                          : "Putar ayat, lalu pilih sambungannya"}
+                  </Text>
+                  <View style={styles.audioProgressTrack}>
+                    <View
+                      style={[
+                        styles.audioProgressFill,
+                        {
+                          width: `${promptAudioDur > 0 ? Math.min(100, (promptAudioPos / promptAudioDur) * 100) : 0}%`,
+                        },
+                      ]}
+                    />
+                  </View>
+                </View>
+                {answeredIdx !== null && (
+                  <ScrollView
+                    style={[styles.ayahScroll, { marginTop: 10 }]}
+                    showsVerticalScrollIndicator={false}
+                  >
+                    <VerseSvg text={prompt.text} fontSize={24} lineHeight={46} color="#241c0c" />
+                  </ScrollView>
+                )}
+              </>
+            ) : (
+              <>
+                <View style={styles.ayahBadge}>
+                  <Text style={styles.ayahBadgeText} numberOfLines={1}>
+                    {prompt.surahName} {"•"} Ayat {prompt.ayahNumber}
+                  </Text>
+                </View>
+                <ScrollView
+                  style={styles.ayahScroll}
+                  showsVerticalScrollIndicator={false}
+                >
+                  <VerseSvg text={prompt.text} fontSize={24} lineHeight={46} color="#241c0c" />
+                </ScrollView>
+              </>
+            )}
           </Animated.View>
 
           <Text style={styles.continueLabel}>
@@ -1456,6 +1673,48 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: T.textDim,
     fontWeight: "600",
+  },
+
+  // ── audio prompt card (mode suara) ──
+  audioPromptWrap: {
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 10,
+    paddingVertical: 10,
+    width: "100%",
+  },
+  audioPlayBtn: {
+    width: 72,
+    height: 72,
+    borderRadius: 36,
+    backgroundColor: T.gold,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  audioPlayBtnLoading: { opacity: 0.7 },
+  audioPromptHint: {
+    fontSize: 12,
+    color: T.goldDim,
+    textAlign: "center",
+    fontWeight: "600",
+  },
+  audioProgressTrack: {
+    width: "100%",
+    height: 5,
+    borderRadius: 5,
+    backgroundColor: "#00000018",
+    overflow: "hidden",
+  },
+  audioProgressFill: {
+    height: "100%",
+    backgroundColor: T.gold,
+    borderRadius: 5,
+  },
+  audioLoadingChoiceText: {
+    fontSize: 10,
+    color: T.textDim2,
+    marginTop: 4,
+    textAlign: "center",
   },
 
   answers: { flex: 1, flexDirection: "row", flexWrap: "wrap", gap: 10 },
