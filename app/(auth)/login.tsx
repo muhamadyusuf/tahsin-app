@@ -1,25 +1,26 @@
-import React, { useState, useEffect, useRef } from "react";
+import GoogleIcon from "@/components/GoogleIcon";
+import { api } from "@/convex/_generated/api";
+import { useAuthContext } from "@/lib/auth-context";
+import { Colors, getDisplayWidth } from "@/lib/constants";
+import { RecaptchaAttribution, useReCaptcha } from "@/lib/recaptcha";
+import { useAuth, useClerk, useSSO } from "@clerk/expo";
+import FontAwesome from "@expo/vector-icons/FontAwesome";
+import { useAction } from "convex/react";
+import { Redirect, useRouter } from "expo-router";
+import React, { useEffect, useRef, useState } from "react";
 import {
-  View,
-  Text,
-  Pressable,
-  StyleSheet,
   ActivityIndicator,
   Alert,
-  Platform,
   Dimensions,
-  StatusBar,
   Image,
+  Platform,
+  Pressable,
+  StatusBar,
+  StyleSheet,
+  Text,
+  View,
 } from "react-native";
-import { useClerk, useAuth, useSSO } from "@clerk/expo";
-import { Redirect, useRouter } from "expo-router";
-import { useAction } from "convex/react";
-import { api } from "@/convex/_generated/api";
-import FontAwesome from "@expo/vector-icons/FontAwesome";
-import { Colors, getDisplayWidth } from "@/lib/constants";
-import { useAuthContext } from "@/lib/auth-context";
-import { useReCaptcha, RecaptchaAttribution } from "@/lib/recaptcha";
-import GoogleIcon from "@/components/GoogleIcon";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 const { height } = Dimensions.get("window");
 const width = getDisplayWidth();
@@ -30,6 +31,7 @@ export default function LoginScreen() {
   const { isSignedIn } = useAuth();
   const { isLoading: authLoading, isAuthenticated } = useAuthContext();
   const router = useRouter();
+  const insets = useSafeAreaInsets();
   const [loading, setLoading] = useState(false);
   const { getToken, loaded: recaptchaLoaded } = useReCaptcha();
   const verifyRecaptcha = useAction(api.recaptcha.verify);
@@ -74,7 +76,7 @@ export default function LoginScreen() {
         if (!result.success || result.score < 0.5) {
           Alert.alert(
             "Verifikasi Gagal",
-            "Kami mendeteksi aktivitas mencurigakan. Silakan coba lagi nanti."
+            "Kami mendeteksi aktivitas mencurigakan. Silakan coba lagi nanti.",
           );
           setLoading(false);
           return;
@@ -91,8 +93,7 @@ export default function LoginScreen() {
         const { externalVerificationRedirectURL } =
           clerk.client.signIn.firstFactorVerification;
         if (externalVerificationRedirectURL) {
-          window.location.href =
-            externalVerificationRedirectURL.toString();
+          window.location.href = externalVerificationRedirectURL.toString();
         }
       } else {
         const { createdSessionId, setActive } = await startSSOFlow({
@@ -115,7 +116,7 @@ export default function LoginScreen() {
       }
       Alert.alert(
         "Gagal Masuk",
-        err.message || "Terjadi kesalahan saat login dengan Google"
+        err.message || "Terjadi kesalahan saat login dengan Google",
       );
       console.error("Google sign-in error:", JSON.stringify(err, null, 2));
     } finally {
@@ -128,7 +129,7 @@ export default function LoginScreen() {
       <StatusBar barStyle="dark-content" backgroundColor="#fff" />
 
       {/* Hero Area */}
-      <View style={styles.heroArea}>
+      <View style={[styles.heroArea, { paddingTop: insets.top + 85 }]}>
         <Image
           source={require("@/assets/images/login-illustration.png")}
           style={styles.heroImage}
@@ -140,7 +141,12 @@ export default function LoginScreen() {
       <View style={styles.contentArea}>
         <View style={styles.pill} />
 
-        <Text style={styles.title}>Tangsel Mengaji</Text>
+        <Image
+          source={require("@/assets/images/logo-tangsel-mengaji.png")}
+          style={styles.logo}
+          resizeMode="contain"
+          accessibilityLabel="Tangsel Mengaji"
+        />
         <Text style={styles.subtitle}>
           Belajar membaca Al-Qur'an dengan{"\n"}tajwid yang benar
         </Text>
@@ -152,7 +158,11 @@ export default function LoginScreen() {
             <Text style={styles.featurePillText}>Tilawah</Text>
           </View>
           <View style={styles.featurePill}>
-            <FontAwesome name="graduation-cap" size={12} color={Colors.primary} />
+            <FontAwesome
+              name="graduation-cap"
+              size={12}
+              color={Colors.primary}
+            />
             <Text style={styles.featurePillText}>Tahsin</Text>
           </View>
           <View style={styles.featurePill}>
@@ -207,10 +217,7 @@ const styles = StyleSheet.create({
 
   // ===== Hero =====
   heroArea: {
-    flex: 1.2,
-    justifyContent: "flex-end",
     alignItems: "center",
-    overflow: "hidden",
   },
   heroImage: {
     width: width * 0.85,
@@ -239,11 +246,9 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.border,
     marginBottom: 24,
   },
-  title: {
-    fontSize: 32,
-    fontWeight: "800",
-    color: Colors.text,
-    letterSpacing: -0.5,
+  logo: {
+    width: 126,
+    height: 120,
   },
   subtitle: {
     fontSize: 15,
